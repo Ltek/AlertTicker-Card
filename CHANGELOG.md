@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.17] - 2026-10-10
+
+### Fixed
+
+- **CRITICAL: v1.3.16 bricked the card with `SyntaxError: Unexpected token ':'`** ([#225](https://github.com/djdevil/AlertTicker-Card/issues/225) reported by [@shashankmittal](https://github.com/shashankmittal) within minutes of release) — the pseudo-element comment I added in v1.3.16 wrapped `.up-ring::after` and friends in backtick quotes for prose formatting. Those backticks closed the enclosing `css\`...\`` tagged template literal early, so the browser JS parser treated the remaining CSS as JavaScript and crashed on the first `::`. All cards on affected dashboards rendered as "Error" boxes. Same bug class as v1.3.9.9.7's `zoom` crash — the second time this exact mistake has shipped. Removed every backtick from the CSS comment and added an in-source NOTE spelling out the rule so this cannot happen a third time.
+
+---
+
 ## [1.3.16] - 2026-10-10
 
 ### Fixed

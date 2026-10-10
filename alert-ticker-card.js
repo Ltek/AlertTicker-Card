@@ -1,5 +1,5 @@
 /**
- * AlertTicker Card v1.3.16
+ * AlertTicker Card v1.3.17
  * A Home Assistant custom Lovelace card to display alerts based on entity states.
  * Supports 50 visual themes with per-alert theme assignment, priority ordering,
  * fold animation cycling, snooze, numeric conditions, attribute triggers,
@@ -41,7 +41,7 @@ const css = LitElement.prototype.css ?? ((strings, ...values) => {
 // ---------------------------------------------------------------------------
 // Card version — declared early so getConfigElement() can reference it
 // ---------------------------------------------------------------------------
-const CARD_VERSION = "1.3.16";
+const CARD_VERSION = "1.3.17";
 
 // ---------------------------------------------------------------------------
 // Google Cast compatibility (#171)
@@ -7891,10 +7891,16 @@ class AlertTickerCard extends LitElement {
          shipped or added later is covered without further CSS work.
          v1.3.16 follow-up (#225 reopened by @shashankmittal): the update theme
          still animated after v1.3.15 because its spinning inner ring lives in
-         a `.up-ring::after` pseudo-element, and the `*` universal selector
-         does not match pseudo-elements by CSS spec. Added the two pseudo-
-         element rules below to cover `.up-ring::after`, `.bt-drain::after`,
-         `.atc-fw-day--today::before` and any future animated pseudo-element. */
+         a .up-ring::after pseudo-element, and the * universal selector does
+         not match pseudo-elements by CSS spec. Added the two pseudo-element
+         rules below to cover .up-ring::after, .bt-drain::after,
+         .atc-fw-day--today::before and any future animated pseudo-element.
+         NOTE: never use backticks anywhere in this CSS block — they close
+         the outer css tagged template literal and leak CSS tokens into JS
+         space, which crashes browsers with "Unexpected token" (regression
+         history: v1.3.9.9.7 shipped broken with backticks around zoom,
+         v1.3.16 shipped broken with backticks around pseudo-element names,
+         so even this warning comment uses plain quotes). */
       .at-fold-wrapper.atc-no-anim *                        { animation: none !important; }
       .at-fold-wrapper.atc-no-anim .up-ring::after,
       .at-fold-wrapper.atc-no-anim .bt-drain::after,
