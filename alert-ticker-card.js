@@ -1,5 +1,5 @@
 /**
- * AlertTicker Card v1.3.15
+ * AlertTicker Card v1.3.16
  * A Home Assistant custom Lovelace card to display alerts based on entity states.
  * Supports 50 visual themes with per-alert theme assignment, priority ordering,
  * fold animation cycling, snooze, numeric conditions, attribute triggers,
@@ -41,7 +41,7 @@ const css = LitElement.prototype.css ?? ((strings, ...values) => {
 // ---------------------------------------------------------------------------
 // Card version — declared early so getConfigElement() can reference it
 // ---------------------------------------------------------------------------
-const CARD_VERSION = "1.3.15";
+const CARD_VERSION = "1.3.16";
 
 // ---------------------------------------------------------------------------
 // Google Cast compatibility (#171)
@@ -1486,7 +1486,14 @@ const _ATC_OVERLAY = (() => {
 
         // Bug #135 fix 2: if the overlay is showing an alert from THIS registration
         // and that alert is now inactive, dismiss the banner immediately.
-        if (_currentWatcherAlert && _currentWatcherAlert.id === id && !curActive.has(_currentWatcherAlert.alertIdx)) {
+        // #229 skip: when rotation is active for this card the alertIdx is the
+        // sentinel -1 (not a real index) — the rotation branch below handles
+        // its own lifecycle (_hide when curActive becomes empty), so we must
+        // not call _hide here or every tick would kill the rotation timer and
+        // restart it from index 0, producing the "only first alert, flashing"
+        // symptom reported in #229 by @ThomDyson.
+        const isRotatingThisCard = _rotation && _rotation.cardId === id;
+        if (!isRotatingThisCard && _currentWatcherAlert && _currentWatcherAlert.id === id && !curActive.has(_currentWatcherAlert.alertIdx)) {
           _hide();
         }
 
@@ -7874,15 +7881,24 @@ class AlertTickerCard extends LitElement {
       }
 
       /* ── DISABLE-ANIMATION override ── */
-      /* #225: universal catch-all — kills ambient CSS animations on EVERY
-         theme (door, window, water, battery, code_push, etc.) when the user
-         sets disable_animation. Previously we had a hand-maintained list of
-         about 15 classes which drifted out of sync as themes were added. The
-         specific rules below still live (they add compensation declarations
+      /* #225 / v1.3.15: universal catch-all — kills ambient CSS animations on
+         EVERY theme (door, window, water, battery, code_push, etc.) when the
+         user sets disable_animation. Previously we had a hand-maintained list
+         of about 15 classes which drifted out of sync as themes were added.
+         The specific rules below still live (they add compensation declarations
          like opacity:1 that keep a few animations from freezing at an
          invisible frame) but this catch-all guarantees any theme currently
-         shipped or added later is covered without further CSS work. */
+         shipped or added later is covered without further CSS work.
+         v1.3.16 follow-up (#225 reopened by @shashankmittal): the update theme
+         still animated after v1.3.15 because its spinning inner ring lives in
+         a `.up-ring::after` pseudo-element, and the `*` universal selector
+         does not match pseudo-elements by CSS spec. Added the two pseudo-
+         element rules below to cover `.up-ring::after`, `.bt-drain::after`,
+         `.atc-fw-day--today::before` and any future animated pseudo-element. */
       .at-fold-wrapper.atc-no-anim *                        { animation: none !important; }
+      .at-fold-wrapper.atc-no-anim .up-ring::after,
+      .at-fold-wrapper.atc-no-anim .bt-drain::after,
+      .at-fold-wrapper.atc-no-anim .atc-fw-day--today::before { animation: none !important; }
       .at-fold-wrapper.atc-no-anim .at-emergency            { animation: none !important; }
       .at-fold-wrapper.atc-no-anim .em-icon                 { animation: none !important; opacity: 1 !important; }
       .at-fold-wrapper.atc-no-anim .wn-dot                  { animation: none !important; opacity: 1 !important; transform: scale(1) !important; }

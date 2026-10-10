@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.16] - 2026-10-10
+
+### Fixed
+
+- **Banner rotation stuck on first alert + 1Hz flash** ([#229](https://github.com/djdevil/AlertTicker-Card/issues/229) reported by [@ThomDyson](https://github.com/ThomDyson)) — the `overlay_rotation` feature shipped in v1.3.11 painted only index 0 and flashed about once per second. Root cause: the rotation code set `_currentWatcherAlert.alertIdx = -1` as a sentinel so the "card now visible → hide overlay" check (#135) could still find the rotation, but that same check also runs when the triggering alert goes inactive — and `-1` is never present in `curActive`, so the condition fired on every 2s watcher tick, calling `_hide()` and killing the rotation timer before it could advance to the next item. The next tick then started a fresh rotation at index 0, producing the flash. Fixed by making the #135 "inactive alert → hide" check skip when rotation is active for that card; the rotation branch has its own lifecycle that already hides the overlay when `curActive` becomes empty.
+- **`disable_animation` still didn't stop the `update` theme spinner** ([#225](https://github.com/djdevil/AlertTicker-Card/issues/225) reopened by [@shashankmittal](https://github.com/shashankmittal)) — the v1.3.15 universal catch-all `* { animation: none !important }` covered every real DOM element but, per CSS spec, the `*` selector does NOT match pseudo-elements. The update theme's inner spinning ring is drawn as `.up-ring::after` (and the battery-drain theme uses `.bt-drain::after`, forecast highlight uses `.atc-fw-day--today::before`), so those three animations kept running. Added explicit rules for the three known animated pseudo-elements.
+- **Editor "Show badge" toggle (and 15 other alert-level switches) kept the previous alert's state when switching between alerts in the editor** ([#227](https://github.com/djdevil/AlertTicker-Card/issues/227) reported by [@ThomDyson](https://github.com/ThomDyson)) — the switches used `?checked` (Lit boolean *attribute* binding) which doesn't reliably sync a Web Component's internal state across re-renders — mwc-switch caches internal state and only updates when its `checked` *property* setter runs. Converted all 16 affected `?checked` → `.checked` bindings in the alert edit panel so the switches re-sync whenever the editor loads a different alert.
+- **English, German, Spanish, Turkish editor blocks had the wrong `client_side_warning` translation** ([#228](https://github.com/djdevil/AlertTicker-Card/issues/228) reported by [@ThomDyson](https://github.com/ThomDyson), same category as the #216 batch regression) — the EN block carried the German text ("Funktioniert nur…"), DE carried the Dutch text ("Werkt alleen…"), ES carried the Turkish text, and TR carried the English text. Classic off-by-one shift from an older batch translation script. Replaced all four with the correct native strings.
+
+---
+
 ## [1.3.15] - 2026-10-09
 
 ### Fixed

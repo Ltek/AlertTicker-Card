@@ -1,5 +1,5 @@
 /**
- * AlertTicker Card Editor v1.3.15
+ * AlertTicker Card Editor v1.3.16
  * Visual editor for the AlertTicker Card custom Lovelace component.
  */
 
@@ -10,7 +10,7 @@ const html = LitElement.prototype.html;
 const css = LitElement.prototype.css;
 
 // Must match the version in alert-ticker-card.js
-const CARD_VERSION = "1.3.15";
+const CARD_VERSION = "1.3.16";
 
 // ---------------------------------------------------------------------------
 // Theme metadata — mirrors alert-ticker-card.js
@@ -1666,7 +1666,7 @@ const ET = {
     section_push_notify: "📱 Push Notifications",
     push_notify_master_toggle: "Enable mobile push notifications",
     push_notify_master_toggle_help: "Master switch. When off, no alert sends a push notification, even if enabled per alert.",
-    client_side_warning: "⚠️ Funktioniert nur, wenn ein HA-Dashboard in einem Browser geöffnet ist (Desktop, Wandtablet oder Companion-App im Vordergrund). Für kritische 24/7-Alarme eine serverseitige HA-Automatisierung verwenden.",
+    client_side_warning: "⚠️ Works only while an HA dashboard is open in a browser (desktop, wall tablet, or Companion app in the foreground). For 24/7 critical alerts, use a server-side HA automation.",
     alert_push_notify: "Send mobile push notification",
     alert_push_notify_help: "When this alert activates, sends a push notification via the selected notify service.",
     alert_push_notify_title: "Notification title (Jinja2)",
@@ -2412,7 +2412,7 @@ const ET = {
     section_push_notify: "📱 Push-Benachrichtigungen",
     push_notify_master_toggle: "Mobile Push-Benachrichtigungen aktivieren",
     push_notify_master_toggle_help: "Hauptschalter. Wenn deaktiviert, sendet keine Warnung eine Push-Benachrichtigung, auch wenn für einzelne Warnungen aktiviert.",
-    client_side_warning: "⚠️ Werkt alleen als een HA-dashboard open is in een browser (desktop, vaste tablet, of Companion-app op de voorgrond). Voor kritieke 24/7 meldingen gebruik een server-side HA-automatisering.",
+    client_side_warning: "⚠️ Funktioniert nur, wenn ein HA-Dashboard in einem Browser geöffnet ist (Desktop, Wandtablet oder Companion-App im Vordergrund). Für kritische 24/7-Alarme eine serverseitige HA-Automatisierung verwenden.",
     alert_push_notify: "Mobile Push-Benachrichtigung senden",
     alert_push_notify_help: "Wenn diese Warnung aktiv wird, sendet eine Push-Benachrichtigung über den ausgewählten Notify-Dienst.",
     alert_push_notify_title: "Benachrichtigungstitel (Jinja2)",
@@ -5027,7 +5027,7 @@ const ET = {
     section_push_notify: "📱 Notificaciones push",
     push_notify_master_toggle: "Activar notificaciones push móviles",
     push_notify_master_toggle_help: "Interruptor principal. Cuando está desactivado, ninguna alerta envía una notificación push, incluso si está activado en alertas individuales.",
-    client_side_warning: "⚠️ Yalnızca bir HA panosu tarayıcıda açıkken çalışır. 7/24 kritik uyarılar için sunucu tarafında HA otomasyonu kullanın.",
+    client_side_warning: "⚠️ Funciona solo mientras un panel de HA esté abierto en un navegador (escritorio, tablet de pared o app Companion en primer plano). Para alertas críticas 24/7, usa una automatización HA del lado del servidor.",
     alert_push_notify: "Enviar notificación push móvil",
     alert_push_notify_help: "Cuando esta alerta se activa, envía una notificación push a través del servicio notify seleccionado.",
     alert_push_notify_title: "Título de la notificación (Jinja2)",
@@ -5400,7 +5400,7 @@ const ET = {
     section_push_notify: "📱 Anlık Bildirimler",
     push_notify_master_toggle: "Mobil anlık bildirimleri etkinleştir",
     push_notify_master_toggle_help: "Ana anahtar. Kapalıyken, uyarı başına etkin olsa bile hiçbir uyarı anlık bildirim göndermez.",
-    client_side_warning: "⚠️ Works only while an HA dashboard is open in a browser (desktop, wall tablet, or Companion app in the foreground). For 24/7 critical alerts, use a server-side HA automation.",
+    client_side_warning: "⚠️ Yalnızca bir HA panosu tarayıcıda açıkken çalışır (masaüstü, duvar tableti veya ön planda Companion uygulaması). 7/24 kritik uyarılar için sunucu tarafında HA otomasyonu kullanın.",
     alert_push_notify: "Mobil anlık bildirim gönder",
     alert_push_notify_help: "Bu uyarı etkinleştiğinde, seçilen notify servisi aracılığıyla anlık bildirim gönderir.",
     alert_push_notify_title: "Bildirim başlığı (Jinja2)",
@@ -7310,20 +7310,20 @@ class AlertTickerCardEditor extends LitElement {
                 ${(alert.entity_filter || alert.device_class) ? html`
                   <ha-formfield .label="${this._t("show_filter_name")}">
                     <ha-switch
-                      ?checked="${alert.show_filter_name !== false}"
+                      .checked="${alert.show_filter_name !== false}"
                       @change="${(e) => this._updateAlert(index, { show_filter_name: e.target.checked ? undefined : false })}"
                     ></ha-switch>
                   </ha-formfield>
                   <ha-formfield .label="${this._t("show_filter_state")}">
                     <ha-switch
-                      ?checked="${!!alert.show_filter_state}"
+                      .checked="${!!alert.show_filter_state}"
                       @change="${(e) => this._updateAlert(index, { show_filter_state: e.target.checked ? true : undefined })}"
                     ></ha-switch>
                   </ha-formfield>
                   ${alert.theme === "battery" ? html`
                     <ha-formfield .label="${this._t("battery_trim_name")}">
                       <ha-switch
-                        ?checked="${!!alert.battery_trim_name}"
+                        .checked="${!!alert.battery_trim_name}"
                         @change="${(e) => this._updateAlert(index, { battery_trim_name: e.target.checked ? true : undefined })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7337,7 +7337,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_player_controls")}">
                       <ha-switch
-                        ?checked="${!!alert.show_player_controls}"
+                        .checked="${!!alert.show_player_controls}"
                         @change="${(e) => this._updateAlert(index, { show_player_controls: e.target.checked || undefined })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7373,14 +7373,14 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_compact_layout")}">
                       <ha-switch
-                        ?checked="${!!alert.music_compact_layout}"
+                        .checked="${!!alert.music_compact_layout}"
                         @change="${(e) => this._updateAlert(index, { music_compact_layout: e.target.checked || undefined })}"
                       ></ha-switch>
                     </ha-formfield>
                     ${alert.music_compact_layout ? html`
                     <ha-formfield .label="${this._t("music_compact_show_badge")}">
                       <ha-switch
-                        ?checked="${alert.music_compact_show_badge !== false}"
+                        .checked="${alert.music_compact_show_badge !== false}"
                         @change="${(e) => this._updateAlert(index, { music_compact_show_badge: e.target.checked ? undefined : false })}"
                       ></ha-switch>
                     </ha-formfield>` : ""}
@@ -7389,7 +7389,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_show_art")}">
                       <ha-switch
-                        ?checked="${alert.music_show_art !== false}"
+                        .checked="${alert.music_show_art !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_art: e.target.checked ? undefined : false })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7397,7 +7397,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_show_title")}">
                       <ha-switch
-                        ?checked="${alert.music_show_title !== false}"
+                        .checked="${alert.music_show_title !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_title: e.target.checked ? undefined : false })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7405,7 +7405,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_show_artist")}">
                       <ha-switch
-                        ?checked="${alert.music_show_artist !== false}"
+                        .checked="${alert.music_show_artist !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_artist: e.target.checked ? undefined : false })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7413,7 +7413,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_show_controls")}">
                       <ha-switch
-                        ?checked="${alert.music_show_controls !== false}"
+                        .checked="${alert.music_show_controls !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_controls: e.target.checked ? undefined : false })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7421,7 +7421,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_show_power")}">
                       <ha-switch
-                        ?checked="${!!alert.music_show_power}"
+                        .checked="${!!alert.music_show_power}"
                         @change="${(e) => this._updateAlert(index, { music_show_power: e.target.checked || undefined })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7429,7 +7429,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-formfield .label="${this._t("music_show_player_picker")}">
                       <ha-switch
-                        ?checked="${!!alert.music_show_player_picker}"
+                        .checked="${!!alert.music_show_player_picker}"
                         @change="${(e) => this._updateAlert(index, { music_show_player_picker: e.target.checked || undefined })}"
                       ></ha-switch>
                     </ha-formfield>
@@ -7500,7 +7500,7 @@ class AlertTickerCardEditor extends LitElement {
                 <div>
                   <ha-formfield .label="${this._t("on_change")}">
                     <ha-switch
-                      ?checked="${!!alert.on_change}"
+                      .checked="${!!alert.on_change}"
                       @change="${(e) => this._updateAlert(index, { on_change: e.target.checked || undefined })}"
                     ></ha-switch>
                   </ha-formfield>
@@ -7669,13 +7669,13 @@ class AlertTickerCardEditor extends LitElement {
                 <div>
                   <ha-formfield .label="${this._t("use_ha_icon")}">
                     <ha-switch
-                      ?checked="${!!alert.use_ha_icon}"
+                      .checked="${!!alert.use_ha_icon}"
                       @change="${(e) => this._alertHaIconToggled(e.target.checked, index)}"
                     ></ha-switch>
                   </ha-formfield>
                   <ha-formfield .label="${this._t("use_entity_picture")}">
                     <ha-switch
-                      ?checked="${!!alert.use_entity_picture}"
+                      .checked="${!!alert.use_entity_picture}"
                       @change="${(e) => this._updateAlert(index, { use_entity_picture: e.target.checked || undefined })}"
                     ></ha-switch>
                   </ha-formfield>
@@ -7769,7 +7769,7 @@ class AlertTickerCardEditor extends LitElement {
                 <div>
                   <ha-formfield .label="${this._t("show_badge")}">
                     <ha-switch
-                      ?checked="${alert.show_badge !== false}"
+                      .checked="${alert.show_badge !== false}"
                       @change="${(e) => this._updateAlert(index, { show_badge: e.target.checked ? undefined : false })}"
                     ></ha-switch>
                   </ha-formfield>
@@ -7806,7 +7806,7 @@ class AlertTickerCardEditor extends LitElement {
                   ></ha-input>
                   <ha-formfield .label="${this._t("show_secondary_name")}">
                     <ha-switch
-                      ?checked="${!!alert.show_secondary_name}"
+                      .checked="${!!alert.show_secondary_name}"
                       @change="${(e) => this._updateAlert(index, { show_secondary_name: e.target.checked ? true : undefined })}"
                     ></ha-switch>
                   </ha-formfield>
