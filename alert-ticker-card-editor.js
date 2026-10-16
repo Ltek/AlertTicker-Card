@@ -7123,24 +7123,8 @@ class AlertTickerCardEditor extends LitElement {
                   ></ha-input>
                   <div class="helper-text">
                     ${alert.entity_filter && this._hass ? (() => {
-                      const matchFn = this._buildFilterMatcher(alert.entity_filter);
                       const excluded = new Set(alert.entity_filter_exclude || []);
-                      const labelFilter = alert.label_filter ? (Array.isArray(alert.label_filter) ? alert.label_filter : [alert.label_filter]) : null;
-                      const areaFilter  = alert.area_filter  ? (Array.isArray(alert.area_filter)  ? alert.area_filter  : [alert.area_filter])  : null;
-                      const allMatched = Object.entries(this._hass.states).filter(([id, s]) => {
-                        if (!matchFn(id) && !matchFn(s.attributes.friendly_name || "")) return false;
-                        if (labelFilter) {
-                          const entityLabels = this._hass.entities?.[id]?.labels || [];
-                          if (!labelFilter.some(l => entityLabels.includes(l))) return false;
-                        }
-                        if (areaFilter) {
-                          const meta = this._hass.entities?.[id];
-                          const entityArea = meta?.area_id;
-                          const deviceArea = meta?.device_id ? this._hass.devices?.[meta.device_id]?.area_id : null;
-                          if (!areaFilter.some(a => a === entityArea || a === deviceArea)) return false;
-                        }
-                        return true;
-                      });
+                      const allMatched = this._getFilteredEntities(alert);
                       const activeCount = allMatched.filter(([id]) => !excluded.has(id)).length;
                       const excludedCount = excluded.size;
                       const previewOpen = this._filterPreviewOpen.has(index);
@@ -7206,22 +7190,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">
                     ${alert.device_class && this._hass ? (() => {
                       const excluded = new Set(alert.entity_filter_exclude || []);
-                      const labelFilter = alert.label_filter ? (Array.isArray(alert.label_filter) ? alert.label_filter : [alert.label_filter]) : null;
-                      const areaFilter  = alert.area_filter  ? (Array.isArray(alert.area_filter)  ? alert.area_filter  : [alert.area_filter])  : null;
-                      const allMatched = Object.entries(this._hass.states).filter(([id, s]) => {
-                        if (s.attributes.device_class !== alert.device_class) return false;
-                        if (labelFilter) {
-                          const entityLabels = this._hass.entities?.[id]?.labels || [];
-                          if (!labelFilter.some(l => entityLabels.includes(l))) return false;
-                        }
-                        if (areaFilter) {
-                          const meta = this._hass.entities?.[id];
-                          const entityArea = meta?.area_id;
-                          const deviceArea = meta?.device_id ? this._hass.devices?.[meta.device_id]?.area_id : null;
-                          if (!areaFilter.some(a => a === entityArea || a === deviceArea)) return false;
-                        }
-                        return true;
-                      });
+                      const allMatched = this._getFilteredEntities(alert);
                       const activeCount = allMatched.filter(([id]) => !excluded.has(id)).length;
                       const excludedCount = excluded.size;
                       const previewKey = `dc_${index}`;
@@ -8633,38 +8602,15 @@ class AlertTickerCardEditor extends LitElement {
     } catch (_) { return "#000000"; }
   }
 
-  /** Builds a matcher function for entity_filter (mirrors card logic). */
-  /** Returns all [entityId, state] pairs matching the alert's active filters (entity_filter, device_class, label_filter, area_filter) */
+  /**
+   * All [entityId, state] pairs covered by the alert's filters (entity_filter, device_class,
+   * label_filter, area_filter). Exclusions are NOT applied: the preview lists excluded
+   * entities too, marked ✗. Uses the card's matcher, so the preview matches the card.
+   */
   _getFilteredEntities(alert) {
-    if (!this._hass) return [];
-    const matchFn = alert.entity_filter ? this._buildFilterMatcher(alert.entity_filter) : null;
-    const labelFilter = alert.label_filter ? (Array.isArray(alert.label_filter) ? alert.label_filter : [alert.label_filter]) : null;
-    const areaFilter  = alert.area_filter  ? (Array.isArray(alert.area_filter)  ? alert.area_filter  : [alert.area_filter])  : null;
-    return Object.entries(this._hass.states).filter(([id, s]) => {
-      if (alert.device_class && s.attributes?.device_class !== alert.device_class) return false;
-      if (matchFn && !matchFn(id) && !matchFn(s.attributes?.friendly_name || "")) return false;
-      if (labelFilter) {
-        const labels = this._hass.entities?.[id]?.labels || [];
-        if (!labelFilter.some(l => labels.includes(l))) return false;
-      }
-      if (areaFilter) {
-        const meta = this._hass.entities?.[id];
-        const entityArea = meta?.area_id;
-        const deviceArea = meta?.device_id ? this._hass.devices?.[meta.device_id]?.area_id : null;
-        if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) return false;
-      }
-      return true;
-    });
-  }
-
-  _buildFilterMatcher(filter) {
-    const f = filter.toLowerCase();
-    if (f.includes("*")) {
-      const pattern = f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-      const re = new RegExp(pattern);
-      return (text) => re.test(text.toLowerCase());
-    }
-    return (text) => text.toLowerCase().includes(f);
+    const shared = globalThis.__alertTickerShared;
+    if (!this._hass || !shared) return [];
+    return shared.filterEntities(this._hass, alert, { applyExclude: false });
   }
 
   /** Returns the default badge label for a given alert based on its theme category */

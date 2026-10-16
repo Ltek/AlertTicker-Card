@@ -843,6 +843,14 @@ function _atcFilterEntities(hass, a, opts) {
   return Object.entries(hass.states).filter(([eid, es]) => matches(eid, es));
 }
 
+// The editor is a separate module (loaded on demand by getConfigElement), so it
+// reaches the same matcher through this namespace instead of keeping its own copy —
+// the editor's entity preview then always agrees with what the card shows.
+globalThis.__alertTickerShared = Object.freeze({
+  isFilterAlert: _atcIsFilterAlert,
+  filterEntities: _atcFilterEntities,
+});
+
 // ---------------------------------------------------------------------------
 // Global overlay / toast manager — singleton shared across all card instances.
 // Two trigger paths:
