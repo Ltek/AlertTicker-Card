@@ -1535,6 +1535,61 @@ const ET = {
     tab_alerts: "Alerts",
     tab_overlay: "Overlay",
     tab_allclear: "All Clear",
+    tab_rulesets: "Rule Sets",
+    hub_desc_rulesets: "Reusable entity filters by label, area, floor, device class, state and more",
+    rulesets_intro: "A rule set is a reusable entity filter. Pick one in an alert's filter mode and the alert shows once for every entity that matches. Edit a set here and every alert using it follows.",
+    ruleset_empty: "No rule sets yet.",
+    ruleset_add: "Add rule set",
+    ruleset_default_name: "Rule set",
+    ruleset_name: "Name",
+    ruleset_id: "ID",
+    ruleset_id_help: "Alerts refer to the set by this ID. Changing it updates those alerts too.",
+    ruleset_used_by: "Alerts using it",
+    ruleset_unused: "Not used by any alert",
+    ruleset_delete_confirm: "{n} alert(s) use this rule set and will show nothing until you pick another one. Delete it?",
+    ruleset_group_include: "Include entities matching",
+    ruleset_group_exclude: "Exclude entities matching",
+    ruleset_match_all: "all of these rules",
+    ruleset_match_any: "any of these rules",
+    ruleset_add_rule: "Add rule",
+    ruleset_add_include: "Include group",
+    ruleset_add_exclude: "Exclude group",
+    ruleset_no_include: "Add at least one include rule — a set without one matches nothing.",
+    ruleset_field_entity_id: "Entity ID",
+    ruleset_field_name: "Name",
+    ruleset_field_domain: "Domain",
+    ruleset_field_device_class: "Device class",
+    ruleset_field_area: "Area",
+    ruleset_field_floor: "Floor",
+    ruleset_field_label: "Label",
+    ruleset_field_integration: "Integration",
+    ruleset_field_state: "State",
+    ruleset_field_attribute: "Attribute",
+    ruleset_field_last_changed_ago: "Last changed",
+    ruleset_op_eq: "is",
+    ruleset_op_ne: "is not",
+    ruleset_op_in: "is any of",
+    ruleset_op_not_in: "is none of",
+    ruleset_op_contains: "contains",
+    ruleset_op_not_contains: "does not contain",
+    ruleset_op_regex: "matches regex",
+    ruleset_op_gt: "is above",
+    ruleset_op_lt: "is below",
+    ruleset_op_ge: "is at least",
+    ruleset_op_le: "is at most",
+    ruleset_op_between: "is between",
+    ruleset_value: "Value",
+    ruleset_value_seconds: "Seconds ago",
+    ruleset_value_from: "From",
+    ruleset_value_to: "To",
+    ruleset_and: "and",
+    ruleset_value_list_help: "Separate several values with commas.",
+    ruleset_attribute_path: "Attribute name (dot path, e.g. battery_level)",
+    alert_rule_set: "Rule set (optional)",
+    alert_rule_set_help: "Only match entities in this rule set. Combinable with the filters above (AND logic).",
+    alert_rule_set_manage: "Edit rule sets",
+    alert_rule_set_inline: "(defined in YAML on this alert)",
+    alert_rule_set_missing: "This rule set no longer exists — the alert matches nothing until you pick another.",
     back: "Back",
     all_clear_disabled_help: "Enable 'All Clear' to configure the no-alerts message.",
     tab_layout: "Layout",
@@ -5793,6 +5848,25 @@ const THEME_OPTIONS = [
 // ---------------------------------------------------------------------------
 // Editor class
 // ---------------------------------------------------------------------------
+// Rule-set editor: which operators each field offers in the UI. The card's engine
+// accepts every operator on every field, so YAML-written rules keep working —
+// an operator missing from a list is still shown when a rule already uses it.
+const RS_FIELD_OPS = {
+  label:            ["in", "not_in"],
+  area:             ["in", "not_in"],
+  floor:            ["in", "not_in"],
+  device_class:     ["in", "not_in"],
+  domain:           ["in", "not_in"],
+  integration:      ["in", "not_in"],
+  entity_id:        ["in", "not_in", "contains", "not_contains", "regex"],
+  name:             ["contains", "not_contains", "eq", "ne", "regex"],
+  state:            ["in", "not_in", "eq", "ne", "contains", "not_contains", "regex", "gt", "lt", "ge", "le", "between"],
+  attribute:        ["eq", "ne", "in", "not_in", "contains", "not_contains", "regex", "gt", "lt", "ge", "le", "between"],
+  last_changed_ago: ["lt", "gt", "between"],
+};
+const RS_LIST_OPS = ["in", "not_in"];
+const RS_NUMERIC_OPS = ["gt", "lt", "ge", "le", "between"];
+
 class AlertTickerCardEditor extends LitElement {
   static get properties() {
     return {
@@ -5800,6 +5874,7 @@ class AlertTickerCardEditor extends LitElement {
       _hass: {},
       _activeSection: { type: String },
       _editingIndex: { type: Number },
+      _rsEditing: { type: Number },
       _filterPreviewOpen: { type: Object },
       _alertModeFilter: { type: Object },
       _lang: { type: String },
@@ -5811,6 +5886,7 @@ class AlertTickerCardEditor extends LitElement {
     super();
     this._activeSection = null; // null = hub
     this._editingIndex = -1;            // -1 = no alert being edited
+    this._rsEditing = -1;               // -1 = no rule set expanded
     this._filterPreviewOpen = new Set();
     this._alertModeFilter = new Set();
     this._lang = "en";
@@ -6027,6 +6103,7 @@ class AlertTickerCardEditor extends LitElement {
           s === "layout"   ? this._renderLayoutTab()   :
           s === "overlay"  ? this._renderOverlayTab()  :
           s === "allclear" ? this._renderAllClearTab()  :
+          s === "rulesets" ? this._renderRuleSetsTab()  :
           this._renderAlertsTab()}
         <div class="version-badge">${this._t("version")}: ${CARD_VERSION}</div>
       </div>
@@ -6038,6 +6115,7 @@ class AlertTickerCardEditor extends LitElement {
     const alertCount = (cfg.alerts || []).length;
     const overlayOn  = !!cfg.overlay_mode;
     const clearOn    = !!cfg.show_when_clear;
+    const ruleSetCount = this._ruleSets().length;
     return html`
       <div class="hub-header">
         <span class="hub-title">🚨 Alert Ticker Card</span>
@@ -6056,6 +6134,16 @@ class AlertTickerCardEditor extends LitElement {
           <span class="hub-tile-desc">${this._t("hub_desc_alerts")}</span>
         </div>
         ${alertCount > 0 ? html`<span class="hub-badge hub-badge--alerts">${alertCount}</span>` : ""}
+      </button>
+
+      <!-- Rule sets — full width -->
+      <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("rulesets")}">
+        <span class="hub-tile-icon">🧩</span>
+        <div class="hub-tile-text">
+          <span class="hub-tile-label">${this._t("tab_rulesets")}</span>
+          <span class="hub-tile-desc">${this._t("hub_desc_rulesets")}</span>
+        </div>
+        ${ruleSetCount > 0 ? html`<span class="hub-badge hub-badge--alerts">${ruleSetCount}</span>` : ""}
       </button>
 
       <!-- 2×2 grid -->
@@ -6956,6 +7044,8 @@ class AlertTickerCardEditor extends LitElement {
       ? `[${this._t("entity_filter")}: "${alert.entity_filter}"]`
       : alert.device_class
       ? `[${this._t("device_class")}: "${alert.device_class}"]`
+      : alert.rule_set && !alert.entity
+      ? `[${this._t("tab_rulesets")}: "${this._ruleSetLabel(alert.rule_set)}"]`
       : alert.entity || (this._lang === "it" ? "(non impostato)" : "(not set)");
     const msgSnippet = alert.message
       ? alert.message.length > 40
@@ -7071,7 +7161,7 @@ class AlertTickerCardEditor extends LitElement {
                       const next = new Set(this._alertModeFilter);
                       next.delete(index);
                       this._alertModeFilter = next;
-                      this._updateAlert(index, { entity_filter: undefined, device_class: undefined, label_filter: undefined, area_filter: undefined, entity_filter_exclude: undefined });
+                      this._updateAlert(index, { entity_filter: undefined, device_class: undefined, label_filter: undefined, area_filter: undefined, rule_set: undefined, entity_filter_exclude: undefined });
                     }}">${this._t("mode_entity")}</button>
                     <button class="alert-mode-btn ${mode === "filter" ? "active" : ""}" @click="${() => {
                       const next = new Set(this._alertModeFilter);
@@ -7265,6 +7355,9 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">${this._t("area_filter_help")}</div>
                 </div>
 
+                <!-- Rule set -->
+                ${this._renderAlertRuleSetPicker(alert, index)}
+
                 <!-- Attribute in filter mode -->
                 <div>
                   <ha-input
@@ -7276,7 +7369,7 @@ class AlertTickerCardEditor extends LitElement {
                 </div>
 
                 <!-- show_filter_name / show_filter_state toggles -->
-                ${(alert.entity_filter || alert.device_class) ? html`
+                ${(alert.entity_filter || alert.device_class || alert.rule_set) ? html`
                   <ha-formfield .label="${this._t("show_filter_name")}">
                     <ha-switch
                       .checked="${alert.show_filter_name !== false}"
@@ -8231,7 +8324,7 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _getAlertMode(index, alert) {
-    if (alert.entity_filter || alert.device_class || alert.label_filter || alert.area_filter) return "filter";
+    if (alert.entity_filter || alert.device_class || alert.label_filter || alert.area_filter || alert.rule_set) return "filter";
     return this._alertModeFilter.has(index) ? "filter" : "entity";
   }
 
@@ -8243,6 +8336,380 @@ class AlertTickerCardEditor extends LitElement {
     this._updateAlert(alertIndex, {
       entity_filter_exclude: excluded.size > 0 ? [...excluded] : undefined,
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Rule sets — reusable entity filters stored in the card-level `rule_sets:`
+  // list and referenced from alerts with `rule_set: <id>`. The card evaluates
+  // them; the editor only edits the list and previews matches with the card's
+  // own matcher (globalThis.__alertTickerShared).
+  // -------------------------------------------------------------------------
+  _ruleSets() {
+    return Array.isArray(this._config?.rule_sets) ? this._config.rule_sets : [];
+  }
+
+  /** Display name for an alert's rule_set value (id, inline object, or missing id). */
+  _ruleSetLabel(ref) {
+    if (ref && typeof ref === "object") return ref.name || this._t("alert_rule_set_inline");
+    const rs = this._ruleSets().find((r) => String(r.id) === String(ref));
+    return rs ? (rs.name || rs.id) : `⚠ ${ref}`;
+  }
+
+  _ruleSetUsage(id) {
+    return (this._config.alerts || []).filter((a) => a && a.rule_set === id).length;
+  }
+
+  /** Writes the rule-set list (dropping the key when empty) and optionally the alerts. */
+  _setRuleSets(ruleSets, alerts) {
+    const next = { ...this._config, rule_sets: ruleSets.length ? ruleSets : undefined };
+    if (alerts) next.alerts = alerts;
+    this._fireConfig(next);
+  }
+
+  _updateRuleSet(si, changes) {
+    const list = [...this._ruleSets()];
+    list[si] = { ...list[si], ...changes };
+    this._setRuleSets(list);
+  }
+
+  _newRule(field = "label") {
+    return { field, op: (RS_FIELD_OPS[field] || ["eq"])[0], ...(RS_LIST_OPS.includes((RS_FIELD_OPS[field] || [])[0]) ? { values: [] } : {}) };
+  }
+
+  _addRuleSet() {
+    const list = this._ruleSets();
+    const taken = new Set(list.map((rs) => String(rs.id)));
+    let n = list.length + 1;
+    while (taken.has(`rule_set_${n}`)) n++;
+    const rs = {
+      id: `rule_set_${n}`,
+      name: `${this._t("ruleset_default_name")} ${n}`,
+      groups: [{ mode: "include", match: "all", rules: [this._newRule()] }],
+    };
+    this._rsEditing = list.length;
+    this._setRuleSets([...list, rs]);
+  }
+
+  _deleteRuleSet(si) {
+    const list = this._ruleSets();
+    const used = this._ruleSetUsage(list[si]?.id);
+    if (used && !window.confirm(this._t("ruleset_delete_confirm").replace("{n}", used))) return;
+    this._rsEditing = -1;
+    this._setRuleSets(list.filter((_, i) => i !== si));
+  }
+
+  /** Changes a set's id and repoints every alert that referenced the old id. */
+  _renameRuleSetId(si, input) {
+    const list = this._ruleSets();
+    const oldId = list[si]?.id;
+    const slug = String(input.value || "").trim().toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!slug || slug === oldId || list.some((rs, i) => i !== si && String(rs.id) === slug)) {
+      input.value = oldId; // empty, unchanged or already taken — keep the old id
+      return;
+    }
+    const ruleSets = list.map((rs, i) => (i === si ? { ...rs, id: slug } : rs));
+    const alerts = (this._config.alerts || []).map((a) => (a && a.rule_set === oldId ? { ...a, rule_set: slug } : a));
+    this._setRuleSets(ruleSets, alerts);
+  }
+
+  /** Copies the set's groups, lets `fn` mutate the copy, then saves it. */
+  _updateRsGroups(si, fn) {
+    const rs = this._ruleSets()[si] || {};
+    const groups = (Array.isArray(rs.groups) ? rs.groups : []).map((g) => ({ ...g, rules: [...(g.rules || [])] }));
+    fn(groups);
+    this._updateRuleSet(si, { groups });
+  }
+
+  _rsRuleChanged(si, gi, ri, changes) {
+    this._updateRsGroups(si, (gs) => {
+      const r = { ...gs[gi].rules[ri], ...changes };
+      Object.keys(r).forEach((k) => r[k] === undefined && delete r[k]);
+      gs[gi].rules[ri] = r;
+    });
+  }
+
+  _rsFieldChanged(si, gi, ri, field) {
+    this._updateRsGroups(si, (gs) => {
+      const prev = gs[gi].rules[ri] || {};
+      const r = this._newRule(field);
+      if (field === "attribute" && prev.attribute) r.attribute = prev.attribute;
+      gs[gi].rules[ri] = r;
+    });
+  }
+
+  /** Switching between list ops (in / not_in) and single-value ops converts value ⇄ values. */
+  _rsOpChanged(si, gi, ri, op) {
+    this._updateRsGroups(si, (gs) => {
+      const r = { ...gs[gi].rules[ri], op };
+      const vals = Array.isArray(r.values) ? r.values : (r.value != null && r.value !== "" ? [r.value] : []);
+      if (RS_LIST_OPS.includes(op)) {
+        r.values = vals;
+        delete r.value;
+      } else {
+        if (vals.length && (r.value == null || r.value === "")) r.value = vals[0];
+        delete r.values;
+      }
+      if (op !== "between") delete r.value2;
+      gs[gi].rules[ri] = r;
+    });
+  }
+
+  /** Dropdown choices for device_class / domain / integration, from this HA instance. */
+  _rsOptions(field) {
+    const h = this._hass;
+    if (!h) return [];
+    const set = new Set();
+    if (field === "device_class") Object.values(h.states).forEach((s) => s.attributes?.device_class && set.add(s.attributes.device_class));
+    if (field === "domain") Object.keys(h.states).forEach((id) => set.add(id.split(".")[0]));
+    if (field === "integration") Object.values(h.entities || {}).forEach((e) => e?.platform && set.add(e.platform));
+    return [...set].sort();
+  }
+
+  _renderRuleSetsTab() {
+    const list = this._ruleSets();
+    return html`
+      ${this._renderSectionHeader("tab_rulesets")}
+      <div class="tab-content">
+        <div class="helper-text rs-intro">${this._t("rulesets_intro")}</div>
+        ${list.length === 0
+          ? html`<div class="empty-alerts">${this._t("ruleset_empty")}</div>`
+          : list.map((rs, si) => this._renderRuleSetItem(rs, si))}
+        <button class="btn-add-alert" @click="${() => this._addRuleSet()}">+ ${this._t("ruleset_add")}</button>
+      </div>
+    `;
+  }
+
+  _renderRuleSetItem(rs, si) {
+    const open = this._rsEditing === si;
+    const used = this._ruleSetUsage(rs.id);
+    return html`
+      <div class="alert-item ${open ? "is-editing" : ""}" @click="${() => { this._rsEditing = open ? -1 : si; }}">
+        <span class="alert-icon-badge">🧩</span>
+        <div class="alert-summary-text">
+          <div class="alert-entity-label">${rs.name || rs.id}</div>
+          <div class="alert-msg-label">${rs.id} · ${used ? `${this._t("ruleset_used_by")}: ${used}` : this._t("ruleset_unused")}</div>
+        </div>
+        <div class="alert-actions">
+          <span class="alert-expand-indicator"></span>
+          <button class="btn-icon btn-delete" title="${this._t("delete")}"
+            @click="${(e) => { e.stopPropagation(); this._deleteRuleSet(si); }}">🗑 ${this._t("delete")}</button>
+        </div>
+      </div>
+      ${open ? this._renderRuleSetForm(rs, si) : ""}
+    `;
+  }
+
+  _renderRuleSetForm(rs, si) {
+    const groups = Array.isArray(rs.groups) ? rs.groups : [];
+    const hasInclude = groups.some((g) => g && g.mode !== "exclude" && Array.isArray(g.rules) && g.rules.length);
+    const addGroup = (mode) => this._updateRsGroups(si, (gs) =>
+      gs.push({ mode, match: mode === "exclude" ? "any" : "all", rules: [this._newRule()] }));
+    return html`
+      <div class="alert-edit-panel">
+        <div class="alert-form">
+          <ha-input
+            .label="${this._t("ruleset_name")}"
+            .value="${rs.name || ""}"
+            @change="${(e) => this._updateRuleSet(si, { name: e.target.value.trim() || undefined })}"
+          ></ha-input>
+          <div>
+            <ha-input
+              .label="${this._t("ruleset_id")}"
+              .value="${String(rs.id ?? "")}"
+              @change="${(e) => this._renameRuleSetId(si, e.target)}"
+            ></ha-input>
+            <div class="helper-text">${this._t("ruleset_id_help")}</div>
+          </div>
+          ${groups.map((g, gi) => this._renderRsGroup(si, g || {}, gi))}
+          ${!hasInclude ? html`<div class="rs-warning">⚠ ${this._t("ruleset_no_include")}</div>` : ""}
+          <div class="rs-add-row">
+            <button class="rs-btn" @click="${() => addGroup("include")}">+ ${this._t("ruleset_add_include")}</button>
+            <button class="rs-btn" @click="${() => addGroup("exclude")}">+ ${this._t("ruleset_add_exclude")}</button>
+          </div>
+          ${this._renderRsPreview(rs, `rs_${si}`)}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderRsGroup(si, g, gi) {
+    const exclude = g.mode === "exclude";
+    const rules = Array.isArray(g.rules) ? g.rules : [];
+    const setGroup = (changes) => this._updateRsGroups(si, (gs) => { gs[gi] = { ...gs[gi], ...changes }; });
+    return html`
+      <div class="rs-group ${exclude ? "rs-group--exclude" : ""}">
+        <div class="rs-group-head">
+          <select class="native-select rs-select" @change="${(e) => setGroup({ mode: e.target.value })}">
+            <option value="include" ?selected="${!exclude}">${this._t("ruleset_group_include")}</option>
+            <option value="exclude" ?selected="${exclude}">${this._t("ruleset_group_exclude")}</option>
+          </select>
+          <select class="native-select rs-select" @change="${(e) => setGroup({ match: e.target.value })}">
+            <option value="all" ?selected="${g.match !== "any"}">${this._t("ruleset_match_all")}</option>
+            <option value="any" ?selected="${g.match === "any"}">${this._t("ruleset_match_any")}</option>
+          </select>
+          <button class="btn-icon btn-delete" title="${this._t("delete")}"
+            @click="${() => this._updateRsGroups(si, (gs) => gs.splice(gi, 1))}">✕</button>
+        </div>
+        ${rules.map((r, ri) => this._renderRsRule(si, gi, r || {}, ri))}
+        <button class="rs-btn rs-btn--small"
+          @click="${() => this._updateRsGroups(si, (gs) => gs[gi].rules.push(this._newRule()))}">+ ${this._t("ruleset_add_rule")}</button>
+      </div>
+    `;
+  }
+
+  _renderRsRule(si, gi, r, ri) {
+    const fields = globalThis.__alertTickerShared?.ruleFields || Object.keys(RS_FIELD_OPS);
+    const ops = [...(RS_FIELD_OPS[r.field] || [])];
+    if (r.op && !ops.includes(r.op)) ops.push(r.op); // YAML-written op outside the UI list
+    return html`
+      <div class="rs-rule">
+        <div class="rs-rule-row">
+          <select class="native-select rs-select" @change="${(e) => this._rsFieldChanged(si, gi, ri, e.target.value)}">
+            ${fields.map((f) => html`<option value="${f}" ?selected="${r.field === f}">${this._t("ruleset_field_" + f)}</option>`)}
+          </select>
+          <select class="native-select rs-select" @change="${(e) => this._rsOpChanged(si, gi, ri, e.target.value)}">
+            ${ops.map((o) => html`<option value="${o}" ?selected="${r.op === o}">${this._t("ruleset_op_" + o)}</option>`)}
+          </select>
+          <button class="btn-icon btn-delete" title="${this._t("delete")}"
+            @click="${() => this._updateRsGroups(si, (gs) => gs[gi].rules.splice(ri, 1))}">✕</button>
+        </div>
+        ${r.field === "attribute" ? html`
+          <ha-input
+            .label="${this._t("ruleset_attribute_path")}"
+            .value="${r.attribute || ""}"
+            @change="${(e) => this._rsRuleChanged(si, gi, ri, { attribute: e.target.value.trim() || undefined })}"
+          ></ha-input>` : ""}
+        ${this._renderRsValue(si, gi, ri, r)}
+      </div>
+    `;
+  }
+
+  /** The value input for a rule — an HA picker where one fits, else a text/number field. */
+  _renderRsValue(si, gi, ri, r) {
+    const set = (changes) => this._rsRuleChanged(si, gi, ri, changes);
+    const isList = RS_LIST_OPS.includes(r.op);
+    const numeric = RS_NUMERIC_OPS.includes(r.op) || r.field === "last_changed_ago";
+    const toValue = (raw) => {
+      const v = String(raw ?? "").trim();
+      if (v === "") return undefined;
+      return numeric && !isNaN(Number(v)) ? Number(v) : v;
+    };
+    const vals = Array.isArray(r.values) && r.values.length ? r.values
+      : (r.value != null && r.value !== "" ? [r.value] : []);
+
+    const pickers = {
+      label: { label: { multiple: true } },
+      area: { area: { multiple: true } },
+      floor: { floor: { multiple: true } },
+    };
+    let selector = pickers[r.field];
+    if (!selector && ["device_class", "domain", "integration"].includes(r.field)) {
+      selector = { select: { multiple: true, custom_value: true, mode: "dropdown", options: this._rsOptions(r.field) } };
+    }
+    if (!selector && r.field === "entity_id" && isList) selector = { entity: { multiple: true } };
+    if (selector) {
+      return html`
+        <ha-selector
+          .hass="${this._hass}"
+          .selector="${selector}"
+          .value="${vals.map(String)}"
+          .label="${this._t("ruleset_value")}"
+          @value-changed="${(e) => { const v = e.detail.value; set({ values: Array.isArray(v) ? v : (v ? [v] : []), value: undefined }); }}"
+        ></ha-selector>`;
+    }
+    if (r.op === "between") {
+      return html`
+        <div class="rs-between">
+          <ha-input type="number" .label="${this._t("ruleset_value_from")}"
+            .value="${r.value != null ? String(r.value) : ""}"
+            @change="${(e) => set({ value: toValue(e.target.value) })}"></ha-input>
+          <span>${this._t("ruleset_and")}</span>
+          <ha-input type="number" .label="${this._t("ruleset_value_to")}"
+            .value="${r.value2 != null ? String(r.value2) : ""}"
+            @change="${(e) => set({ value2: toValue(e.target.value) })}"></ha-input>
+        </div>`;
+    }
+    if (isList) {
+      return html`
+        <div>
+          <ha-input .label="${this._t("ruleset_value")}"
+            .value="${vals.join(", ")}"
+            @change="${(e) => set({ values: e.target.value.split(",").map((x) => x.trim()).filter(Boolean), value: undefined })}"
+          ></ha-input>
+          <div class="helper-text">${this._t("ruleset_value_list_help")}</div>
+        </div>`;
+    }
+    return html`
+      <ha-input type="${numeric ? "number" : "text"}"
+        .label="${r.field === "last_changed_ago" ? this._t("ruleset_value_seconds") : this._t("ruleset_value")}"
+        .value="${r.value != null ? String(r.value) : ""}"
+        @change="${(e) => set({ value: toValue(e.target.value), values: undefined })}"
+      ></ha-input>`;
+  }
+
+  /** Live "N entities match" count with an expandable list, for a rule-set definition. */
+  _renderRsPreview(def, key) {
+    const shared = globalThis.__alertTickerShared;
+    if (!this._hass || !shared || !def) return "";
+    const matched = shared.filterEntities(this._hass, { rule_set: def }, { applyExclude: false });
+    if (!matched.length) {
+      return html`<div class="helper-text"><span style="color:var(--error-color,#db4437)">${this._t("entity_filter_zero")}</span></div>`;
+    }
+    const open = this._filterPreviewOpen.has(key);
+    return html`
+      <div class="helper-text">
+        <button class="filter-count-btn" @click="${() => {
+          const next = new Set(this._filterPreviewOpen);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          this._filterPreviewOpen = next;
+        }}">
+          <span style="color:var(--success-color,#43a047)"><b>${matched.length}</b> ${this._t("entity_filter_count")}</span>
+          <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
+        </button>
+        ${open ? html`
+          <div class="filter-entity-list">
+            ${matched.map(([id, s]) => html`
+              <div class="filter-entity-row">
+                <span class="filter-entity-name">${s.attributes.friendly_name || id}</span>
+                <span class="filter-entity-id">${id}</span>
+                <span class="filter-entity-state">${s.state}</span>
+              </div>`)}
+          </div>` : ""}
+      </div>
+    `;
+  }
+
+  /** Rule-set picker inside an alert's filter mode. */
+  _renderAlertRuleSetPicker(alert, index) {
+    const list = this._ruleSets();
+    const ref = alert.rule_set;
+    const inline = ref && typeof ref === "object";
+    const missing = ref && !inline && !list.some((rs) => String(rs.id) === String(ref));
+    const def = inline ? ref : list.find((rs) => String(rs.id) === String(ref));
+    return html`
+      <div>
+        <div class="native-select-wrap">
+          <label class="native-select-label">${this._t("alert_rule_set")}</label>
+          <select class="native-select" @change="${(e) => {
+            const v = e.target.value;
+            if (v === "__inline__") return;
+            this._updateAlert(index, { rule_set: v || undefined });
+          }}">
+            <option value="" ?selected="${!ref}">—</option>
+            ${list.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${rs.name || rs.id}</option>`)}
+            ${inline ? html`<option value="__inline__" selected>${this._t("alert_rule_set_inline")}</option>` : ""}
+            ${missing ? html`<option value="${ref}" selected>⚠ ${ref}</option>` : ""}
+          </select>
+        </div>
+        ${missing ? html`<div class="rs-warning">⚠ ${this._t("alert_rule_set_missing")}</div>` : ""}
+        ${def && !alert.entity_filter && !alert.device_class ? this._renderRsPreview(def, `alert_rs_${index}`) : ""}
+        <div class="helper-text">
+          ${this._t("alert_rule_set_help")}
+          <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._sectionChanged("rulesets"); }}">${this._t("alert_rule_set_manage")}</a>
+        </div>
+      </div>
+    `;
   }
 
   // -------------------------------------------------------------------------
@@ -9927,6 +10394,76 @@ class AlertTickerCardEditor extends LitElement {
       .native-select:focus {
         outline: none;
         border-color: var(--primary-color, #03a9f4);
+      }
+
+      /* ---- Rule sets ---- */
+      .rs-intro {
+        margin-bottom: 10px;
+      }
+      .rs-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-left: 3px solid var(--success-color, #43a047);
+        border-radius: 8px;
+        background: var(--card-background-color, #fff);
+      }
+      .rs-group--exclude {
+        border-left-color: var(--error-color, #db4437);
+      }
+      .rs-group-head,
+      .rs-rule-row,
+      .rs-add-row,
+      .rs-between {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .rs-select {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        font-size: 0.9rem;
+      }
+      .rs-rule {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        border-radius: 6px;
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .rs-between ha-input {
+        flex: 1;
+      }
+      .rs-btn {
+        flex: 1;
+        padding: 8px;
+        border: 1px dashed var(--primary-color, #03a9f4);
+        border-radius: 6px;
+        background: none;
+        color: var(--primary-color, #03a9f4);
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-family: inherit;
+      }
+      .rs-btn:hover {
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent);
+      }
+      .rs-btn--small {
+        flex: none;
+        align-self: flex-start;
+        padding: 4px 10px;
+        font-size: 0.85rem;
+      }
+      .rs-warning {
+        color: var(--warning-color, #ffa000);
+        font-size: 0.85rem;
+      }
+      .rs-link {
+        color: var(--primary-color, #03a9f4);
       }
 
       /* ---- Version badge ---- */
