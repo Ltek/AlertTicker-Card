@@ -8610,7 +8610,8 @@ class AlertTickerCardEditor extends LitElement {
   _getFilteredEntities(alert) {
     const shared = globalThis.__alertTickerShared;
     if (!this._hass || !shared) return [];
-    return shared.filterEntities(this._hass, alert, { applyExclude: false });
+    const [resolved] = shared.attachRuleSets([alert], this._config?.rule_sets);
+    return shared.filterEntities(this._hass, resolved, { applyExclude: false });
   }
 
   /** Returns the default badge label for a given alert based on its theme category */

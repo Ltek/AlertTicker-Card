@@ -790,7 +790,168 @@ function _evalTimeRange(a) {
 
 /** True when the alert targets a set of entities via filters rather than one `entity`. */
 function _atcIsFilterAlert(a) {
-  return !!a && !a.entity && !!(a.entity_filter || a.device_class || a.label_filter || a.area_filter);
+  return !!a && !a.entity && !!(a.entity_filter || a.device_class || a.label_filter || a.area_filter || a.rule_set);
+}
+
+// ---------------------------------------------------------------------------
+// Rule sets — named, reusable entity filters. Defined once at card level under
+// `rule_sets:` and referenced from any alert with `rule_set: <id>`, or written
+// inline on one alert as `rule_set: { groups: [...] }`.
+//
+//   rule_sets:
+//     - id: entry_security
+//       name: Entry security
+//       groups:
+//         - mode: include          # include = must match · exclude = drops matches
+//           match: all             # all | any — how the group's rules combine
+//           rules:
+//             - { field: label, op: in, values: [security] }
+//             - { field: area,  op: eq, value: entry }
+//         - mode: exclude
+//           match: any
+//           rules:
+//             - { field: label, op: in, values: [ignore_alerts] }
+//
+// An entity is in the set when every include group matches and no exclude group
+// does. Groups with no rules are ignored, and a set without any include rule
+// matches nothing — never "every entity in Home Assistant".
+//
+// Fields: entity_id · name · domain · device_class · area · floor · label ·
+//   integration · state · attribute (+ `attribute: <dot.path>`) · last_changed_ago (s)
+// Ops: eq · ne · in · not_in · contains · not_contains · regex · gt · lt · ge · le · between
+// Text comparisons are case-insensitive. area / floor match the id or the name;
+// area falls back to the device's area, like area_filter. Multi-valued fields
+// (label, list attributes) match when ANY value matches; the negative ops
+// (ne / not_in / not_contains) hold when NO value matches.
+// ---------------------------------------------------------------------------
+const ATC_RULE_FIELDS = ["entity_id", "name", "domain", "device_class", "area", "floor", "label",
+  "integration", "state", "attribute", "last_changed_ago"];
+const ATC_RULE_OPS = ["eq", "ne", "in", "not_in", "contains", "not_contains", "regex",
+  "gt", "lt", "ge", "le", "between"];
+const _ATC_NEGATED_OP = { ne: "eq", not_in: "in", not_contains: "contains" };
+/** Stand-in for a `rule_set:` id that doesn't exist in `rule_sets:` — matches nothing. */
+const _ATC_MISSING_RULE_SET = Object.freeze({ groups: [], _missing: true });
+
+/** Resolves an alert's rule_set (id string or inline object) against the card's rule_sets list. */
+function _atcLookupRuleSet(ref, ruleSets) {
+  if (!ref) return null;
+  if (typeof ref === "object") return ref;
+  const list = Array.isArray(ruleSets) ? ruleSets : [];
+  return list.find(rs => rs && String(rs.id) === String(ref)) || _ATC_MISSING_RULE_SET;
+}
+
+/**
+ * Returns the alerts with each `rule_set` id resolved into `_rule_set_def`, so every
+ * consumer (card, overlay watcher, persisted overlay registrations) evaluates the same
+ * definition without needing the card config. Alerts without rule_set pass through as-is.
+ */
+function _atcAttachRuleSets(alerts, ruleSets) {
+  if (!Array.isArray(alerts)) return alerts;
+  return alerts.map(a => (a && a.rule_set && typeof a.rule_set !== "object")
+    ? { ...a, _rule_set_def: _atcLookupRuleSet(a.rule_set, ruleSets) }
+    : a);
+}
+
+/** The values a rule's field yields for one entity — always an array (empty = field absent). */
+function _atcRuleFieldValues(hass, eid, es, rule) {
+  const meta = hass.entities?.[eid];
+  const areaId = meta?.area_id || (meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null) || null;
+  const present = (v) => v != null && v !== "";
+  switch (rule.field) {
+    case "entity_id":    return [eid];
+    case "name":         return [es.attributes?.friendly_name || ""];
+    case "domain":       return [eid.split(".")[0]];
+    case "device_class": return present(es.attributes?.device_class) ? [es.attributes.device_class] : [];
+    case "area":         return areaId ? [areaId, hass.areas?.[areaId]?.name].filter(present) : [];
+    case "floor": {
+      const floorId = areaId ? hass.areas?.[areaId]?.floor_id : null;
+      return floorId ? [floorId, hass.floors?.[floorId]?.name].filter(present) : [];
+    }
+    case "label":        return Array.isArray(meta?.labels) ? meta.labels.slice() : [];
+    case "integration":  return present(meta?.platform) ? [meta.platform] : [];
+    case "state":        return [es.state];
+    case "attribute": {
+      if (!rule.attribute) return [];
+      let v = es.attributes;
+      for (const p of String(rule.attribute).replace(/\[(\d+)\]/g, ".$1").split(".")) v = v?.[p];
+      if (v == null) return [];
+      if (Array.isArray(v)) return v.map(x => (x != null && typeof x === "object") ? JSON.stringify(x) : String(x));
+      return [typeof v === "object" ? JSON.stringify(v) : String(v)];
+    }
+    case "last_changed_ago": {
+      const t = es.last_changed ? new Date(es.last_changed).getTime() : NaN;
+      return isNaN(t) ? [] : [String(Math.max(0, (Date.now() - t) / 1000))];
+    }
+    default: return [];
+  }
+}
+
+/** Compiles one rule into (values[]) → boolean. Unknown fields/ops compile to "never matches". */
+function _atcCompileRule(rule) {
+  if (!rule || !ATC_RULE_FIELDS.includes(rule.field) || !ATC_RULE_OPS.includes(rule.op)) return () => false;
+  const negated = _ATC_NEGATED_OP[rule.op];
+  const op = negated || rule.op;
+  const targets = (Array.isArray(rule.values) && rule.values.length ? rule.values : [rule.value])
+    .filter(t => t != null && t !== "").map(String);
+  const lower = targets.map(t => t.toLowerCase());
+  const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  let test;
+  switch (op) {
+    case "eq":
+    case "in":
+      test = (v) => {
+        const lv = v.toLowerCase(), nv = num(v);
+        return lower.some((t, i) => t === lv || (nv !== null && num(targets[i]) === nv));
+      };
+      break;
+    case "contains":
+      test = (v) => { const lv = v.toLowerCase(); return lower.some(t => lv.includes(t)); };
+      break;
+    case "regex": {
+      const res = targets.map(t => { try { return new RegExp(t, "i"); } catch (_) { return null; } }).filter(Boolean);
+      test = (v) => res.some(re => re.test(v));
+      break;
+    }
+    case "gt": case "lt": case "ge": case "le": {
+      const t = num(targets[0]);
+      test = (v) => {
+        const n = num(v);
+        if (n === null || t === null) return false;
+        return op === "gt" ? n > t : op === "lt" ? n < t : op === "ge" ? n >= t : n <= t;
+      };
+      break;
+    }
+    case "between": {
+      const lo = num(rule.value), hi = num(rule.value2);
+      test = (v) => { const n = num(v); return n !== null && lo !== null && hi !== null && n >= lo && n <= hi; };
+      break;
+    }
+    default: test = () => false;
+  }
+  if (!targets.length && op !== "between") test = () => false;
+  return negated ? (values) => !values.some(test) : (values) => values.some(test);
+}
+
+/**
+ * Compiles a rule-set definition into (hass, entityId, stateObj) → boolean.
+ * Compile once per evaluation pass; the result is cheap to call per entity.
+ */
+function _atcCompileRuleSet(def) {
+  if (!def || def._missing || !Array.isArray(def.groups)) return () => false;
+  const compileGroup = (g) => {
+    const rules = (Array.isArray(g?.rules) ? g.rules : []).map(r => ({ rule: r, test: _atcCompileRule(r) }));
+    const any = g?.match === "any";
+    return (hass, eid, es) => {
+      const hit = ({ rule, test }) => test(_atcRuleFieldValues(hass, eid, es, rule));
+      return any ? rules.some(hit) : rules.every(hit);
+    };
+  };
+  const withRules = def.groups.filter(g => Array.isArray(g?.rules) && g.rules.length);
+  const includes = withRules.filter(g => g.mode !== "exclude").map(compileGroup);
+  const excludes = withRules.filter(g => g.mode === "exclude").map(compileGroup);
+  if (!includes.length) return () => false;
+  return (hass, eid, es) =>
+    includes.every(g => g(hass, eid, es)) && !excludes.some(g => g(hass, eid, es));
 }
 
 /**
@@ -808,12 +969,14 @@ function _atcBuildTextMatcher(filter) {
 
 /**
  * Returns a predicate (entityId, stateObj) → boolean for the alert's filter fields.
- * All set fields must match (AND). label_filter / area_filter accept a string or a list
+ * All set fields must match (AND), including the alert's rule_set when it has one.
+ * label_filter / area_filter accept a string or a list
  * (any listed value matches); area checks the entity's area, then its device's area.
  * Exclusions (entity_filter_exclude, else device_class_exclude) apply unless
  * `applyExclude` is false — the editor preview lists excluded entities as well.
  */
 function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
+  const ruleSet     = a.rule_set ? _atcCompileRuleSet(a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
   const textMatch   = a.entity_filter ? _atcBuildTextMatcher(a.entity_filter) : null;
   const excluded    = applyExclude ? new Set(a.entity_filter_exclude || a.device_class_exclude || []) : null;
   const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
@@ -832,6 +995,7 @@ function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
       const deviceArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
       if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) return false;
     }
+    if (ruleSet && !ruleSet(hass, eid, es)) return false;
     return true;
   };
 }
@@ -849,6 +1013,10 @@ function _atcFilterEntities(hass, a, opts) {
 globalThis.__alertTickerShared = Object.freeze({
   isFilterAlert: _atcIsFilterAlert,
   filterEntities: _atcFilterEntities,
+  attachRuleSets: _atcAttachRuleSets,
+  lookupRuleSet: _atcLookupRuleSet,
+  ruleFields: ATC_RULE_FIELDS,
+  ruleOps: ATC_RULE_OPS,
 });
 
 // ---------------------------------------------------------------------------
@@ -1303,9 +1471,12 @@ const _ATC_OVERLAY = (() => {
     const result = [];
     for (const [eid, es] of Object.entries(hass.states)) {
       if (!matches(eid, es)) continue;
+      // A rule_set alert with no `state` takes its condition from the rule set alone
+      // (put `field: state` rules in the set), matching the card's behaviour.
+      const noCondition = a.rule_set && (a.state == null || a.state === "");
       let actual = es.state;
       if (a.attribute) { let v = es.attributes; for (const p of String(a.attribute).split(".")) v = v?.[p]; actual = v != null ? String(v) : es.state; }
-      if (_matchOp(actual, a.operator || "=", a.state ?? "on")) {
+      if (noCondition || _matchOp(actual, a.operator || "=", a.state ?? "on")) {
         result.push([eid, es]);
         if (firstOnly) break;
       }
@@ -2057,6 +2228,9 @@ class AlertTickerCard extends LitElement {
       alerts: [],
       ...config,
     };
+    // Resolve `rule_set: <id>` references once, so the card and the overlay watcher
+    // both evaluate the alert's rule set without needing the card config.
+    this._config.alerts = _atcAttachRuleSets(this._config.alerts, this._config.rule_sets);
     // Stop/start cycle timer based on test_mode
     if (this._config.test_mode) {
       this._stopCycleTimer();
@@ -4914,7 +5088,7 @@ class AlertTickerCard extends LitElement {
     const lines = [];
 
     // entity_filter / device_class: auto-show the matched entity's friendly name (opt-out with show_filter_name: false)
-    if (alert && (alert.entity_filter || alert.device_class) && alert.show_filter_name !== false) {
+    if (alert && (alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false) {
       const es = this._hass && this._hass.states[alert.entity];
       const name = es ? (es.attributes.friendly_name || alert.entity) : alert.entity;
       const stateStr = alert.show_filter_state && es
@@ -5564,7 +5738,7 @@ class AlertTickerCard extends LitElement {
     // suppress inline state (already shown prominently on the right).
     let secondaryEl;
     const trimName = alert.battery_trim_name === true;
-    if (es && (alert.entity_filter || alert.device_class) && alert.show_filter_name !== false) {
+    if (es && (alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false) {
       let name = es.attributes?.friendly_name || alert.entity;
       if (trimName) name = name.replace(/\s*battery\s*$/i, "").trim();
       const stateStr = alert.show_filter_state && !showLevel
@@ -6071,7 +6245,7 @@ class AlertTickerCard extends LitElement {
               const _parts = [
                 (_showArtist && artist) ? artist : null,
                 _showTitle ? title : null,
-                ((alert.entity_filter || alert.device_class) && alert.show_filter_name !== false)
+                ((alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false)
                   ? (es.attributes.friendly_name || alert.entity) : null
               ].filter(Boolean);
               const _meta = _parts.join(' · ');
@@ -6083,7 +6257,7 @@ class AlertTickerCard extends LitElement {
               ${(_showArtist && artist) ? (artist.length > 28
                 ? html`<div class="mu-player-artist mu-marquee-wrap"><span class="mu-marquee-inner" style="animation-duration:${Math.max(5, artist.length * 0.25).toFixed(1)}s">${artist}      ${artist}</span></div>`
                 : html`<div class="mu-player-artist">${artist}</div>`) : ""}
-              ${(alert.entity_filter || alert.device_class) && alert.show_filter_name !== false
+              ${(alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false
                 ? html`<div class="mu-player-artist" style="opacity:0.6">${es.attributes.friendly_name || alert.entity}</div>`
                 : ""}
             `}
