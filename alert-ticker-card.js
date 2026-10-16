@@ -782,6 +782,68 @@ function _evalTimeRange(a) {
 }
 
 // ---------------------------------------------------------------------------
+// Entity-filter matching — the single place that decides which entities a
+// filter alert (entity_filter / device_class / label_filter / area_filter)
+// covers. Used by the overlay IIFE and the card class.
+// Membership only: the caller applies the alert's state/operator condition.
+// ---------------------------------------------------------------------------
+
+/** True when the alert targets a set of entities via filters rather than one `entity`. */
+function _atcIsFilterAlert(a) {
+  return !!a && !a.entity && !!(a.entity_filter || a.device_class || a.label_filter || a.area_filter);
+}
+
+/**
+ * entity_filter text matcher. Plain text → case-insensitive substring.
+ * Contains * → anchored wildcard glob (e.g. sensor.battery_*_level).
+ */
+function _atcBuildTextMatcher(filter) {
+  const f = String(filter).toLowerCase();
+  if (f.includes("*")) {
+    const re = new RegExp("^" + f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
+    return (text) => re.test(text.toLowerCase());
+  }
+  return (text) => text.toLowerCase().includes(f);
+}
+
+/**
+ * Returns a predicate (entityId, stateObj) → boolean for the alert's filter fields.
+ * All set fields must match (AND). label_filter / area_filter accept a string or a list
+ * (any listed value matches); area checks the entity's area, then its device's area.
+ * Exclusions (entity_filter_exclude, else device_class_exclude) apply unless
+ * `applyExclude` is false — the editor preview lists excluded entities as well.
+ */
+function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
+  const textMatch   = a.entity_filter ? _atcBuildTextMatcher(a.entity_filter) : null;
+  const excluded    = applyExclude ? new Set(a.entity_filter_exclude || a.device_class_exclude || []) : null;
+  const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
+  const areaFilter  = a.area_filter  ? (Array.isArray(a.area_filter)  ? a.area_filter  : [a.area_filter])  : null;
+  return (eid, es) => {
+    if (excluded && excluded.has(eid)) return false;
+    if (a.device_class && es.attributes?.device_class !== a.device_class) return false;
+    if (textMatch && !textMatch(eid) && !textMatch(es.attributes?.friendly_name || "")) return false;
+    if (labelFilter) {
+      const entityLabels = hass.entities?.[eid]?.labels || [];
+      if (!labelFilter.some(l => entityLabels.includes(l))) return false;
+    }
+    if (areaFilter) {
+      const meta = hass.entities?.[eid];
+      const entityArea = meta?.area_id;
+      const deviceArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
+      if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) return false;
+    }
+    return true;
+  };
+}
+
+/** All [entityId, stateObj] pairs covered by the alert's filters, in hass.states order. */
+function _atcFilterEntities(hass, a, opts) {
+  if (!hass?.states) return [];
+  const matches = _atcFilterPredicate(hass, a, opts);
+  return Object.entries(hass.states).filter(([eid, es]) => matches(eid, es));
+}
+
+// ---------------------------------------------------------------------------
 // Global overlay / toast manager — singleton shared across all card instances.
 // Two trigger paths:
 //   1. Card-based (immediate): card calls _ATC_OVERLAY.showDirect() when it
@@ -1224,79 +1286,34 @@ const _ATC_OVERLAY = (() => {
     }
   }
 
-  // Returns [entityId, entityState] for the first entity_filter / device_class / label / area match, or null.
-  function _findFilterMatch(hass, a) {
-    const f = (a.entity_filter || "").toLowerCase();
-    const hasWild = f.includes("*");
-    const re = hasWild ? new RegExp("^" + f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$") : null;
-    const matchFn = f ? ((t) => hasWild ? re.test(t.toLowerCase()) : t.toLowerCase().includes(f)) : null;
-    const excluded = new Set(a.entity_filter_exclude || a.device_class_exclude || []);
-    const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
-    const areaFilter  = a.area_filter  ? (Array.isArray(a.area_filter)  ? a.area_filter  : [a.area_filter])  : null;
-    for (const [eid, es] of Object.entries(hass.states)) {
-      if (excluded.has(eid)) continue;
-      if (a.device_class && es.attributes?.device_class !== a.device_class) continue;
-      if (matchFn && !matchFn(eid) && !matchFn(es.attributes?.friendly_name || "")) continue;
-      // Label filter — match against HA entity registry labels
-      if (labelFilter) {
-        const entityLabels = hass.entities?.[eid]?.labels || [];
-        if (!labelFilter.some(l => entityLabels.includes(l))) continue;
-      }
-      // Area filter — entity area first, then device area as fallback
-      if (areaFilter) {
-        const meta = hass.entities?.[eid];
-        const entityArea = meta?.area_id;
-        const deviceArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
-        if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) continue;
-      }
-      let actual = es.state;
-      if (a.attribute) {
-        let v = es.attributes; for (const p of String(a.attribute).split(".")) v = v?.[p];
-        actual = v != null ? String(v) : es.state;
-      }
-      if (_matchOp(actual, a.operator || "=", a.state ?? "on")) return [eid, es];
-    }
-    return null;
-  }
-
-  function _evalFilterAlert(hass, a) { return _findFilterMatch(hass, a) !== null; }
-
-  // Returns ALL [entityId, entityState] pairs that match a filter alert — used to fire one
-  // overlay per entity rather than only for the first match.
-  function _findAllFilterMatches(hass, a) {
-    const f = (a.entity_filter || "").toLowerCase();
-    const hasWild = f.includes("*");
-    const re = hasWild ? new RegExp("^" + f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$") : null;
-    const matchFn = f ? ((t) => hasWild ? re.test(t.toLowerCase()) : t.toLowerCase().includes(f)) : null;
-    const excluded = new Set(a.entity_filter_exclude || a.device_class_exclude || []);
-    const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
-    const areaFilter  = a.area_filter  ? (Array.isArray(a.area_filter)  ? a.area_filter  : [a.area_filter])  : null;
+  // Matches for a filter alert (entity_filter / device_class / label / area): the entities
+  // the filters cover whose state (or `attribute`) passes the alert's condition.
+  // A missing attribute falls back to the entity state; a missing `state` means "on".
+  // `firstOnly` stops at the first match. Membership comes from _atcFilterPredicate.
+  function _findAllFilterMatches(hass, a, firstOnly = false) {
+    const matches = _atcFilterPredicate(hass, a);
     const result = [];
     for (const [eid, es] of Object.entries(hass.states)) {
-      if (excluded.has(eid)) continue;
-      if (a.device_class && es.attributes?.device_class !== a.device_class) continue;
-      if (matchFn && !matchFn(eid) && !matchFn(es.attributes?.friendly_name || "")) continue;
-      if (labelFilter) {
-        const entityLabels = hass.entities?.[eid]?.labels || [];
-        if (!labelFilter.some(l => entityLabels.includes(l))) continue;
-      }
-      if (areaFilter) {
-        const meta = hass.entities?.[eid];
-        const entityArea = meta?.area_id;
-        const deviceArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
-        if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) continue;
-      }
+      if (!matches(eid, es)) continue;
       let actual = es.state;
       if (a.attribute) { let v = es.attributes; for (const p of String(a.attribute).split(".")) v = v?.[p]; actual = v != null ? String(v) : es.state; }
-      if (_matchOp(actual, a.operator || "=", a.state ?? "on")) result.push([eid, es]);
+      if (_matchOp(actual, a.operator || "=", a.state ?? "on")) {
+        result.push([eid, es]);
+        if (firstOnly) break;
+      }
     }
     return result;
   }
 
+  // Returns [entityId, entityState] for the first match of a filter alert, or null.
+  function _findFilterMatch(hass, a) { return _findAllFilterMatches(hass, a, true)[0] ?? null; }
+
+  function _evalFilterAlert(hass, a) { return _findFilterMatch(hass, a) !== null; }
+
   function _evalAlert(hass, a, prevMap) {
     if (!_evalVisibleTo(hass, a)) return false;
     if (!_evalTimeRange(a)) return false;
-    if ((a.entity_filter || a.device_class || a.label_filter || a.area_filter) && !a.entity) return _evalFilterAlert(hass, a);
+    if (_atcIsFilterAlert(a)) return _evalFilterAlert(hass, a);
     if (!a.entity) return false;
     if (a.on_change) {
       const key = a.entity + (a.attribute || "");
@@ -1516,7 +1533,7 @@ const _ATC_OVERLAY = (() => {
             for (const i of curActive) {
               newBases.add(i);
               const a = reg.alerts[i];
-              if (!a.entity && (a.entity_filter || a.device_class || a.label_filter || a.area_filter)) {
+              if (_atcIsFilterAlert(a)) {
                 const notifiedEids = cfnFirst.get(i) || new Set();
                 for (const [eid] of _findAllFilterMatches(hass, a)) notifiedEids.add(eid);
                 cfnFirst.set(i, notifiedEids);
@@ -1536,7 +1553,7 @@ const _ATC_OVERLAY = (() => {
           for (const i of curActive) {
             newBases.add(i);
             const a = reg.alerts[i];
-            if (!a.entity && (a.entity_filter || a.device_class || a.label_filter || a.area_filter)) {
+            if (_atcIsFilterAlert(a)) {
               const notifiedEids = cardFN.get(i) || new Set();
               for (const [eid] of _findAllFilterMatches(hass, a)) notifiedEids.add(eid);
               cardFN.set(i, notifiedEids);
@@ -1572,7 +1589,7 @@ const _ATC_OVERLAY = (() => {
           for (const i of curActive) {
             const a = reg.alerts[i];
             if (!a) continue;
-            if (!a.entity && (a.entity_filter || a.device_class || a.label_filter || a.area_filter)) continue;
+            if (_atcIsFilterAlert(a)) continue;
             if (a.overlay === false) continue;
             if (reg.config.overlay_min_priority != null && (a.priority ?? 3) > reg.config.overlay_min_priority) continue;
             const cat     = (THEME_META[a.theme] || {}).category || "info";
@@ -1615,7 +1632,7 @@ const _ATC_OVERLAY = (() => {
 
         for (const i of curActive) {
           const a = reg.alerts[i];
-          const isFilterMode = !a.entity && (a.entity_filter || a.device_class || a.label_filter || a.area_filter);
+          const isFilterMode = _atcIsFilterAlert(a);
 
           // ── Filter-mode alerts: fire one overlay per matching entity ──────────
           if (isFilterMode) {
@@ -2155,30 +2172,8 @@ class AlertTickerCard extends LitElement {
     const expandedAlerts = [];
     for (let idx = 0; idx < this._config.alerts.length; idx++) {
       const alert = this._config.alerts[idx];
-      if ((alert.entity_filter || alert.device_class || alert.label_filter || alert.area_filter) && !alert.entity) {
-        const matchFn = alert.entity_filter ? this._buildFilterMatcher(alert.entity_filter) : null;
-        const excluded = new Set(alert.entity_filter_exclude || alert.device_class_exclude || []);
-        const labelFilter = alert.label_filter ? (Array.isArray(alert.label_filter) ? alert.label_filter : [alert.label_filter]) : null;
-        const areaFilter  = alert.area_filter  ? (Array.isArray(alert.area_filter)  ? alert.area_filter  : [alert.area_filter])  : null;
-        const matched = Object.entries(this._hass.states).filter(([entityId, state]) => {
-          if (excluded.has(entityId)) return false;
-          if (alert.device_class && state.attributes.device_class !== alert.device_class) return false;
-          if (matchFn) {
-            const friendlyName = state.attributes.friendly_name || "";
-            if (!matchFn(entityId) && !matchFn(friendlyName)) return false;
-          }
-          if (labelFilter) {
-            const entityLabels = this._hass.entities?.[entityId]?.labels || [];
-            if (!labelFilter.some(l => entityLabels.includes(l))) return false;
-          }
-          if (areaFilter) {
-            const meta = this._hass.entities?.[entityId];
-            const entityArea = meta?.area_id;
-            const deviceArea = meta?.device_id ? this._hass.devices?.[meta.device_id]?.area_id : null;
-            if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) return false;
-          }
-          return true;
-        });
+      if (_atcIsFilterAlert(alert)) {
+        const matched = _atcFilterEntities(this._hass, alert);
         for (const [entityId, state] of matched) {
           const friendlyName = state.attributes.friendly_name || entityId;
           expandedAlerts.push({
@@ -3493,20 +3488,6 @@ class AlertTickerCard extends LitElement {
   }
 
   // ---- State-matching helper -----------------------------------------------
-
-  /**
-   * Builds a matcher function for entity_filter.
-   * Plain text → case-insensitive substring. Contains * → wildcard glob (e.g. sensor.battery_*_level).
-   */
-  _buildFilterMatcher(filter) {
-    const f = filter.toLowerCase();
-    if (f.includes("*")) {
-      const pattern = f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-      const re = new RegExp("^" + pattern + "$");
-      return (text) => re.test(text.toLowerCase());
-    }
-    return (text) => text.toLowerCase().includes(f);
-  }
 
   /**
    * Resolves a dot-notation path from an attributes object.
