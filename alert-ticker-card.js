@@ -899,7 +899,15 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
     case "name":         return [es.attributes?.friendly_name || ""];
     case "domain":       return [eid.split(".")[0]];
     case "device_class": return present(es.attributes?.device_class) ? [es.attributes.device_class] : [];
-    case "area":         return areaId ? [areaId, hass.areas?.[areaId]?.name].filter(present) : [];
+    case "area": {
+      // include_device_area: the entity's own area AND its device's (area_filter's
+      // matching); otherwise the entity's area, falling back to the device's, by id or name.
+      if (rule.include_device_area) {
+        const devArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
+        return [meta?.area_id, devArea].filter(present);
+      }
+      return areaId ? [areaId, hass.areas?.[areaId]?.name].filter(present) : [];
+    }
     case "floor": {
       const floorId = areaId ? hass.areas?.[areaId]?.floor_id : null;
       return floorId ? [floorId, hass.floors?.[floorId]?.name].filter(present) : [];
@@ -1069,26 +1077,42 @@ function _atcCompileRuleSet(def) {
 }
 
 /**
- * entity_filter text matcher. Plain text → case-insensitive substring.
- * Contains * → anchored wildcard glob (e.g. sensor.battery_*_level).
+ * The rule-set form of an alert's quick-filter fields (entity_filter, device_class,
+ * label_filter, area_filter, entity_filter_exclude / device_class_exclude), or null.
+ * Matches exactly what those fields always matched:
+ *   entity_filter — entity id OR friendly name; text = case-insensitive substring,
+ *                   with * = an anchored wildcard pattern
+ *   device_class / label_filter — exact; a list matches any of its values
+ *   area_filter   — the entity's area or its device's area, by id
+ *   exclusions    — entity_filter_exclude, else device_class_exclude
+ * The editor saves these as a shared rule set; old YAML keeps working through this.
  */
-function _atcBuildTextMatcher(filter) {
-  const f = String(filter).toLowerCase();
-  if (f.includes("*")) {
-    const re = new RegExp("^" + f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
-    return (text) => re.test(text.toLowerCase());
+function _atcLegacyFilterDef(a) {
+  const list = (v) => (Array.isArray(v) ? v : (v ? [v] : null));
+  const all = [], any = [];
+  if (a.device_class) all.push({ field: "device_class", op: "in", values: [a.device_class], case_sensitive: true });
+  const labels = list(a.label_filter);
+  if (labels) all.push({ field: "label", op: "in", values: labels, case_sensitive: true });
+  const areas = list(a.area_filter);
+  if (areas) all.push({ field: "area", op: "in", values: areas, case_sensitive: true, include_device_area: true });
+  if (a.entity_filter) {
+    const f = String(a.entity_filter);
+    if (f.includes("*")) {
+      const re = "^" + f.toLowerCase().replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$";
+      any.push({ field: "entity_id", op: "regex", value: re }, { field: "name", op: "regex", value: re });
+    } else {
+      any.push({ field: "entity_id", op: "contains", value: f }, { field: "name", op: "contains", value: f });
+    }
   }
-  return (text) => text.toLowerCase().includes(f);
+  if (!all.length && !any.length) return null;
+  const groups = [];
+  if (all.length) groups.push({ mode: "include", match: "all", rules: all });
+  if (any.length) groups.push({ mode: "include", match: "any", rules: any });
+  const exclude = a.entity_filter_exclude || a.device_class_exclude || [];
+  if (exclude.length) groups.push({ mode: "exclude", match: "any", rules: [{ field: "entity_id", op: "in", values: exclude.map(String), case_sensitive: true }] });
+  return { groups };
 }
 
-/**
- * Returns a predicate (entityId, stateObj) → boolean for the alert's filter fields.
- * All set fields must match (AND), including the alert's rule_set when it has one.
- * label_filter / area_filter accept a string or a list
- * (any listed value matches); area checks the entity's area, then its device's area.
- * Exclusions (entity_filter_exclude, else device_class_exclude) apply unless
- * `applyExclude` is false — the editor preview lists excluded entities as well.
- */
 const _atcCompiledSets = new WeakMap(); // rule-set definition → compiled matcher
 function _atcCompiledRuleSet(def) {
   if (!def || typeof def !== "object") return _atcCompileRuleSet(def);
@@ -1097,33 +1121,32 @@ function _atcCompiledRuleSet(def) {
   return c;
 }
 
+const _atcLegacyDefs = new WeakMap(); // alert → { key, def } (re-derived if its filter fields change)
+
+/**
+ * Returns a predicate (entityId, stateObj) → boolean: the alert's quick-filter fields
+ * (as a rule set) AND its rule_set. `applyExclude: false` keeps excluded entities
+ * (the editor preview lists them too, marked ✗).
+ */
 function _atcFilterPredicate(hass, a, { applyExclude = true, ctx } = {}) {
-  const ruleSet     = a.rule_set ? _atcCompiledRuleSet(a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
-  const textMatch   = a.entity_filter ? _atcBuildTextMatcher(a.entity_filter) : null;
-  const excluded    = applyExclude ? new Set(a.entity_filter_exclude || a.device_class_exclude || []) : null;
-  const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
-  const areaFilter  = a.area_filter  ? (Array.isArray(a.area_filter)  ? a.area_filter  : [a.area_filter])  : null;
-  const def = ruleSet ? (a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
+  const key = JSON.stringify([a.entity_filter, a.device_class, a.label_filter, a.area_filter,
+    applyExclude ? (a.entity_filter_exclude || a.device_class_exclude) : null]);
+  let legacy = _atcLegacyDefs.get(a);
+  if (!legacy || legacy.key !== key) {
+    const def = _atcLegacyFilterDef(applyExclude ? a : { ...a, entity_filter_exclude: undefined, device_class_exclude: undefined });
+    legacy = { key, test: def ? _atcCompileRuleSet(def) : null };
+    if (a && typeof a === "object") _atcLegacyDefs.set(a, legacy);
+  }
+  const def = a.rule_set ? (a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
+  const ruleSet = def ? _atcCompiledRuleSet(def) : null;
   const wantsNotifications = _atcIsNotificationSet(def);
   return (eid, es) => {
     // Notifications are matched only by notification rule sets (and those match nothing else).
     if (_ATC_NOTIFY.isNotification(eid, es) !== wantsNotifications) return false;
     if (es.attributes?._sample) return false; // test-mode samples are injected per alert, never matched
-    if (excluded && excluded.has(eid)) return false;
-    if (a.device_class && es.attributes?.device_class !== a.device_class) return false;
-    if (textMatch && !textMatch(eid) && !textMatch(es.attributes?.friendly_name || "")) return false;
-    if (labelFilter) {
-      const entityLabels = hass.entities?.[eid]?.labels || [];
-      if (!labelFilter.some(l => entityLabels.includes(l))) return false;
-    }
-    if (areaFilter) {
-      const meta = hass.entities?.[eid];
-      const entityArea = meta?.area_id;
-      const deviceArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
-      if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) return false;
-    }
+    if (legacy.test && !legacy.test(hass, eid, es, ctx)) return false;
     if (ruleSet && !ruleSet(hass, eid, es, ctx)) return false;
-    return true;
+    return !!(legacy.test || ruleSet);
   };
 }
 
@@ -1721,6 +1744,7 @@ function _atcAlertMatches(hass, alert, ctx) {
 // the editor's entity preview then always agrees with what the card shows.
 globalThis.__alertTickerShared = Object.freeze({
   notifications: _ATC_NOTIFY,
+  legacyFilterDef: _atcLegacyFilterDef,
   usesNotifications: _atcUsesNotifications,
   hassFor: _atcHassFor,
   isFilterAlert: _atcIsFilterAlert,
