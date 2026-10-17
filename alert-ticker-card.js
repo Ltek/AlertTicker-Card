@@ -1089,8 +1089,16 @@ function _atcBuildTextMatcher(filter) {
  * Exclusions (entity_filter_exclude, else device_class_exclude) apply unless
  * `applyExclude` is false — the editor preview lists excluded entities as well.
  */
-function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
-  const ruleSet     = a.rule_set ? _atcCompileRuleSet(a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
+const _atcCompiledSets = new WeakMap(); // rule-set definition → compiled matcher
+function _atcCompiledRuleSet(def) {
+  if (!def || typeof def !== "object") return _atcCompileRuleSet(def);
+  let c = _atcCompiledSets.get(def);
+  if (!c) { c = _atcCompileRuleSet(def); _atcCompiledSets.set(def, c); }
+  return c;
+}
+
+function _atcFilterPredicate(hass, a, { applyExclude = true, ctx } = {}) {
+  const ruleSet     = a.rule_set ? _atcCompiledRuleSet(a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
   const textMatch   = a.entity_filter ? _atcBuildTextMatcher(a.entity_filter) : null;
   const excluded    = applyExclude ? new Set(a.entity_filter_exclude || a.device_class_exclude || []) : null;
   const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
@@ -1114,16 +1122,39 @@ function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
       const deviceArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
       if (!areaFilter.some(ar => ar === entityArea || ar === deviceArea)) return false;
     }
-    if (ruleSet && !ruleSet(hass, eid, es)) return false;
+    if (ruleSet && !ruleSet(hass, eid, es, ctx)) return false;
     return true;
   };
 }
 
+// Results per states object and alert, so the card, the overlay and the editor
+// share one scan per Home Assistant update. Not cached when the result depends on
+// the clock (time rules) or on templates, which can change without a state change.
+const _atcFilterCache = new WeakMap(); // hass.states → WeakMap(alert → { [applyExclude]: result })
+
 /** All [entityId, stateObj] pairs covered by the alert's filters, in hass.states order. */
-function _atcFilterEntities(hass, a, opts) {
+function _atcFilterEntities(hass, a, opts = {}) {
   if (!hass?.states) return [];
+  const exKey = opts.applyExclude === false ? "all" : "ex";
+  const byAlert = _atcFilterCache.get(hass.states);
+  const hit = byAlert?.get(a)?.[exKey];
+  if (hit) { if (hit.wake < _ATC_WAKE.at) _ATC_WAKE.at = hit.wake; return hit.result; }
+  const prevWake = _ATC_WAKE.at;
+  _ATC_WAKE.at = Infinity;
   const matches = _atcFilterPredicate(hass, a, opts);
-  return Object.entries(hass.states).filter(([eid, es]) => matches(eid, es));
+  const result = Object.entries(hass.states).filter(([eid, es]) => matches(eid, es));
+  const wake = _ATC_WAKE.at;
+  _ATC_WAKE.at = Math.min(prevWake, wake);
+  const def = a.rule_set ? (a._rule_set_def || a.rule_set) : null;
+  const usesTemplates = def && typeof def === "object" && JSON.stringify(def).includes("{{");
+  if (wake === Infinity && !usesTemplates && a && typeof a === "object") {
+    let m = byAlert;
+    if (!m) { m = new WeakMap(); _atcFilterCache.set(hass.states, m); }
+    const entry = m.get(a) || {};
+    entry[exKey] = { result, wake };
+    m.set(a, entry);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -1585,6 +1616,106 @@ function _atcHassFor(config, hass) {
   return _ATC_NOTIFY.augment(hass);
 }
 
+// ---------------------------------------------------------------------------
+// Alert conditions — the one implementation used by the card AND the overlay.
+// An alert's own condition (attribute / operator / state) and its extra
+// `conditions` are tested here; their operators run on the rule engine. The
+// behaviour is the card's (the overlay used to differ on a missing state, a
+// missing attribute, [n] attribute paths, templates, and filter alerts'
+// conditions, which it ignored).
+// ---------------------------------------------------------------------------
+
+/** The value an alert or condition tests: its attribute (dot path / [n]) as a string, else the state. */
+function _atcCondValue(es, attribute) {
+  if (attribute == null || attribute === "") return es.state;
+  let v = es.attributes;
+  for (const p of String(attribute).replace(/\[(\d+)\]/g, ".$1").split(".")) {
+    if (v == null) { v = undefined; break; }
+    v = v[p];
+  }
+  return String(v ?? "");
+}
+
+const _ATC_COND_OPS = { "=": "eq", "==": "eq", "!=": "ne", ">": "gt", "<": "lt", ">=": "ge", "<=": "le",
+  contains: "contains", not_contains: "not_contains", older: "older", newer: "newer" };
+const _atcCondTests = new Map(); // op + target → compiled rule
+
+/**
+ * Tests a value against an alert's or condition's operator + state. A missing state
+ * means "on"; a list means "is one of" (exact). = and != compare numbers as numbers,
+ * else text exactly (case-sensitive); contains is case-insensitive.
+ */
+function _atcConditionTest(value, cond, ctx) {
+  let trigger = (cond.state == null || cond.state === "") ? "on" : cond.state;
+  if (Array.isArray(trigger)) return trigger.map(String).includes(value);
+  if (typeof trigger === "string" && (trigger.includes("{{") || trigger.includes("{%"))) {
+    trigger = ctx?.resolve ? ctx.resolve(trigger) : (_atcMiniTemplate(ctx?.hass, trigger) ?? trigger);
+  }
+  const t = String(trigger);
+  const op = _ATC_COND_OPS[cond.operator || "="];
+  if (!op) { // unknown operator: numbers required, then exact text
+    if (isNaN(parseFloat(value)) || isNaN(parseFloat(t))) return false;
+    return value === t;
+  }
+  if (t === "") { // a template that rendered empty
+    if (op === "eq") return value === "";
+    if (op === "ne") return value !== "";
+    return op === "contains";
+  }
+  const key = op + "\u0000" + t;
+  let test = _atcCondTests.get(key);
+  if (!test) {
+    if (_atcCondTests.size > 500) _atcCondTests.clear();
+    test = _atcCompileRule({ field: "state", op, value: t, case_sensitive: true });
+    _atcCondTests.set(key, test);
+  }
+  return test([value], ctx);
+}
+
+function _atcNormConditions(c) {
+  return Array.isArray(c) ? c : (c && typeof c === "object" && c.entity ? [c] : []);
+}
+
+/** Results of an alert's extra conditions ([] when it has none). "{entity}" = the alert's entity. */
+function _atcExtraConditionResults(hass, alert, ctx) {
+  return _atcNormConditions(alert.conditions).map((c) => {
+    const eid = (c.entity === "{entity}" || c.entity === "this.entity_id") ? alert.entity : c.entity;
+    const es = eid ? hass.states?.[eid] : null;
+    return !!es && _atcConditionTest(_atcCondValue(es, c.attribute), c, ctx);
+  });
+}
+
+/** The alert's own condition — no state means no condition. */
+function _atcPrimaryPass(alert, es, ctx) {
+  if (alert.state == null || alert.state === "") return true;
+  return _atcConditionTest(_atcCondValue(es, alert.attribute), alert, ctx);
+}
+
+/**
+ * Own condition + extra conditions for an alert on one entity (`alert.entity` set):
+ * AND → own && all; OR → own && any.
+ */
+function _atcConditionsPass(hass, alert, es, ctx) {
+  const primary = _atcPrimaryPass(alert, es, ctx);
+  const extra = _atcExtraConditionResults(hass, alert, ctx);
+  if (!extra.length) return primary;
+  return alert.conditions_logic === "or" ? primary && extra.some(Boolean) : primary && extra.every(Boolean);
+}
+
+/**
+ * Entities an alert currently matches — [[entityId, stateObj]] — ignoring its
+ * lifecycle (snooze, dismiss, persistent, trigger_delay, auto-dismiss, on_change).
+ */
+function _atcAlertMatches(hass, alert, ctx) {
+  if (!_evalVisibleTo(hass, alert) || !_evalTimeRange(alert)) return [];
+  if (_atcIsFilterAlert(alert)) {
+    return _atcFilterEntities(hass, alert, { ctx })
+      .filter(([eid, es]) => _atcConditionsPass(hass, { ...alert, entity: eid }, es, ctx));
+  }
+  const es = alert.entity ? hass.states?.[alert.entity] : null;
+  return es && _atcConditionsPass(hass, alert, es, ctx) ? [[alert.entity, es]] : [];
+}
+
 // The editor is a separate module (loaded on demand by getConfigElement), so it
 // reaches the same matcher through this namespace instead of keeping its own copy —
 // the editor's entity preview then always agrees with what the card shows.
@@ -1667,8 +1798,8 @@ function _evalTemplate(hass, tpl) {
 
 // #223 helper: parse a value as a timestamp. Accepts ISO 8601 strings and
 // numeric unix epoch (ms if > 1e12, seconds otherwise). Returns ms-since-epoch
-// or null if invalid. Lives at module scope so both the overlay _matchOp
-// closure AND the card's _matchesState class method can reach it — moving it
+// or null if invalid. Lives at module scope so the rule engine (used by the card
+// and the overlay) can reach it — moving it
 // here fixes a v1.3.11 regression where the older/newer operators threw
 // ReferenceError when used in extra conditions (#223 bug reported by @sciurius).
 function _parseTimestamp(v) {
@@ -2034,97 +2165,26 @@ const _ATC_OVERLAY = (() => {
     } catch (_) { return null; }
   }
 
-  function _matchOp(actual, op, trigger) {
-    if (actual == null) return false;
-    // Array state: "is one of" — matches _matchesState array logic (#176)
-    if (Array.isArray(trigger)) return trigger.map(String).includes(String(actual));
-    const n = parseFloat(actual), t = parseFloat(trigger);
-    switch (op) {
-      case "=": case "==": {
-        const na = parseFloat(actual), nt = parseFloat(trigger);
-        if (!isNaN(na) && !isNaN(nt)) return na === nt;
-        return String(actual) === String(trigger);
-      }
-      case "!=": {
-        const na = parseFloat(actual), nt = parseFloat(trigger);
-        if (!isNaN(na) && !isNaN(nt)) return na !== nt;
-        return String(actual) !== String(trigger);
-      }
-      case ">":            return !isNaN(n) && !isNaN(t) && n > t;
-      case "<":            return !isNaN(n) && !isNaN(t) && n < t;
-      case ">=":           return !isNaN(n) && !isNaN(t) && n >= t;
-      case "<=":           return !isNaN(n) && !isNaN(t) && n <= t;
-      case "contains":     return actual.toLowerCase().includes(trigger.toLowerCase());
-      case "not_contains":  return !actual.toLowerCase().includes(trigger.toLowerCase());
-      case "older": {
-        // actual = timestamp (iso / epoch), trigger = seconds threshold
-        if (_inTimestampGrace()) return false; // #224 — suppress on tab wake
-        const ms = _parseTimestamp(actual);
-        const thr = parseFloat(trigger);
-        if (ms == null || isNaN(thr)) return false;
-        return (Date.now() - ms) / 1000 > thr;
-      }
-      case "newer": {
-        if (_inTimestampGrace()) return false; // #224 — suppress on tab wake
-        const ms = _parseTimestamp(actual);
-        const thr = parseFloat(trigger);
-        if (ms == null || isNaN(thr)) return false;
-        return (Date.now() - ms) / 1000 < thr;
-      }
-      default:             return String(actual) === String(trigger);
-    }
+  /** Template rendering for conditions evaluated by the overlay (no card template cache). */
+  function _ovCtx(hass) {
+    return { hass, resolve: (s) => _evalTemplate(hass, s) ?? s };
   }
 
-  // Matches for a filter alert (entity_filter / device_class / label / area): the entities
-  // the filters cover whose state (or `attribute`) passes the alert's condition.
-  // A missing attribute falls back to the entity state; a missing `state` means "on".
-  // `firstOnly` stops at the first match. Membership comes from _atcFilterPredicate.
-  function _findAllFilterMatches(hass, a, firstOnly = false) {
-    const matches = _atcFilterPredicate(hass, a);
-    const result = [];
-    for (const [eid, es] of Object.entries(hass.states)) {
-      if (!matches(eid, es)) continue;
-      // A rule_set alert with no `state` takes its condition from the rule set alone
-      // (put `field: state` rules in the set), matching the card's behaviour.
-      const noCondition = a.rule_set && (a.state == null || a.state === "");
-      let actual = es.state;
-      if (a.attribute) { let v = es.attributes; for (const p of String(a.attribute).split(".")) v = v?.[p]; actual = v != null ? String(v) : es.state; }
-      if (noCondition || _matchOp(actual, a.operator || "=", a.state ?? "on")) {
-        result.push([eid, es]);
-        if (firstOnly) break;
-      }
-    }
-    return result;
+  // Matches for a filter alert — the same evaluation as the card (_atcAlertMatches).
+  function _findAllFilterMatches(hass, a) {
+    return _atcAlertMatches(hass, a, _ovCtx(hass));
   }
-
-  // Returns [entityId, entityState] for the first match of a filter alert, or null.
-  function _findFilterMatch(hass, a) { return _findAllFilterMatches(hass, a, true)[0] ?? null; }
-
-  function _evalFilterAlert(hass, a) { return _findFilterMatch(hass, a) !== null; }
 
   function _evalAlert(hass, a, prevMap) {
-    if (!_evalVisibleTo(hass, a)) return false;
-    if (!_evalTimeRange(a)) return false;
-    if (_atcIsFilterAlert(a)) return _evalFilterAlert(hass, a);
-    if (!a.entity) return false;
-    if (a.on_change) {
+    if (!a.entity && !_atcIsFilterAlert(a)) return false;
+    if (a.on_change && a.entity) {
+      if (!_evalVisibleTo(hass, a) || !_evalTimeRange(a)) return false;
       const key = a.entity + (a.attribute || "");
       const cur  = _getVal(hass, a.entity, a.attribute);
       const prev = prevMap.get(key);
       return cur != null && prev !== undefined && cur !== prev;
     }
-    const actual = _getVal(hass, a.entity, a.attribute);
-    const primaryOk = _matchOp(actual, a.operator || "=", a.state ?? "on");
-    const normConds = Array.isArray(a.conditions) ? a.conditions : (a.conditions && typeof a.conditions === "object" && a.conditions.entity ? [a.conditions] : []);
-    if (normConds.length) {
-      const logic = a.conditions_logic || "and";
-      const res = normConds.map(c => {
-        const eid = (c.entity === "{entity}" || c.entity === "this.entity_id") ? a.entity : c.entity;
-        return _matchOp(_getVal(hass, eid, c.attribute), c.operator || "=", c.state ?? "on");
-      });
-      if (logic === "or" ? !(primaryOk && res.some(Boolean)) : !(primaryOk && res.every(Boolean))) return false;
-    } else if (!primaryOk) return false;
-    return true;
+    return _atcAlertMatches(hass, a, _ovCtx(hass)).length > 0;
   }
 
   function _resolveMsg(hass, a) {
@@ -2956,6 +3016,7 @@ class AlertTickerCard extends LitElement {
    */
   _computeActiveAlerts() {
     if (!this._hass || !this._config || !Array.isArray(this._config.alerts)) return;
+    _atcWakeReset(); // time-dependent rules note when to re-check (see _scheduleRuleWake)
 
     // Test mode: a notification rule set with nothing matching right now gets a
     // sample notification, so its theme / message / placeholders can be previewed.
@@ -2997,9 +3058,7 @@ class AlertTickerCard extends LitElement {
         if (!_evalTimeRange(alert)) return false;
         const key = `${alert._configIdx}:${alert.entity}`;
 
-        // Normalize conditions: accept both a single object and an array (#83)
-        const _normConds = (c) => Array.isArray(c) ? c : (c && typeof c === "object" && c.entity ? [c] : []);
-
+        const condCtx = this._condCtx();
         if (alert.on_change) {
           // on_change mode: active only while a recent change trigger is live
           if (!this._changeTriggers[key]) return false;
@@ -3009,50 +3068,19 @@ class AlertTickerCard extends LitElement {
           // entity is in the desired state — e.g. state:playing means the alert
           // is visible only while the player is actually playing, suppressing
           // idle/paused/buffering transitions. (#83)
-          if (alert.state != null && alert.state !== "" && entityState) {
-            const sv = (alert.attribute != null && alert.attribute !== "")
-              ? String(this._resolveAttrPath(entityState.attributes, alert.attribute) ?? "")
-              : entityState.state;
-            if (!this._matchesState(sv, alert)) return false;
-          }
+          if (entityState && !_atcPrimaryPass(alert, entityState, condCtx)) return false;
           // Extra AND/OR conditions still apply for on_change alerts
-          const onChangeConds = _normConds(alert.conditions);
-          if (onChangeConds.length > 0) {
+          const results = _atcExtraConditionResults(this._hass, alert, condCtx);
+          if (results.length > 0) {
             const logic = alert.conditions_logic || "and";
-            const results = onChangeConds.map((cond) => {
-              const eid = (cond.entity === "{entity}" || cond.entity === "this.entity_id") ? alert.entity : cond.entity;
-              if (!eid) return false;
-              const es = this._hass.states[eid];
-              if (!es) return false;
-              const val = (cond.attribute != null && cond.attribute !== "")
-                ? String(this._resolveAttrPath(es.attributes, cond.attribute) ?? "")
-                : es.state;
-              return this._matchesState(val, cond);
-            });
             if (!(logic === "or" ? results.some(Boolean) : results.every(Boolean))) return false;
           }
         } else {
-          // Normal condition check
-          const stateValue = (alert.attribute != null && alert.attribute !== "")
-            ? String(this._resolveAttrPath(entityState.attributes, alert.attribute) ?? "")
-            : entityState.state;
-          // No state condition = always match (mirrors on_change guard at line 1948)
-          const primaryOk = (alert.state == null || alert.state === "")
-            ? true
-            : this._matchesState(stateValue, alert);
-          const normalConds = _normConds(alert.conditions);
-          if (normalConds.length > 0) {
+          // Normal condition check — shared with the overlay (_atcConditionsPass)
+          const primaryOk = _atcPrimaryPass(alert, entityState, condCtx);
+          const results = _atcExtraConditionResults(this._hass, alert, condCtx);
+          if (results.length > 0) {
             const logic = alert.conditions_logic || "and";
-            const results = normalConds.map((cond) => {
-              const eid = (cond.entity === "{entity}" || cond.entity === "this.entity_id") ? alert.entity : cond.entity;
-              if (!eid) return false;
-              const es = this._hass.states[eid];
-              if (!es) return false;
-              const val = (cond.attribute != null && cond.attribute !== "")
-                ? String(this._resolveAttrPath(es.attributes, cond.attribute) ?? "")
-                : es.state;
-              return this._matchesState(val, cond);
-            });
             const passes = logic === "or"
               ? primaryOk && results.some(Boolean)
               : primaryOk && results.every(Boolean);
@@ -3145,6 +3173,7 @@ class AlertTickerCard extends LitElement {
       }
       return true;
     });
+    this._scheduleRuleWake();
 
     // Sort by priority (lower number = first; undefined priority goes last)
     active.sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
@@ -4304,89 +4333,38 @@ class AlertTickerCard extends LitElement {
     return cur;
   }
 
+  /** Re-checks the alerts when a time-dependent rule's result next changes (time, weekday, durations). */
+  _scheduleRuleWake() {
+    const at = _ATC_WAKE.at;
+    if (at === Infinity) { if (this._ruleWakeTimer) { clearTimeout(this._ruleWakeTimer); this._ruleWakeTimer = null; this._ruleWakeAt = null; } return; }
+    if (this._ruleWakeTimer && this._ruleWakeAt === at) return;
+    if (this._ruleWakeTimer) clearTimeout(this._ruleWakeTimer);
+    this._ruleWakeAt = at;
+    this._ruleWakeTimer = setTimeout(() => {
+      this._ruleWakeTimer = null;
+      this._ruleWakeAt = null;
+      if (this._mounted || this.isConnected) this._computeActiveAlerts();
+    }, Math.max(250, Math.min(at - Date.now(), 2147000000)));
+  }
+
   /**
-   * Returns true when the entity's state matches the alert's condition.
-   * Supports: exact string/array (=), != > < >= <= with numeric comparison,
-   * contains / not_contains with case-insensitive substring matching.
+   * Context for condition and rule evaluation: {{ }} values render through the
+   * card's template cache (WebSocket render_template), falling back to the
+   * built-in evaluator until HA has answered.
    */
-  _matchesState(entityStateValue, alert) {
-    // #223 follow-up: when the trigger state is missing (common on extra
-    // conditions where the user only picked the entity without typing a value),
-    // default to "on" so the condition matches binary_sensor-style entities
-    // that are in the "on" state. Mirrors the overlay path's `c.state ?? "on"`
-    // (see _evalAlert) and the editor's visible default of "on". Previously
-    // the card path compared against the literal string "undefined" and always
-    // returned false, breaking configs like `conditions: [{entity: input_boolean.foo}]`.
-    let trigger = (alert.state == null || alert.state === "") ? "on" : alert.state;
-    const operator = alert.operator || "=";
-
-    // Legacy array form — treated as "is one of" regardless of operator
-    if (Array.isArray(trigger)) {
-      return trigger.map(String).includes(entityStateValue);
-    }
-
-    // Resolve {{ }} Jinja2 templates in the state value (e.g. states('input_number.threshold'))
-    if (typeof trigger === "string" && (trigger.includes("{{") || trigger.includes("{%"))) {
-      const cached = this._tmplCache.get(trigger);
-      if (cached !== undefined) {
-        trigger = cached;
-      } else {
-        this._subscribeTemplate(trigger);
-        const resolved = trigger.replace(/\{\{\s*([\s\S]*?)\s*\}\}/g, (match, expr) => {
+  _condCtx() {
+    return {
+      hass: this._hass,
+      resolve: (tpl) => {
+        const cached = this._tmplCache.get(tpl);
+        if (cached !== undefined) return cached;
+        this._subscribeTemplate(tpl);
+        return tpl.replace(/\{\{\s*([\s\S]*?)\s*\}\}/g, (match, expr) => {
           const v = this._evalJinjaExpr(expr.trim());
           return v !== null ? v : match;
         });
-        trigger = resolved;
-      }
-    }
-
-    const triggerStr = String(trigger);
-
-    if (operator === "=" || operator === "==") {
-      const na = parseFloat(entityStateValue), nt = parseFloat(triggerStr);
-      if (!isNaN(na) && !isNaN(nt)) return na === nt;
-      return entityStateValue === triggerStr;
-    }
-    if (operator === "!=") {
-      const na = parseFloat(entityStateValue), nt = parseFloat(triggerStr);
-      if (!isNaN(na) && !isNaN(nt)) return na !== nt;
-      return entityStateValue !== triggerStr;
-    }
-
-    // Substring matching (case-insensitive)
-    if (operator === "contains") {
-      return entityStateValue.toLowerCase().includes(triggerStr.toLowerCase());
-    }
-    if (operator === "not_contains") {
-      return !entityStateValue.toLowerCase().includes(triggerStr.toLowerCase());
-    }
-
-    // #223: timestamp comparison — "older" / "newer" treat the entity state
-    // as an ISO date or unix epoch and compare its age against the trigger
-    // threshold expressed in seconds.
-    if (operator === "older" || operator === "newer") {
-      // #224: suppress during the first 10 seconds after tab wake, when
-      // hass.states is still stale and would briefly report any timestamp as
-      // "very old" causing a false-positive alert flash.
-      if (_inTimestampGrace()) return false;
-      const ms = _parseTimestamp(entityStateValue);
-      const thr = parseFloat(triggerStr);
-      if (ms == null || isNaN(thr)) return false;
-      const diffSec = (Date.now() - ms) / 1000;
-      return operator === "older" ? diffSec > thr : diffSec < thr;
-    }
-
-    // Numeric comparison
-    const entityNum = parseFloat(entityStateValue);
-    const triggerNum = parseFloat(triggerStr);
-    if (isNaN(entityNum) || isNaN(triggerNum)) return false;
-
-    if (operator === ">")  return entityNum > triggerNum;
-    if (operator === "<")  return entityNum < triggerNum;
-    if (operator === ">=") return entityNum >= triggerNum;
-    if (operator === "<=") return entityNum <= triggerNum;
-
-    return entityStateValue === triggerStr;
+      },
+    };
   }
 
   // ---- Snooze helpers -------------------------------------------------------
@@ -5588,6 +5566,7 @@ class AlertTickerCard extends LitElement {
     super.disconnectedCallback();
     this._mounted = false;
     if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
+    if (this._ruleWakeTimer) { clearTimeout(this._ruleWakeTimer); this._ruleWakeTimer = null; this._ruleWakeAt = null; }
     this._stopCycleTimer();
     this._stopTimerTick();
     if (this._snoozeOutsideHandler) {
