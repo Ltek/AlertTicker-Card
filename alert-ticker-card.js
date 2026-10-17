@@ -876,6 +876,15 @@ function _atcAttachRuleSets(alerts, ruleSets) {
 
 /** The values a rule's field yields for one entity — always an array (empty = field absent). */
 function _atcRuleFieldValues(hass, eid, es, rule) {
+  // Hot path: the common fields first, without registry lookups.
+  switch (rule.field) {
+    case "state":        return [es.state];
+    case "device_class": { const dc = es.attributes?.device_class; return dc != null && dc !== "" ? [dc] : []; }
+    case "entity_id":    return [eid];
+    case "domain":       return [eid.slice(0, eid.indexOf("."))];
+    case "name":         return [es.attributes?.friendly_name || ""];
+    case "label":        { const l = hass.entities?.[eid]?.labels; return Array.isArray(l) ? l : []; }
+  }
   if (rule.field === "other_entity") {
     // Another entity's state or attribute; "{entity}" / "this.entity_id" = the matched entity.
     const oid = (rule.entity === "{entity}" || rule.entity === "this.entity_id") ? eid : rule.entity;
@@ -892,8 +901,8 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
     return [ATC_WEEKDAYS[day], String(day === 0 ? 7 : day)];
   }
   const meta = hass.entities?.[eid];
-  const areaId = meta?.area_id || (meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null) || null;
   const present = (v) => v != null && v !== "";
+  const areaOf = () => meta?.area_id || (meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null) || null;
   switch (rule.field) {
     case "entity_id":    return [eid];
     case "name":         return [es.attributes?.friendly_name || ""];
@@ -906,13 +915,14 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
         const devArea = meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null;
         return [meta?.area_id, devArea].filter(present);
       }
+      const areaId = areaOf();
       return areaId ? [areaId, hass.areas?.[areaId]?.name].filter(present) : [];
     }
     case "floor": {
+      const areaId = areaOf();
       const floorId = areaId ? hass.areas?.[areaId]?.floor_id : null;
       return floorId ? [floorId, hass.floors?.[floorId]?.name].filter(present) : [];
     }
-    case "label":        return Array.isArray(meta?.labels) ? meta.labels.slice() : [];
     case "integration":  return present(meta?.platform) ? [meta.platform] : [];
     case "state":        return [es.state];
     case "attribute": {
@@ -972,12 +982,13 @@ function _atcCompileRule(rule) {
   switch (op) {
     case "eq":
     case "in":
-      test = rule.exact
-        ? (v) => targets.includes(v) // exact text only (lists in alert conditions)
-        : (v) => {
-          const lv = norm(v), nv = num(v);
-          return lower.some((t, i) => t === lv || (nv !== null && num(targets[i]) === nv));
-        };
+      if (rule.exact) { const set = new Set(targets); test = (v) => set.has(v); break; } // exact text only
+      // case-sensitive, no numeric targets: a plain lookup (numbers can't match by value)
+      if (cs && targets.every((t) => isNaN(parseFloat(t)))) { const set = new Set(targets); test = (v) => set.has(v); break; }
+      test = (v) => {
+        const lv = norm(v), nv = num(v);
+        return lower.some((t, i) => t === lv || (nv !== null && num(targets[i]) === nv));
+      };
       break;
     case "contains":
       test = (v) => { const lv = v.toLowerCase(); return lower.some(t => lv.includes(t.toLowerCase())); };
@@ -1049,9 +1060,13 @@ function _atcCompileRuleSet(def) {
     const rules = (Array.isArray(g?.rules) ? g.rules : []).map(r => ({ rule: r, test: _atcCompileRule(r) }));
     const any = g?.match === "any";
     return (hass, eid, es, ctx) => {
-      const c = ctx || { hass };
-      const hit = ({ rule, test }) => { const v = _atcRuleFieldValues(hass, eid, es, rule); return v !== null && test(v, c); };
-      return any ? rules.some(hit) : rules.every(hit);
+      const c = ctx || (hass._atcCtx || (hass._atcCtx = { hass }));
+      for (let i = 0; i < rules.length; i++) {
+        const v = _atcRuleFieldValues(hass, eid, es, rules[i].rule);
+        const ok = v !== null && rules[i].test(v, c);
+        if (any ? ok : !ok) return any;
+      }
+      return !any;
     };
   };
   const withRules = allGroups.filter(g => Array.isArray(g?.rules) && g.rules.length);
@@ -1158,6 +1173,13 @@ function _atcFilterPredicate(hass, a, { applyExclude = true, ctx } = {}) {
 // the clock (time rules) or on templates, which can change without a state change.
 const _atcFilterCache = new WeakMap(); // hass.states → WeakMap(alert → { [applyExclude]: result })
 
+const _atcEntriesCache = new WeakMap(); // hass.states → Object.entries(hass.states), built once per update
+function _atcStateEntries(states) {
+  let e = _atcEntriesCache.get(states);
+  if (!e) { e = Object.entries(states); _atcEntriesCache.set(states, e); }
+  return e;
+}
+
 /** All [entityId, stateObj] pairs covered by the alert's filters, in hass.states order. */
 function _atcFilterEntities(hass, a, opts = {}) {
   if (!hass?.states) return [];
@@ -1168,7 +1190,9 @@ function _atcFilterEntities(hass, a, opts = {}) {
   const prevWake = _ATC_WAKE.at;
   _ATC_WAKE.at = Infinity;
   const matches = _atcFilterPredicate(hass, a, opts);
-  const result = Object.entries(hass.states).filter(([eid, es]) => matches(eid, es));
+  const all = _atcStateEntries(hass.states);
+  const result = [];
+  for (let i = 0; i < all.length; i++) if (matches(all[i][0], all[i][1])) result.push(all[i]);
   const wake = _ATC_WAKE.at;
   _ATC_WAKE.at = Math.min(prevWake, wake);
   const def = a.rule_set ? (a._rule_set_def || a.rule_set) : null;
@@ -1664,7 +1688,7 @@ function _atcCondValue(es, attribute) {
 
 const _ATC_COND_OPS = { "=": "eq", "==": "eq", "!=": "ne", ">": "gt", "<": "lt", ">=": "ge", "<=": "le",
   contains: "contains", not_contains: "not_contains", older: "older", newer: "newer" };
-const _atcCondTests = new Map(); // op + target → compiled rule
+const _atcCondTests = new Map(); // op → Map(target → compiled rule)
 
 /**
  * Tests a value against an alert's or condition's operator + state. A missing state
@@ -1688,12 +1712,13 @@ function _atcConditionTest(value, cond, ctx) {
     if (op === "ne") return value !== "";
     return op === "contains";
   }
-  const key = op + "\u0000" + t;
-  let test = _atcCondTests.get(key);
+  let byOp = _atcCondTests.get(op);
+  if (!byOp) { byOp = new Map(); _atcCondTests.set(op, byOp); }
+  let test = byOp.get(t);
   if (!test) {
-    if (_atcCondTests.size > 500) _atcCondTests.clear();
+    if (byOp.size > 300) byOp.clear();
     test = _atcCompileRule({ field: "state", op, value: t, case_sensitive: true });
-    _atcCondTests.set(key, test);
+    byOp.set(t, test);
   }
   return test([value], ctx);
 }
