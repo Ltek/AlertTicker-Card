@@ -1015,6 +1015,7 @@ function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
   return (eid, es) => {
     // Notifications are matched only by notification rule sets (and those match nothing else).
     if (_ATC_NOTIFY.isNotification(eid, es) !== wantsNotifications) return false;
+    if (es.attributes?._sample) return false; // test-mode samples are injected per alert, never matched
     if (excluded && excluded.has(eid)) return false;
     if (a.device_class && es.attributes?.device_class !== a.device_class) return false;
     if (textMatch && !textMatch(eid) && !textMatch(es.attributes?.friendly_name || "")) return false;
@@ -2867,12 +2868,17 @@ class AlertTickerCard extends LitElement {
   _computeActiveAlerts() {
     if (!this._hass || !this._config || !Array.isArray(this._config.alerts)) return;
 
+    // Test mode: a notification rule set with nothing matching right now gets a
+    // sample notification, so its theme / message / placeholders can be previewed.
+    const samples = this._config.test_mode ? this._sampleNotifications() : null;
+
     // Expand entity_filter alerts into one concrete alert per matched entity
     const expandedAlerts = [];
     for (let idx = 0; idx < this._config.alerts.length; idx++) {
       const alert = this._config.alerts[idx];
       if (_atcIsFilterAlert(alert)) {
-        const matched = _atcFilterEntities(this._hass, alert);
+        let matched = _atcFilterEntities(this._hass, alert);
+        if (!matched.length && samples?.has(idx)) matched = [samples.get(idx)];
         for (const [entityId, state] of matched) {
           const friendlyName = state.attributes.friendly_name || entityId;
           expandedAlerts.push({
@@ -4364,10 +4370,58 @@ class AlertTickerCard extends LitElement {
   }
 
   /** Dismiss the alert until its entity fires a new state_changed event */
+  /**
+   * Test-mode samples: index → [entityId, stateObj] for each notification-rule-set alert,
+   * added to this._hass.states so rendering and placeholders work like a real one.
+   */
+  _sampleNotifications() {
+    const out = new Map();
+    const base = this._hass._atcBase || this._hass;
+    const extra = {};
+    (this._config.alerts || []).forEach((a, idx) => {
+      const def = a && !a.entity ? (a._rule_set_def || (typeof a.rule_set === "object" ? a.rule_set : null)) : null;
+      if (!_atcIsNotificationSet(def)) return;
+      const id = `notification.sample_${idx}`;
+      const by = (def.notification_source || []).slice(0, 1);
+      const to = (def.notification_destination || []).slice(0, 1);
+      const sentTo = to.length ? to : ["notify.mobile_app_phone"];
+      const at = new Date().toISOString();
+      const es = {
+        entity_id: id, state: "active", last_changed: at, last_updated: at,
+        attributes: {
+          friendly_name: "Sample notification", title: "Sample notification", message: "Test mode preview",
+          notification_type: "notify", tag: "", sent_by: by, sent_to: sentTo, context_id: null, created_at: at,
+          sent_by_names: by.map((e) => base.states?.[e]?.attributes?.friendly_name || e),
+          sent_to_names: sentTo.map((d) => _atcDestinationName(base, d)),
+          icon: "mdi:message-badge", _sample: true,
+        },
+      };
+      extra[id] = es;
+      out.set(idx, [id, es]);
+    });
+    if (out.size) {
+      const merged = Object.create(base);
+      merged.states = { ...base.states, ...extra };
+      merged._atcBase = base;
+      this._hass = merged;
+    }
+    return out;
+  }
+
+  /** True when the alert was raised by a notification (notification rule set). */
+  _isNotificationAlert(alert) {
+    return !!alert?.entity && _ATC_NOTIFY.isNotification(alert.entity, this._hass?.states?.[alert.entity]);
+  }
+
   _dismissAlert(alert) {
     if (!alert || !alert.entity) return;
     const es = this._hass && this._hass.states[alert.entity];
     if (!es) return;
+    // A notification alert: clear the notification too (persistent ones in HA,
+    // mobile / notify ones from this card's list).
+    if (this._isNotificationAlert(alert) && !es.attributes._sample) {
+      _ATC_NOTIFY.dismiss(this._rawHass || this._hass, alert.entity);
+    }
     const key = this._snoozeKey(alert);
     this._dismissed.set(key, es.last_changed);
     this._saveDismissed();
@@ -5138,6 +5192,7 @@ class AlertTickerCard extends LitElement {
       case "more-info": {
         const entityId = cfg.entity || cfg.entity_id || (this._current && this._current.entity);
         if (!entityId) return;
+        if (_ATC_NOTIFY.isNotification(entityId, this._hass?.states?.[entityId])) return; // no HA entity behind it
         this.dispatchEvent(new CustomEvent("hass-more-info", {
           bubbles: true, composed: true,
           detail: { entityId },
@@ -7526,7 +7581,8 @@ class AlertTickerCard extends LitElement {
     // Group slides use internal _expand_group tap so the whole card is tappable
     const tapCfg    = isWidgetSlide ? (this._config.clear_tap_action        || null)
                     : (current && current._isGroup) ? (current.group_tap_action        || { action: "_expand_group" })
-                    : (current.tap_action || (current.action ? { action: "call-service", ...current.action } : null));
+                    : (current.tap_action || (current.action ? { action: "call-service", ...current.action } : null)
+                       || (this._isNotificationAlert(current) ? { action: "dismiss" } : null));
     const holdCfg   = isWidgetSlide ? (this._config.clear_hold_action       || null) : (current && current._isGroup ? (current.group_hold_action       || null) : (current.hold_action       || null));
     const dblTapCfg = isWidgetSlide ? (this._config.clear_double_tap_action || null) : (current && current._isGroup ? (current.group_double_tap_action || null) : (current.double_tap_action || null));
     const hasInteraction = (tapCfg    && tapCfg.action    && tapCfg.action    !== "none") ||
