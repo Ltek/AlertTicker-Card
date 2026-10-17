@@ -1659,6 +1659,8 @@ const ET = {
     rs_entity_advanced: "Extra state condition (optional)",
     rs_entity_advanced_help: "The rule set already decides which entities alert. Add a state condition here only to narrow it further — leave empty otherwise.",
     rs_back_to_alert: "Back to alert {n}",
+    sections_expand_all: "Expand all",
+    sections_collapse_all: "Collapse all",
     rs_alerts_using: "Alerts using this rule set",
     rs_create_alert: "Create alert from this rule set",
     alert_chip_group: "Group",
@@ -6152,6 +6154,58 @@ class AlertTickerCardEditor extends LitElement {
   // Select or deselect an alert for editing.
   // Uses a simple Number (_editingIndex) — no Set, no DOM attributes.
   // setConfig / _fireConfig / ha-service-control can never corrupt this.
+  /**
+   * Alert editor sections collapse: each .section-divider in an alert form is a
+   * header; the elements after it, up to the next divider, belong to it. Applied
+   * after every render, so it works however the form's templates are nested.
+   * Collapsed by default; state is kept per section title.
+   */
+  updated(changed) {
+    super.updated?.(changed);
+    this._applySectionCollapse();
+  }
+
+  _applySectionCollapse() {
+    const root = this.shadowRoot;
+    if (!root?.querySelectorAll) return;
+    if (!this._sectionClickBound) {
+      this._sectionClickBound = true;
+      root.addEventListener("click", (e) => {
+        const div = e.composedPath?.().find?.((n) => n?.classList?.contains?.("section-divider"));
+        if (!div || !div.closest?.(".alert-form")) return;
+        this._toggleSection(div.dataset.atcSection || div.textContent.trim());
+      });
+    }
+    const forms = root.querySelectorAll(".alert-form");
+    forms.forEach((form) => {
+      form.querySelectorAll(".section-divider").forEach((div) => {
+        const key = div.textContent.replace(/\s+/g, " ").trim();
+        div.dataset.atcSection = key;
+        const open = this._openSections?.has(key);
+        div.classList.add("section-divider--toggle");
+        div.classList.toggle("section-divider--open", !!open);
+        for (let el = div.nextElementSibling; el && !el.classList.contains("section-divider"); el = el.nextElementSibling) {
+          el.classList.toggle("atc-sec-hidden", !open);
+        }
+      });
+    });
+  }
+
+  _toggleSection(key) {
+    const next = new Set(this._openSections || []);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    this._openSections = next;
+    this._applySectionCollapse();
+  }
+
+  /** Opens or closes every section of the alert form. */
+  _setAllSections(open) {
+    const keys = [...(this.shadowRoot?.querySelectorAll?.(".alert-form .section-divider") || [])]
+      .map((d) => d.textContent.replace(/\s+/g, " ").trim());
+    this._openSections = open ? new Set(keys) : new Set();
+    this._applySectionCollapse();
+  }
+
   _editAlert(index) {
     const opening = this._editingIndex !== index;
     this._editingIndex = opening ? index : -1;
@@ -7188,21 +7242,9 @@ class AlertTickerCardEditor extends LitElement {
 
     return html`
       ${this._renderSectionHeader("tab_alerts")}
-      <div class="alerts-header">
-        <span>${this._t("alerts_list")}</span>
-        <span class="alerts-count">${alerts.length} ${alerts.length === 1 ? "item" : "items"}</span>
-      </div>
-
-      ${alerts.length === 0
-        ? html`<div class="empty-alerts">${this._t("no_alerts")}</div>`
-        : alerts.map((alert, index) => this._renderAlertItem(alert, index))}
-
-      ${this._renderAlertEditPanel()}
-
-      <div class="add-alert-row">
-        <button class="btn-add-alert" @click="${() => this._addAlert()}">
-          + ${this._t("add_alert")}
-        </button>
+      <div class="add-alert-grid">
+        ${[["entity", "mode_entity"], ["filter", "mode_filter"], ["rs_entity", "mode_rs_entity"], ["rs_notify", "mode_rs_notify"]].map(([m, k]) => html`
+          <button class="btn-add-alert btn-add-alert--mode" title="${this._t(k + "_help")}" @click="${() => this._addAlert(m)}">+ ${this._t(k)}</button>`)}
         <div class="native-select-wrap add-alert-template-wrap ${this._templatesHintSeen ? '' : 'tpl-hint-glow'}">
           <select class="native-select" .value="${''}"
             @focus="${() => this._markTemplateHintSeen()}"
@@ -7218,6 +7260,16 @@ class AlertTickerCardEditor extends LitElement {
           </select>
         </div>
       </div>
+      <div class="alerts-header">
+        <span>${this._t("alerts_list")}</span>
+        <span class="alerts-count">${alerts.length} ${alerts.length === 1 ? "item" : "items"}</span>
+      </div>
+
+      ${alerts.length === 0
+        ? html`<div class="empty-alerts">${this._t("no_alerts")}</div>`
+        : alerts.map((alert, index) => this._renderAlertItem(alert, index))}
+
+      ${this._renderAlertEditPanel()}
 
       <div class="test-mode-box${this._config.test_mode ? " test-mode-box--active" : ""}">
         <div class="test-mode-box-header">
@@ -7312,6 +7364,10 @@ class AlertTickerCardEditor extends LitElement {
           <button class="btn-icon alert-edit-close" @click="${() => { this._editingIndex = -1; }}">✕</button>
         </div>
         <div class="alert-form">
+          <div class="sections-toolbar">
+            <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._setAllSections(true); }}">${this._t("sections_expand_all")}</a>
+            <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._setAllSections(false); }}">${this._t("sections_collapse_all")}</a>
+          </div>
 
                 <!-- ── TEMA + PRIORITÀ (in cima per anteprima immediata) ─── -->
                 <div class="theme-priority-row">
@@ -7362,12 +7418,9 @@ class AlertTickerCardEditor extends LitElement {
                 ${(() => {
                   const mode = this._getAlertMode(index, alert);
                   return html`
-                  <div class="alert-mode-selector alert-mode-selector--4">
-                    ${[["entity", "mode_entity"], ["filter", "mode_filter"], ["rs_entity", "mode_rs_entity"], ["rs_notify", "mode_rs_notify"]].map(([m, k]) => html`
-                      <button class="alert-mode-btn ${mode === m ? "active" : ""}" @click="${() => this._setAlertMode(index, m)}">${this._t(k)}</button>`)}
-                  </div>
-                  <div class="helper-text" style="margin-top:-4px;margin-bottom:4px">
-                    ${this._t({ entity: "mode_entity_help", filter: "mode_filter_help", rs_entity: "mode_rs_entity_help", rs_notify: "mode_rs_notify_help" }[mode])}
+                  <div class="alert-mode-banner">
+                    <span class="alert-mode-banner-title">${this._t({ entity: "mode_entity", filter: "mode_filter", rs_entity: "mode_rs_entity", rs_notify: "mode_rs_notify" }[mode])}</span>
+                    <span class="helper-text">${this._t({ entity: "mode_entity_help", filter: "mode_filter_help", rs_entity: "mode_rs_entity_help", rs_notify: "mode_rs_notify_help" }[mode])}</span>
                   </div>
 
                   ${mode === "entity" ? html`
@@ -8559,32 +8612,6 @@ class AlertTickerCardEditor extends LitElement {
     return this._ruleSets().find((rs) => String(rs.id) === String(ref)) || null;
   }
 
-  /** Switches an alert's mode, clearing the fields that don't belong to the new one. */
-  _setAlertMode(index, mode) {
-    const alert = (this._config.alerts || [])[index] || {};
-    if (this._getAlertMode(index, alert) === mode) return;
-    const next = new Map(this._alertModeChoice);
-    next.set(index, mode);
-    this._alertModeChoice = next;
-    const quick = { entity_filter: undefined, device_class: undefined, label_filter: undefined, area_filter: undefined,
-      entity_filter_exclude: undefined, device_class_exclude: undefined };
-    const changes = { ...quick };
-    if (mode === "entity") Object.assign(changes, { rule_set: undefined });
-    if (mode === "filter") Object.assign(changes, { entity: undefined, rule_set: undefined });
-    if (mode === "rs_entity" || mode === "rs_notify") {
-      // The rule set decides on its own: drop the default "state is on" condition.
-      Object.assign(changes, { entity: undefined, operator: undefined, state: undefined, on_change: undefined });
-      const def = this._alertRuleSetDef(alert);
-      if (def && this._isNotificationSet(def) !== (mode === "rs_notify")) changes.rule_set = undefined;
-      if (mode === "rs_notify") {
-        Object.assign(changes, { attribute: undefined, trigger_delay: undefined });
-        const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
-        if (!alert.message || alert.message === dflt) changes.message = "{title}";
-      }
-    }
-    this._updateAlert(index, changes);
-  }
-
   /** Turns an alert's quick-filter fields into a new entity rule set and points the alert at it. */
   _convertAlertToRuleSet(index) {
     const alert = (this._config.alerts || [])[index] || {};
@@ -9498,12 +9525,23 @@ class AlertTickerCardEditor extends LitElement {
   // -------------------------------------------------------------------------
   // Event handlers — alert list
   // -------------------------------------------------------------------------
-  _addAlert() {
+  /** Adds an alert of the given kind: entity | filter | rs_entity | rs_notify. */
+  _addAlert(mode = "entity") {
     const alerts = [...(this._config.alerts || [])];
     const newIndex = alerts.length;
-    const defaultTheme = "emergency";
-    const defaultMsg = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[defaultTheme] || "";
-    alerts.push({ entity: "", operator: "=", state: "on", message: defaultMsg, priority: 1, theme: defaultTheme, icon: "" });
+    const notify = mode === "rs_notify";
+    const defaultTheme = notify ? "notification" : "emergency";
+    const defaultMsg = notify ? "{title}" : ((DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[defaultTheme] || "");
+    const base = { message: defaultMsg, priority: notify ? 2 : 1, theme: defaultTheme, icon: "" };
+    if (mode === "entity") alerts.push({ entity: "", operator: "=", state: "on", ...base });
+    else if (mode === "filter") alerts.push({ operator: "=", state: "on", ...base });
+    else {
+      // A rule set alert: no state condition — the rule set decides. Preselect the
+      // only set of that kind when there is exactly one.
+      const ofKind = this._ruleSets().filter((rs) => this._isNotificationSet(rs) === notify);
+      alerts.push({ ...(ofKind.length === 1 ? { rule_set: ofKind[0].id } : {}), ...base });
+    }
+    const modes = new Map(this._alertModeChoice); modes.set(newIndex, mode); this._alertModeChoice = modes;
     // Open the new alert in the edit panel immediately
     this._editingIndex = newIndex;
     const newConfig = this._config.test_mode
@@ -9563,9 +9601,18 @@ class AlertTickerCardEditor extends LitElement {
     this.requestUpdate();
   }
 
+  /** Re-keys the per-index editor state (_alertModeChoice / _alertModeFilter) after a reorder. */
+  _remapAlertModes(fn) {
+    const m = new Map(); for (const [i, v] of this._alertModeChoice) { const j = fn(i); if (j >= 0) m.set(j, v); }
+    this._alertModeChoice = m;
+    const f = new Set(); for (const i of this._alertModeFilter) { const j = fn(i); if (j >= 0) f.add(j); }
+    this._alertModeFilter = f;
+  }
+
   _deleteAlert(index) {
     const alerts = [...(this._config.alerts || [])];
     alerts.splice(index, 1);
+    this._remapAlertModes((i) => (i === index ? -1 : i > index ? i - 1 : i));
     // Adjust _editingIndex
     if (this._editingIndex === index) {
       this._editingIndex = -1;
@@ -10186,6 +10233,7 @@ class AlertTickerCardEditor extends LitElement {
     if (index === 0) return;
     const alerts = [...(this._config.alerts || [])];
     [alerts[index - 1], alerts[index]] = [alerts[index], alerts[index - 1]];
+    this._remapAlertModes((i) => (i === index ? index - 1 : i === index - 1 ? index : i));
     // Follow the moved alert in the edit panel
     if (this._editingIndex === index) this._editingIndex = index - 1;
     else if (this._editingIndex === index - 1) this._editingIndex = index;
@@ -10197,6 +10245,7 @@ class AlertTickerCardEditor extends LitElement {
     if (index >= alerts.length - 1) return;
     const copy = [...alerts];
     [copy[index], copy[index + 1]] = [copy[index + 1], copy[index]];
+    this._remapAlertModes((i) => (i === index ? index + 1 : i === index + 1 ? index : i));
     // Follow the moved alert in the edit panel
     if (this._editingIndex === index) this._editingIndex = index + 1;
     else if (this._editingIndex === index + 1) this._editingIndex = index;
@@ -11157,9 +11206,51 @@ class AlertTickerCardEditor extends LitElement {
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, transparent);
         font-size: 0.85rem;
       }
-      .alert-mode-selector--4 {
+      .add-alert-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .add-alert-grid .add-alert-template-wrap {
+        grid-column: 1 / -1;
+      }
+      .btn-add-alert--mode {
+        margin-top: 0;
+        font-size: 0.9rem;
+      }
+      .alert-mode-banner {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .alert-mode-banner-title {
+        font-weight: 600;
+      }
+      .sections-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        font-size: 0.85rem;
+      }
+      .section-divider--toggle {
+        cursor: pointer;
+        user-select: none;
+      }
+      .section-divider--toggle::before {
+        content: "▸ ";
+      }
+      .section-divider--toggle.section-divider--open::before {
+        content: "▾ ";
+      }
+      .section-divider--toggle:hover {
+        color: var(--primary-text-color, #212121);
+      }
+      .atc-sec-hidden {
+        display: none !important;
       }
       .rs-advanced > summary {
         cursor: pointer;
