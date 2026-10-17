@@ -826,6 +826,10 @@ function _atcIsFilterAlert(a) {
 // ---------------------------------------------------------------------------
 const ATC_RULE_FIELDS = ["entity_id", "name", "domain", "device_class", "area", "floor", "label",
   "integration", "state", "attribute", "last_changed_ago"];
+/** Fields of a `source: notifications` rule set. */
+const ATC_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message",
+  "notification_tag", "notification_sent_to"];
+const ATC_NOTIFICATION_TYPES = ["mobile_app", "persistent", "notify"];
 const ATC_RULE_OPS = ["eq", "ne", "in", "not_in", "contains", "not_contains", "regex",
   "gt", "lt", "ge", "le", "between"];
 const _ATC_NEGATED_OP = { ne: "eq", not_in: "in", not_contains: "contains" };
@@ -882,13 +886,19 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
       const t = es.last_changed ? new Date(es.last_changed).getTime() : NaN;
       return isNaN(t) ? [] : [String(Math.max(0, (Date.now() - t) / 1000))];
     }
+    case "notification_title":   return [es.attributes?.title ?? ""];
+    case "notification_message": return [es.attributes?.message ?? ""];
+    case "notification_text":    return [es.attributes?.title ?? "", es.attributes?.message ?? ""];
+    case "notification_tag":     return present(es.attributes?.tag) ? [es.attributes.tag] : [];
+    case "notification_sent_to": return present(es.attributes?.service) ? [es.attributes.service] : [];
     default: return [];
   }
 }
 
 /** Compiles one rule into (values[]) → boolean. Unknown fields/ops compile to "never matches". */
 function _atcCompileRule(rule) {
-  if (!rule || !ATC_RULE_FIELDS.includes(rule.field) || !ATC_RULE_OPS.includes(rule.op)) return () => false;
+  if (!rule || !(ATC_RULE_FIELDS.includes(rule.field) || ATC_NOTIFICATION_FIELDS.includes(rule.field))
+      || !ATC_RULE_OPS.includes(rule.op)) return () => false;
   const negated = _ATC_NEGATED_OP[rule.op];
   const op = negated || rule.op;
   const targets = (Array.isArray(rule.values) && rule.values.length ? rule.values : [rule.value])
@@ -937,7 +947,10 @@ function _atcCompileRule(rule) {
  * Compile once per evaluation pass; the result is cheap to call per entity.
  */
 function _atcCompileRuleSet(def) {
-  if (!def || def._missing || !Array.isArray(def.groups)) return () => false;
+  if (!def || def._missing) return () => false;
+  const forNotifications = def.source === "notifications";
+  if (!Array.isArray(def.groups) && !forNotifications) return () => false;
+  const allGroups = Array.isArray(def.groups) ? def.groups : [];
   const compileGroup = (g) => {
     const rules = (Array.isArray(g?.rules) ? g.rules : []).map(r => ({ rule: r, test: _atcCompileRule(r) }));
     const any = g?.match === "any";
@@ -946,12 +959,29 @@ function _atcCompileRuleSet(def) {
       return any ? rules.some(hit) : rules.every(hit);
     };
   };
-  const withRules = def.groups.filter(g => Array.isArray(g?.rules) && g.rules.length);
+  const withRules = allGroups.filter(g => Array.isArray(g?.rules) && g.rules.length);
   const includes = withRules.filter(g => g.mode !== "exclude").map(compileGroup);
   const excludes = withRules.filter(g => g.mode === "exclude").map(compileGroup);
-  if (!includes.length) return () => false;
-  return (hass, eid, es) =>
+  const rulesPass = (hass, eid, es) =>
     includes.every(g => g(hass, eid, es)) && !excludes.some(g => g(hass, eid, es));
+
+  if (!forNotifications) {
+    if (!includes.length) return () => false; // never "every entity in Home Assistant"
+    return (hass, eid, es) => !_ATC_NOTIFY.isNotification(eid, es) && rulesPass(hass, eid, es);
+  }
+  // Notification set: type (+ device) filter first; with no rules, every notification
+  // of the chosen types matches.
+  const types = new Set((Array.isArray(def.notification_types) && def.notification_types.length
+    ? def.notification_types : ["mobile_app", "persistent"]).filter(t => ATC_NOTIFICATION_TYPES.includes(t)));
+  const devices = Array.isArray(def.mobile_devices) && def.mobile_devices.length
+    ? new Set(def.mobile_devices.map(d => String(d).replace(/^notify\./, ""))) : null;
+  return (hass, eid, es) => {
+    if (!_ATC_NOTIFY.isNotification(eid, es)) return false;
+    const type = es.attributes.notification_type;
+    if (!types.has(type)) return false;
+    if (type === "mobile_app" && devices && !devices.has(es.attributes.service)) return false;
+    return rulesPass(hass, eid, es);
+  };
 }
 
 /**
@@ -981,7 +1011,11 @@ function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
   const excluded    = applyExclude ? new Set(a.entity_filter_exclude || a.device_class_exclude || []) : null;
   const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
   const areaFilter  = a.area_filter  ? (Array.isArray(a.area_filter)  ? a.area_filter  : [a.area_filter])  : null;
+  const def = ruleSet ? (a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
+  const wantsNotifications = !!def && def.source === "notifications";
   return (eid, es) => {
+    // Notifications are matched only by notification rule sets (and those match nothing else).
+    if (_ATC_NOTIFY.isNotification(eid, es) !== wantsNotifications) return false;
     if (excluded && excluded.has(eid)) return false;
     if (a.device_class && es.attributes?.device_class !== a.device_class) return false;
     if (textMatch && !textMatch(eid) && !textMatch(es.attributes?.friendly_name || "")) return false;
@@ -1008,24 +1042,46 @@ function _atcFilterEntities(hass, a, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// Notification source — Home Assistant notifications as matchable entities.
+// Notification source — lets rule sets react to Home Assistant notifications.
 //
-// With `notifications: true` on a card, every HA notification appears to that
-// card's rules as a synthetic entity in hass.states:
-//   notification.persistent_<id>    persistent (UI) notifications — any user
-//   notification.<service>_<n>      notify.* service calls (mobile app, Telegram, …)
-//                                   — admin users only, like alertticker_sync
-// state: "active" · attributes: title, message, source ("persistent" | "notify"),
-//   service, tag, created_at, friendly_name (title, else message, else service)
+// A rule set with `source: notifications` watches notifications instead of
+// entities. It picks the notification types to watch and, optionally, which
+// mobile devices; its rules then use notification fields (title, message, …):
 //
-// Persistent notifications stay until dismissed in HA. notify.* calls have no
-// "dismissed" event, so they expire after `notifications_retention` seconds
-// (card option, default 3600). Because the entities live in hass.states, rule
-// sets, message placeholders, the overlay and the editor preview all handle
-// them like any other entity — e.g. a rule set
-//   { field: domain, op: eq, value: notification } + { field: attribute, attribute: title, op: contains, value: Alert }
-// Synthetic entities exist only in this browser; HA never sees them. Like TTS
-// and push, this works only while a browser has the dashboard open.
+//   rule_sets:
+//     - id: bypass
+//       name: Bypass notifications
+//       source: notifications
+//       notification_types: [mobile_app]          # mobile_app | persistent | notify
+//       mobile_devices: [mobile_app_pixel_8]      # optional — omitted = every mobile device
+//       groups:
+//         - mode: include
+//           match: all
+//           rules:
+//             - { field: notification_text, op: contains, value: Bypass }
+//
+//   mobile_app  — notify.mobile_app_* calls (the HA Companion app)
+//   persistent  — persistent notifications (the HA notification bell); stay
+//                 until dismissed in HA
+//   notify      — every other notify service (Telegram, email, notify groups,
+//                 notify.send_message …)
+//
+// A notification rule set with no rules matches every notification of the
+// chosen types. Entity rule sets, entity_filter, device_class, label_filter and
+// area_filter never match notifications, and notification rule sets never
+// match entities.
+//
+// How it works: the card subscribes to persistent_notification/subscribe and,
+// for admin users only (HA restricts call_service events to admins), to
+// call_service events of the notify domain. Each notification is added to the
+// card's own copy of hass.states as an internal notification.* entry, so the
+// alert pipeline (overlay, snooze, history, TTS/push) needs no special case.
+// Those entries exist only in this browser — HA is never written to. notify
+// calls have no "dismissed" event, so they expire after
+// `notifications_retention` seconds (card option, default 3600). Like TTS and
+// push, this works only while a browser has the dashboard open. Notifications
+// this card sends itself (push_notify, TTS via notify) are ignored, so an alert
+// can never re-trigger itself.
 // ---------------------------------------------------------------------------
 const _ATC_NOTIFY = (() => {
   const DEFAULT_RETENTION_S = 3600;
@@ -1034,7 +1090,8 @@ const _ATC_NOTIFY = (() => {
   let _gen = 0;               // bumps on every (re)subscribe; late results from an old one are dropped
   let _unsubs = [];
   let _persistent = {};       // notification_id → { title, message, created_at }
-  let _notifies = [];         // [{ id, service, title, message, tag, at }], newest last
+  let _notifies = [];         // [{ id, type, service, title, message, tag, at }], newest last
+  let _outgoing = [];         // [{ service, message, at }] — notify calls this card made itself
   let _seq = 0;
   let _version = 0;           // bumps on every change; keys the merged-states cache
   let _retentionS = DEFAULT_RETENTION_S;
@@ -1066,19 +1123,43 @@ const _ATC_NOTIFY = (() => {
     _changed();
   }
 
+  /** Called right before the card itself calls a notify service, so the echo is ignored. */
+  function noteOutgoing(service, message) {
+    const now = Date.now();
+    _outgoing = _outgoing.filter(o => now - o.at < 15000);
+    _outgoing.push({ service: String(service || "").replace(/^notify\./, ""), message: String(message ?? ""), at: now });
+  }
+
+  function _isOwnEcho(service, message) {
+    const now = Date.now();
+    const i = _outgoing.findIndex(o => now - o.at < 15000 && o.service === service && o.message === message);
+    if (i < 0) return false;
+    _outgoing.splice(i, 1);
+    return true;
+  }
+
   function _onCallService(ev) {
     const d = ev?.data;
     if (!d || d.domain !== "notify") return;
-    const svc = String(d.service || "");
+    let svc = String(d.service || "");
     const data = d.service_data || {};
     // notify.persistent_notification creates a persistent notification, which the
     // other subscription already reports — skip it here so it isn't listed twice.
     if (svc === "persistent_notification") return;
+    // notify.send_message targets notify.* entities; use the entity as "sent to".
+    if (svc === "send_message") {
+      const target = data.entity_id ?? d.target?.entity_id;
+      const first = Array.isArray(target) ? target[0] : target;
+      if (first) svc = String(first);
+    }
+    const message = data.message != null ? String(data.message) : "";
+    if (_isOwnEcho(svc, message)) return;
     _notifies.push({
       id: `${slug(svc)}_${++_seq}`,
+      type: /^mobile_app_/.test(svc) ? "mobile_app" : "notify",
       service: svc,
       title: data.title != null ? String(data.title) : "",
-      message: data.message != null ? String(data.message) : "",
+      message,
       tag: data.data?.tag != null ? String(data.data.tag) : "",
       at: Date.now(),
     });
@@ -1133,7 +1214,7 @@ const _ATC_NOTIFY = (() => {
         entity_id: id, state: "active",
         attributes: {
           friendly_name: n.title || n.message || "Notification",
-          title: n.title, message: n.message, source: "persistent", service: "persistent_notification",
+          title: n.title, message: n.message, notification_type: "persistent", service: "persistent_notification",
           tag: "", notification_id: nid, created_at: n.created_at, icon: "mdi:bell",
         },
         last_changed: n.created_at, last_updated: n.created_at,
@@ -1146,8 +1227,8 @@ const _ATC_NOTIFY = (() => {
         entity_id: id, state: "active",
         attributes: {
           friendly_name: n.title || n.message || n.service,
-          title: n.title, message: n.message, source: "notify", service: n.service,
-          tag: n.tag, created_at: at, icon: "mdi:message-badge",
+          title: n.title, message: n.message, notification_type: n.type, service: n.service,
+          tag: n.tag, created_at: at, icon: n.type === "mobile_app" ? "mdi:cellphone-message" : "mdi:message-badge",
         },
         last_changed: at, last_updated: at,
       };
@@ -1176,7 +1257,7 @@ const _ATC_NOTIFY = (() => {
   function dismiss(hass, entityId) {
     const es = augment(hass)?.states?.[entityId];
     if (!es) return;
-    if (es.attributes.source === "persistent") {
+    if (es.attributes.notification_type === "persistent") {
       hass.callService?.("persistent_notification", "dismiss", { notification_id: es.attributes.notification_id });
     } else {
       _notifies = _notifies.filter(n => `notification.${n.id}` !== entityId);
@@ -1185,23 +1266,61 @@ const _ATC_NOTIFY = (() => {
   }
 
   return {
-    ensure, augment, dismiss, setRetention, entities,
+    ensure, augment, dismiss, setRetention, entities, noteOutgoing,
+    /** True for the internal notification.* entries this manager adds to hass.states. */
+    isNotification: (eid, es) => typeof eid === "string" && eid.startsWith("notification.") && !!es?.attributes?.notification_type,
     onChange(fn) { _listeners.add(fn); return () => _listeners.delete(fn); },
     // test hooks
-    _onPersistent, _onCallService, _reset() { _stop(); _seq = 0; },
+    _onPersistent, _onCallService, _reset() { _stop(); _seq = 0; _outgoing = []; },
   };
 })();
+
+const _ATC_NOTIFICATION_TYPE_LABEL = { mobile_app: "Mobile app", persistent: "Persistent", notify: "Notify" };
+
+/**
+ * Fills {title} {message} {sent_via} {sent_to} for an alert raised by a notification.
+ * Run AFTER template rendering so notification text is never evaluated as a template.
+ * Leaves the placeholders untouched for entity alerts.
+ */
+function _atcNotificationPlaceholders(msg, es) {
+  if (!msg || !msg.includes("{") || !_ATC_NOTIFY.isNotification(es?.entity_id, es)) return msg;
+  const at = es.attributes;
+  return msg
+    .replace(/\{title\}/g, () => at.title || "")
+    .replace(/\{message\}/g, () => at.message || "")
+    .replace(/\{sent_via\}/g, () => _ATC_NOTIFICATION_TYPE_LABEL[at.notification_type] || "")
+    .replace(/\{sent_to\}/g, () => at.service || "");
+}
+
+/** True when the card config has a notification rule set (by id or inline). */
+function _atcUsesNotifications(config) {
+  const isN = (rs) => !!rs && typeof rs === "object" && rs.source === "notifications";
+  if (Array.isArray(config?.rule_sets) && config.rule_sets.some(isN)) return true;
+  return Array.isArray(config?.alerts) && config.alerts.some(a => isN(a?.rule_set));
+}
+
+/** Returns hass as a card with this config sees it: plus notifications when it uses them. */
+function _atcHassFor(config, hass) {
+  if (!hass || !_atcUsesNotifications(config)) return hass;
+  _ATC_NOTIFY.ensure(hass);
+  _ATC_NOTIFY.setRetention(config.notifications_retention);
+  return _ATC_NOTIFY.augment(hass);
+}
 
 // The editor is a separate module (loaded on demand by getConfigElement), so it
 // reaches the same matcher through this namespace instead of keeping its own copy —
 // the editor's entity preview then always agrees with what the card shows.
 globalThis.__alertTickerShared = Object.freeze({
   notifications: _ATC_NOTIFY,
+  usesNotifications: _atcUsesNotifications,
+  hassFor: _atcHassFor,
   isFilterAlert: _atcIsFilterAlert,
   filterEntities: _atcFilterEntities,
   attachRuleSets: _atcAttachRuleSets,
   lookupRuleSet: _atcLookupRuleSet,
   ruleFields: ATC_RULE_FIELDS,
+  notificationFields: ATC_NOTIFICATION_FIELDS,
+  notificationTypes: ATC_NOTIFICATION_TYPES,
   ruleOps: ATC_RULE_OPS,
 });
 
@@ -1727,6 +1846,7 @@ const _ATC_OVERLAY = (() => {
         .replace(/\{%-?\s*[\s\S]*?-?%\}/g, "")
         .replace(/\{\{[\s\S]*?\}\}/g, "…");
     }
+    msg = es ? _atcNotificationPlaceholders(msg, es) : msg;
     return msg.replace(/\s+/g, " ").trim() || a.badge_label || es?.attributes?.friendly_name || a.entity || "";
   }
 
@@ -1776,6 +1896,11 @@ const _ATC_OVERLAY = (() => {
   // Resolves the alert message asynchronously, using HA's WebSocket render_template
   // for complex Jinja2 expressions. Falls back to synchronous _resolveMsg on error/timeout.
   function _resolveMsgAsync(hass, a) {
+    const es = a.entity ? hass.states?.[a.entity] : null;
+    return _resolveMsgAsyncBase(hass, a).then(m => (es ? _atcNotificationPlaceholders(m, es) : m));
+  }
+
+  function _resolveMsgAsyncBase(hass, a) {
     const fallback = _resolveMsg(hass, a);
     const raw = a.message || "";
     if (!raw.includes("{{") && !raw.includes("{%")) return Promise.resolve(fallback);
@@ -1814,12 +1939,11 @@ const _ATC_OVERLAY = (() => {
     for (const [id, reg] of _regs) {
       try {
         if (!reg.config?.overlay_mode) continue;
-        // Only cards with `notifications: true` see notification.* entities.
+        // Only cards with a notification rule set see notifications.
         let hass = rawHass;
-        if (reg.config.notifications) {
-          _ATC_NOTIFY.ensure(rawHass);
+        if (_atcUsesNotifications(reg.config)) {
           _ATC_NOTIFY.setRetention(reg.config.notifications_retention);
-          hass = notifyHass || (notifyHass = _ATC_NOTIFY.augment(rawHass));
+          hass = notifyHass || (notifyHass = _atcHassFor(reg.config, rawHass));
         }
         const prevMap  = _prevS.get(id) || new Map();
         const newMap   = new Map();
@@ -2425,16 +2549,8 @@ class AlertTickerCard extends LitElement {
     // Resolve `rule_set: <id>` references once, so the card and the overlay watcher
     // both evaluate the alert's rule set without needing the card config.
     this._config.alerts = _atcAttachRuleSets(this._config.alerts, this._config.rule_sets);
-    // Re-derive the hass this card sees in case `notifications` was just switched on/off.
-    if (this._rawHass) {
-      if (this._config.notifications) {
-        _ATC_NOTIFY.ensure(this._rawHass);
-        _ATC_NOTIFY.setRetention(this._config.notifications_retention);
-        this._hass = _ATC_NOTIFY.augment(this._rawHass);
-      } else {
-        this._hass = this._rawHass;
-      }
-    }
+    // Re-derive the hass this card sees in case a notification rule set was just added/removed.
+    if (this._rawHass) this._hass = _atcHassFor(this._config, this._rawHass);
     // Stop/start cycle timer based on test_mode
     if (this._config.test_mode) {
       this._stopCycleTimer();
@@ -2471,12 +2587,8 @@ class AlertTickerCard extends LitElement {
   set hass(hass) {
     const prevHass = this._hass;
     this._rawHass = hass;
-    // notifications: true → add HA notifications as notification.* entities (see _ATC_NOTIFY)
-    if (this._config?.notifications && hass) {
-      _ATC_NOTIFY.ensure(hass);
-      _ATC_NOTIFY.setRetention(this._config.notifications_retention);
-      hass = _ATC_NOTIFY.augment(hass);
-    }
+    // A notification rule set adds HA notifications to what this card sees (see _ATC_NOTIFY).
+    hass = _atcHassFor(this._config, hass);
     this._hass = hass;
     // Detect language (default to "en" if HA language is not IT)
     const raw = (hass.language || "en").toLowerCase().split("-")[0];
@@ -3787,6 +3899,12 @@ class AlertTickerCard extends LitElement {
   }
 
   _resolveMessage(alert) {
+    const msg = this._resolveMessageBase(alert);
+    const es = alert?.entity ? this._hass?.states?.[alert.entity] : null;
+    return es ? _atcNotificationPlaceholders(msg, es) : msg;
+  }
+
+  _resolveMessageBase(alert) {
     let msg = alert.message || "";
     if (!msg.includes("{")) return msg;
 
@@ -4339,6 +4457,7 @@ class AlertTickerCard extends LitElement {
     if (notifyService) {
       const notifyType = alert.tts_notify_type || this._config?.tts_notify_type || "tts";
       try {
+        _ATC_NOTIFY.noteOutgoing(notifyService, message);
         this._hass.callService("notify", notifyService, {
           message,
           data: { type: notifyType },
@@ -4381,6 +4500,7 @@ class AlertTickerCard extends LitElement {
     // include dynamic values inside actions without extra config.
     const data = this._resolvePushNotifyData(alert.push_notify_data, alert);
     try {
+      _ATC_NOTIFY.noteOutgoing(notifyService, message);
       this._hass.callService("notify", notifyService, {
         ...(title ? { title } : {}),
         message,
@@ -5105,7 +5225,7 @@ class AlertTickerCard extends LitElement {
     this._mounted = true;
     if (!this._notifyUnsub) {
       this._notifyUnsub = _ATC_NOTIFY.onChange(() => {
-        if (this._config?.notifications && this._rawHass) this.hass = this._rawHass;
+        if (this._rawHass && _atcUsesNotifications(this._config)) this.hass = this._rawHass;
       });
     }
     // Bug #135 fix 1: if a watcher-fired overlay is showing for this card's alerts,
