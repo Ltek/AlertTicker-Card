@@ -30,6 +30,8 @@
 
 - 🎨 **53 visual themes** — from subtle `info` to cinematic 3D, timer countdowns, weather badges, and a full music-player mode with album art
 - ⚡ **Trigger on anything** — entity state, attribute, template, device class, entity filter with wildcards, AND/OR logic
+- 🧩 **Rule Sets** — reusable, named filters by label, area, floor, device class, integration, state, other entities, time of day and weekday; edit once, every alert using it follows
+- 📨 **Notification alerts** — raise an alert when Home Assistant sends a notification: by sender (automation / script), destination (phone, notify group, the 🔔 bell) and text
 - 📢 **Notify everywhere** — in-dashboard cycling ticker, **global overlay banner** visible from any view, **TTS** (Alexa / Google / any speaker), **push notifications**, **camera snapshots & live streams**
 - 🌍 **12 languages** — IT, EN, FR, DE, NL, VI, RU, DA, CS, PT-BR, ES, TR
 - 🎯 **Per-alert control** — themes, time windows, user visibility, snooze, priority, actions, group/collapse, `active_state_entity` for HA automations
@@ -54,6 +56,9 @@
 - [Mobile Push Notifications](#-mobile-push-notifications-new-in-13)
 - [Music Player Mode](#-music-player-mode-new-in-126) — album art, playback controls, vinyl mode
 - [Camera in Overlay & Card Background](#-camera-in-overlay-banner--card-background-snapshot-122--live-stream--card-bg-131) — snapshots & live streams
+- [Rule Sets](#-rule-sets) — reusable entity filters and conditions
+- [Notification alerts](#-notification-alerts) — alerts from Home Assistant notifications
+- [Upgrading: filters & conditions become rules](#upgrading-filters--conditions-become-rules)
 - [Themes](#themes) — all 53 themes explained
 - [How It Works](#how-it-works)
 - [Installation](#installation) — HACS + manual
@@ -412,6 +417,111 @@ alerts:
 
 ---
 
+## 🧩 Rule Sets
+
+A **rule set** is a named, reusable filter. Define it once in the editor's **🧩 Rule Sets** section (or under `rule_sets:` in YAML) and use it in any number of alerts: an alert that uses a rule set shows once for every entity that matches. Edit the set and every alert using it follows.
+
+```yaml
+type: custom:alert-ticker-card
+rule_sets:
+  - id: entry_open
+    name: Entry open at night
+    groups:
+      - mode: include          # include = must match · exclude = drops what matches
+        match: all             # all | any — how this group's rules combine
+        rules:
+          - { field: label, op: in, values: [security] }
+          - { field: area,  op: eq, value: entry }
+          - { field: state, op: in, values: ["on", open, unlocked] }
+          - { field: time,  op: between, value: "21:00", value2: "06:00" }
+      - mode: exclude
+        match: any
+        rules:
+          - { field: label, op: in, values: [ignore_alerts] }
+alerts:
+  - rule_set: entry_open
+    theme: intruder
+    message: "{name} open"
+```
+
+An entity matches when **every include group** matches and **no exclude group** does. A set with no include rule matches nothing — never "every entity in Home Assistant".
+
+| Field | Matches |
+|---|---|
+| `entity_id`, `name`, `domain` | The entity's id, friendly name, domain |
+| `device_class`, `integration` | Its device class, the integration it comes from |
+| `area`, `floor` | Its area (else its device's area) / that area's floor — by id or name |
+| `label` | Its labels (any of them) |
+| `state`, `attribute` | Its state, or an attribute (`attribute: battery_level`, dot paths and `[n]` work) |
+| `last_changed_ago` | Seconds since it last changed — "unchanged for at least N seconds" |
+| `other_entity` | **Another** entity's state or attribute (`entity:`, optional `attribute:`) — e.g. *only while the alarm is armed*. `{entity}` means the matched entity |
+| `time` | Time of day, `"HH:MM"` — `between` crosses midnight |
+| `weekday` | `mon` … `sun` (or 1–7) |
+
+Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`, `lt`, `ge`, `le`, `between`, `older` / `newer` (age of a timestamp, in seconds). Text compares ignore upper/lower case unless the rule has `case_sensitive: true` (*Match upper / lower case* in the editor). Values may be `{{ templates }}`, e.g. `value: "{{ states('input_number.battery_threshold') }}"`.
+
+In the editor, a live **"N entities match"** list sits under every set — click an entity to exclude it (✗) or bring it back (✓). **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
+
+**Single-entity alerts** keep their own condition (operator + state) and take **extra conditions** as rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week* and *Unchanged for*:
+
+```yaml
+- entity: binary_sensor.front_door
+  state: "on"
+  rule_set:                      # inline: rules for this alert only
+    groups:
+      - mode: include
+        match: all
+        rules:
+          - { field: other_entity, entity: alarm_control_panel.home, op: in, values: [armed_away, armed_night] }
+          - { field: time, op: between, value: "22:00", value2: "07:00" }
+```
+
+---
+
+## 📨 Notification alerts
+
+A **notification rule set** (`watch: notifications`) raises an alert for each Home Assistant notification that matches — mobile app pushes, persistent notifications (the 🔔 bell) and any other notify service.
+
+```yaml
+rule_sets:
+  - id: bypass_to_phones
+    name: Bypass notifications
+    watch: notifications
+    notification_source: [automation.alarm_bypass_watchdog]        # omit = any sender
+    notification_destination: [mobile_app, notify.parent_phones]    # omit = anywhere
+    groups:                                                         # optional conditions
+      - mode: include
+        match: all
+        rules:
+          - { field: notification_text, op: contains, value: bypass }
+alerts:
+  - rule_set: bypass_to_phones
+    theme: notification
+    message: "{title}"
+```
+
+- **Notification Source** — which automation or script sent it, traced through Home Assistant's context ids (a script called by an automation counts for both). Notifications from no automation (integrations, Developer Tools) match only *any sender*.
+- **Notification Destination** — `mobile_app` (any phone), `persistent` (the bell), a phone (`notify.mobile_app_pixel_7` or its notify entity), a notify service or group (`notify.parent_phones`), or a notify entity. A phone also matches notifications sent to a group it belongs to; a group send counts as **one** notification.
+- **Conditions** — `notification_text` (title or message), `notification_title`, `notification_message`, `notification_tag`, `notification_sent_to`.
+- **Message placeholders** — `{title}`, `{message}`, `{sent_by}`, `{sent_to}`. Notification text is shown as written, never run as a template.
+- **Tap** dismisses the notification (a persistent one is dismissed in Home Assistant). In **test mode** an alert with nothing matching shows a sample notification.
+- In the editor: **Scan automations for notifications** lists which automations and scripts send them (read-only, adapted from [Notification Manager Card](https://github.com/Ltek/notification-manager-card)); **Recent notifications** lists what arrived, with **Use** to build a rule from one.
+
+> ⚠️ Like TTS and push, this runs in the browser: only notifications that arrive while a dashboard is open are seen. Who sent a notification, and notifications other than the bell, are visible to **admin users only** — Home Assistant restricts those events. A sent notification has no "dismissed" event, so its alert is kept for `notifications_retention` seconds (default 3600).
+
+---
+
+## Upgrading: filters & conditions become rules
+
+Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filter`, `entity_filter_exclude`, `conditions` / `conditions_logic` or `time_range` **keep working unchanged**. When you open such a card in the visual editor, it converts them — the card shows exactly the same alerts — and saves the result on your next save:
+
+- multi-entity alerts → a shared rule set (their filters, own condition, extra conditions and time range; identical ones share one set)
+- single-entity alerts → their extra conditions and time range become inline rules
+
+`trigger_delay`, `on_change`, `visible_to` and all display and action options stay on the alert. The sections below that describe the old fields still apply to YAML.
+
+---
+
 ## Themes
 
 ### 🚨 Critical
@@ -628,6 +738,8 @@ Fire an alert whenever an entity changes state, regardless of the `operator`/`st
 
 ### time_range — restrict to a time window
 
+> 🧩 Still supported in YAML. The visual editor stores this as a [rule set](#-rule-sets).
+
 Show an alert only within a specific time window. Supports midnight crossing:
 
 ```yaml
@@ -662,6 +774,8 @@ Restrict an alert to specific Home Assistant users without separate cards or con
 | *(omit)* | Shown to everyone |
 
 ### device_class — auto-discover by device class
+
+> 🧩 Still supported in YAML. The visual editor stores this as a [rule set](#-rule-sets).
 
 Instead of listing individual entities or writing a text filter, specify a HA device class. The card auto-discovers every entity with that class and creates one alert per match:
 
@@ -845,6 +959,8 @@ Tap 📋 to flip the card and view a timestamped log of every alert that became 
 
 ### entity_filter
 
+> 🧩 Still supported in YAML. The visual editor stores this as a [rule set](#-rule-sets).
+
 Instead of specifying a single entity, write a text filter. The card finds all entities whose ID or friendly name contains the filter text and creates one alert per match:
 
 ```yaml
@@ -955,6 +1071,8 @@ Supported operators: `=` (default), `!=`, `>`, `<`, `>=`, `<=`, `contains`, `not
 ```
 
 ### AND / OR multi-entity conditions
+
+> 🧩 Still supported in YAML. The visual editor stores this as a [rule set](#-rule-sets).
 
 ```yaml
 - entity: binary_sensor.front_door
@@ -1167,7 +1285,13 @@ In the visual editor, open the **Alerts tab** → enable **Test mode** at the bo
 
 No YAML knowledge required. The editor uses a **hub-and-spoke** layout: the main menu shows all sections as tiles; click any tile to open it.
 
+### 🧩 Rule Sets tab
+
+Create **entity** and **notification** rule sets: name, include / exclude groups, rules as field + operator + value with Home Assistant's own pickers (labels, areas, floors, entities) and lists of your device classes, domains and integrations, and a live match list. See [Rule Sets](#-rule-sets) and [Notification alerts](#-notification-alerts).
+
 ### 🔔 Alerts tab
+
+Add an alert with **+ Single entity**, **+ Entity rule set**, **+ Notification rule set** or **Add from template**. An alert's type is fixed when it's added. Each section of the alert editor collapses (*Expand all / Collapse all* at the top).
 
 #### 📚 Alert templates *(new in 1.3.9.9.7)*
 
@@ -1349,6 +1473,8 @@ The tab shows an **ON** badge when overlay mode is active.
 | `show_snooze_button` | `boolean` | `true` | Set `false` to hide the 💤 snooze button completely |
 | `test_mode` | `boolean` | `false` | Show all alerts as active (ignore conditions) — for editor preview only |
 | `alerts` | `list` | `[]` | List of alert objects |
+| `rule_sets` | `list` | — | Named [rule sets](#-rule-sets) used by alerts' `rule_set:` |
+| `notifications_retention` | `number` | `3600` | Seconds a sent (mobile / notify) notification stays an alert — see [Notification alerts](#-notification-alerts) |
 
 ### Alert-level options
 
@@ -1356,6 +1482,7 @@ The tab shows an **ON** badge when overlay mode is active.
 |--------|------|----------|-------------|
 | `name` | `string` | ❌ | Editor display label for this alert panel |
 | `entity` | `string` | ✅* | Entity ID |
+| `rule_set` | `string\|object` | ✅* | Id of a [rule set](#-rule-sets) (one alert per match), or inline rules — on a single-entity alert, its extra conditions |
 | `entity_filter` | `string` | ✅* | Text filter — supports `*` wildcard (replaces `entity`) |
 | `entity_filter_exclude` | `list` | ❌ | Entity IDs to exclude from `entity_filter` or `device_class` match |
 | `device_class` | `string` | ✅* | HA device class (e.g. `smoke`, `battery`, `motion`) — auto-discovers all matching entities |
