@@ -1599,8 +1599,17 @@ const ET = {
     notify_any_destination_short: "anywhere",
     notify_source: "Notification Source",
     notify_source_help: "Who sends the notification.",
-    notify_only_sources: "Only these automations or scripts",
-    notify_seen_sending: "Seen sending notifications",
+    notify_src_all: "ALL Automations & Scripts",
+    notify_src_only: "Only Selected Automations & Scripts",
+    notify_seen_sending: "Recently Sent Detected Notifications",
+    notify_src_automation: "Automation",
+    notify_src_script: "Script",
+    notify_src_pick_one: "Add at least one automation or script, or choose ALL Automations & Scripts.",
+    ruleset_chip_rules: "{n} rule(s)",
+    ruleset_chip_sources: "{n} automation(s) / script(s)",
+    ruleset_chip_destinations: "{n} destination(s)",
+    ruleset_chip_conditions: "{n} condition(s)",
+    ruleset_chip_used: "Used by {n} alert(s)",
     notify_scan: "Scan automations for notifications",
     notify_rescan: "Scan again",
     notify_scan_help: "Reads your automations and scripts to find the ones that send notifications.",
@@ -1611,7 +1620,6 @@ const ET = {
     notify_template_target: "templated target",
     notify_via_scripts: "through script",
     notify_use: "Use",
-    notify_any_automation_script: "Any automation or script",
     notify_destination: "Notification Destination",
     notify_destination_help: "Where the notification goes.",
     notify_dest_all: "All destinations",
@@ -1620,7 +1628,7 @@ const ET = {
     notify_add: "Add",
     notify_none_left: "All added",
     notify_close: "Close",
-    notify_dest_persistent: "Notification bell (persistent)",
+    notify_dest_persistent: "🔔 Persistent Notification",
     notify_dest_mobile: "Mobile device",
     notify_dest_services: "Notify service or group",
     notify_dest_entities: "Other notify entity",
@@ -8768,6 +8776,31 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
+  /** Summary chips for a rule set in the list: what it watches and how much is selected. */
+  _ruleSetChips(rs, used) {
+    const chip = (text, cls = "") => html`<span class="rs-chip rs-chip--static ${cls}">${text}</span>`;
+    const n = (key, count) => this._t(key).replace("{n}", count);
+    const rules = (rs.groups || []).reduce((sum, g) => sum + ((g?.rules || []).length), 0);
+    const out = [];
+    if (this._isNotificationSet(rs)) {
+      out.push(chip(`🔔 ${this._t("ruleset_watch_notifications")}`, "rs-chip--kind"));
+      const src = Array.isArray(rs.notification_source) ? rs.notification_source : [];
+      out.push(chip(src.length ? n("ruleset_chip_sources", src.length) : this._t("notify_src_all")));
+      const dst = Array.isArray(rs.notification_destination) ? rs.notification_destination : [];
+      if (!dst.length) out.push(chip(`🌐 ${this._t("notify_dest_all")}`));
+      if (dst.includes("mobile_app")) out.push(chip(`📱 ${this._t("notify_dest_all_mobile")}`));
+      if (dst.includes("persistent")) out.push(chip(this._t("notify_dest_persistent")));
+      const others = dst.filter((d) => d !== "mobile_app" && d !== "persistent").length;
+      if (others) out.push(chip(n("ruleset_chip_destinations", others)));
+      if (rules) out.push(chip(n("ruleset_chip_conditions", rules)));
+    } else {
+      out.push(chip(`🧩 ${this._t("ruleset_watch_entities")}`, "rs-chip--kind"));
+      out.push(chip(n("ruleset_chip_rules", rules)));
+    }
+    out.push(chip(used ? n("ruleset_chip_used", used) : this._t("ruleset_unused"), used ? "" : "rs-chip--off"));
+    return out;
+  }
+
   _renderRuleSetItem(rs, si) {
     const open = this._rsEditing === si;
     const used = this._ruleSetUsage(rs.id);
@@ -8776,9 +8809,7 @@ class AlertTickerCardEditor extends LitElement {
         <span class="alert-icon-badge">${this._isNotificationSet(rs) ? "🔔" : "🧩"}</span>
         <div class="alert-summary-text">
           <div class="alert-entity-label">${rs.name || rs.id}</div>
-          <div class="alert-msg-label">${this._isNotificationSet(rs)
-            ? `${(rs.notification_source || []).map((e) => this._entityName(e)).join(", ") || this._t("notify_any_source_short")} → ${(rs.notification_destination || []).map((d) => this._destName(d)).join(", ") || this._t("notify_any_destination_short")}`
-            : this._t("ruleset_watch_entities")} · ${used ? `${this._t("ruleset_used_by")}: ${used}` : this._t("ruleset_unused")}</div>
+          <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
         </div>
         <div class="alert-actions">
           <span class="alert-expand-indicator"></span>
@@ -8842,7 +8873,7 @@ class AlertTickerCardEditor extends LitElement {
       <div class="rs-notify-box">
         <div class="rs-section-title">📤 ${this._t("notify_source")}</div>
         <div class="helper-text">${this._t("notify_source_help")}</div>
-        ${this._renderAnyOnly(si, "notification_source", "notify_any_source", "notify_only_sources")}
+        ${this._renderAnyOnly(si, "notification_source", "notify_src_all", "notify_src_only")}
         ${this._rsOnly(si, "notification_source") ? this._renderSourcePicker(rs, si) : ""}
       </div>
       <div class="rs-notify-box">
@@ -8915,7 +8946,7 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /**
-   * Ticks/unticks the "All mobile devices" (mobile_app) or "Notification bell"
+   * Ticks/unticks the "All mobile devices" (mobile_app) or "Persistent Notification"
    * (persistent) destination. Ticking All mobile devices drops the individual
    * phones it now covers.
    */
@@ -8976,14 +9007,15 @@ class AlertTickerCardEditor extends LitElement {
     const scannedIds = new Set(scanned.map((r) => r.entity_id));
     const seenOnly = seen.filter((s) => !scannedIds.has(s.entity_id));
     const isAdmin = this._hass?.user?.is_admin === true;
+    const ofDomain = (dom) => Object.keys(this._hass?.states || {})
+      .filter((e) => e.startsWith(dom + "."))
+      .map((e) => ({ value: e, label: this._entityName(e) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
     return html`
-      <ha-selector
-        .hass="${this._hass}"
-        .selector="${{ entity: { multiple: true, filter: [{ domain: "automation" }, { domain: "script" }] } }}"
-        .value="${picked}"
-        .label="${this._t("notify_any_automation_script")}"
-        @value-changed="${(e) => { const v = e.detail.value; this._updateRuleSet(si, { notification_source: Array.isArray(v) && v.length ? v : undefined }); }}"
-      ></ha-selector>
+      ${this._rsChips(si, "notification_source", (v) => this._entityName(v))}
+      ${!picked.length ? html`<div class="rs-warning">⚠ ${this._t("notify_src_pick_one")}</div>` : ""}
+      ${this._rsAddSelect(si, "notification_source", "notify_src_automation", ofDomain("automation"), false)}
+      ${this._rsAddSelect(si, "notification_source", "notify_src_script", ofDomain("script"), false)}
       ${seenOnly.length ? this._rsCollapsible(`seen_${si}`, this._t("notify_seen_sending"), seenOnly.length,
         seenOnly.map((s) => this._rsCheck(si, "notification_source", s.entity_id, this._entityName(s.entity_id)))) : ""}
       <div class="rs-scan-row">
@@ -9011,7 +9043,7 @@ class AlertTickerCardEditor extends LitElement {
 
   /**
    * Destination picker. Chips show what's chosen. "All destinations" (= no filter),
-   * "All mobile devices" and "Notification bell" are always-visible checkboxes;
+   * "All mobile devices" and "Persistent Notification" are always-visible checkboxes;
    * each kind of destination has its own "+ Add" dropdown. A dropdown is greyed out
    * while a checkbox already covers it.
    */
@@ -9035,7 +9067,7 @@ class AlertTickerCardEditor extends LitElement {
       <div class="rs-dest-boxes">
         ${box(`🌐 ${this._t("notify_dest_all")}`, all, false, setAll)}
         ${box(`📱 ${this._t("notify_dest_all_mobile")}`, allMobile, all, setAllMobile)}
-        ${box(`🔔 ${this._t("notify_dest_persistent")}`, bell, all, setBell)}
+        ${box(this._t("notify_dest_persistent"), bell, all, setBell)}
       </div>
       ${this._rsAddSelect(si, key, "notify_dest_mobile", d.mobile, allMobile)}
       ${this._rsAddSelect(si, key, "notify_dest_services", d.services, all)}
@@ -10978,6 +11010,16 @@ class AlertTickerCardEditor extends LitElement {
         border-radius: 14px;
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, transparent);
         font-size: 0.85rem;
+      }
+      .rs-chips--summary {
+        margin-top: 4px;
+      }
+      .rs-chip--static {
+        padding: 1px 8px;
+        font-size: 0.75rem;
+      }
+      .rs-chip--kind {
+        font-weight: 600;
       }
       .rs-chip--off {
         opacity: 0.5;

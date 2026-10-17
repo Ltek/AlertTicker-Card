@@ -1412,9 +1412,9 @@ function _atcDestIndex(hass) {
   return idx;
 }
 
-/** Human name for a destination id: "S23", "All Phones", "Notification bell"… */
+/** Human name for a destination id: "S23", "All Phones", "Persistent Notification"… */
 function _atcDestinationName(hass, id) {
-  if (id === "persistent") return "Notification bell";
+  if (id === "persistent") return "Persistent Notification";
   if (id === "mobile_app") return "All mobile devices";
   const named = _atcDestIndex(hass).names.get(id);
   if (named) return named;
