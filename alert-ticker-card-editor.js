@@ -1536,8 +1536,8 @@ const ET = {
     tab_overlay: "Overlay",
     tab_allclear: "All Clear",
     tab_rulesets: "Rule Sets",
-    hub_desc_rulesets: "Reusable entity filters by label, area, floor, device class, state and more",
-    rulesets_intro: "A rule set is a reusable entity filter. Pick one in an alert's filter mode and the alert shows once for every entity that matches. Edit a set here and every alert using it follows.",
+    hub_desc_rulesets: "Reusable filters for entities and Home Assistant notifications",
+    rulesets_intro: "A rule set is a reusable filter. It watches either entities (by label, area, floor, device class, state…) or Home Assistant notifications (mobile app, persistent…). Pick one in an alert's filter mode and the alert shows once for every match. Edit a set here and every alert using it follows.",
     ruleset_empty: "No rule sets yet.",
     ruleset_add: "Add rule set",
     ruleset_default_name: "Rule set",
@@ -1584,14 +1584,37 @@ const ET = {
     ruleset_value_to: "To",
     ruleset_and: "and",
     ruleset_value_list_help: "Separate several values with commas.",
-    notifications_toggle: "Use HA notifications as alert sources",
-    notifications_help: "Each Home Assistant notification becomes a temporary entity your rule sets can match: notification.* with attributes title, message, source (persistent / notify), service and tag. Persistent notifications stay until dismissed in HA; notify.* messages (mobile app, Telegram…) are kept for the time set below.",
-    notifications_current: "notification(s) right now",
-    notifications_admin_only: "notify.* messages can only be seen by admin users. For this user only persistent notifications are available.",
-    notifications_retention: "Keep notify.* messages for (seconds)",
-    notifications_retention_help: "notify.* calls have no \"dismissed\" event in HA, so they expire after this time. Default 3600 (1 hour).",
-    ruleset_add_notify: "Add notification rule set (title or message contains \"Alert\")",
-    ruleset_notify_default_name: "Notifications containing Alert",
+    ruleset_watches: "Watches",
+    ruleset_watch_entities: "Entities",
+    ruleset_watch_notifications: "Notifications",
+    ruleset_add_notify: "Add notification rule set",
+    ruleset_notify_default_name: "Notifications",
+    notify_types: "Notification types to detect",
+    notify_type_mobile_app: "Mobile app",
+    notify_type_mobile_app_help: "Notifications sent to the Home Assistant Companion app (notify.mobile_app_…).",
+    notify_type_persistent: "Persistent",
+    notify_type_persistent_help: "Notifications in the Home Assistant notification bell. They stay until dismissed in HA.",
+    notify_type_notify: "Other notify services",
+    notify_type_notify_help: "Every other notify service: Telegram, email, notify groups, notify.send_message…",
+    notify_types_none: "Pick at least one notification type.",
+    notify_devices_all: "All mobile devices",
+    notify_devices_specific: "Only these mobile devices",
+    notify_devices: "Mobile devices",
+    notify_devices_none: "No mobile app devices found in Home Assistant.",
+    notify_conditions: "Conditions (optional)",
+    notify_conditions_help: "Without conditions, every notification of the types above raises the alert. Text comparisons ignore upper/lower case.",
+    notify_preview_count: "matching notification(s) right now",
+    notify_preview_zero: "No matching notifications right now — the alert appears when one arrives.",
+    notify_placeholders_help: "Use {title}, {message}, {sent_via} and {sent_to} in the alert message to show the notification.",
+    notify_client_side: "Only notifications that arrive while this dashboard is open in a browser or the Companion app are detected.",
+    notifications_admin_only: "Only admin users can see Mobile app and Other notify notifications — Home Assistant doesn't share them with other users.",
+    notifications_retention: "Keep each mobile / notify alert for (seconds)",
+    notifications_retention_help: "Home Assistant doesn't report when these are dismissed, so each one is shown for this long. Default 3600 (1 hour). Persistent notifications clear when dismissed in HA.",
+    ruleset_field_notification_text: "Title or message",
+    ruleset_field_notification_title: "Title",
+    ruleset_field_notification_message: "Message",
+    ruleset_field_notification_tag: "Tag",
+    ruleset_field_notification_sent_to: "Sent to (notify service)",
     ruleset_attribute_path: "Attribute name (dot path, e.g. battery_level)",
     alert_rule_set: "Rule set (optional)",
     alert_rule_set_help: "Only match entities in this rule set. Combinable with the filters above (AND logic).",
@@ -5871,7 +5894,13 @@ const RS_FIELD_OPS = {
   state:            ["in", "not_in", "eq", "ne", "contains", "not_contains", "regex", "gt", "lt", "ge", "le", "between"],
   attribute:        ["eq", "ne", "in", "not_in", "contains", "not_contains", "regex", "gt", "lt", "ge", "le", "between"],
   last_changed_ago: ["lt", "gt", "between"],
+  notification_text:    ["contains", "not_contains", "eq", "ne", "regex"],
+  notification_title:   ["contains", "not_contains", "eq", "ne", "regex"],
+  notification_message: ["contains", "not_contains", "eq", "ne", "regex"],
+  notification_tag:     ["eq", "ne", "in", "not_in", "contains", "regex"],
+  notification_sent_to: ["in", "not_in", "contains", "regex"],
 };
+const RS_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message", "notification_tag", "notification_sent_to"];
 const RS_LIST_OPS = ["in", "not_in"];
 const RS_NUMERIC_OPS = ["gt", "lt", "ge", "le", "between"];
 
@@ -8356,13 +8385,12 @@ class AlertTickerCardEditor extends LitElement {
     return Array.isArray(this._config?.rule_sets) ? this._config.rule_sets : [];
   }
 
-  /** hass as the card sees it: with `notifications: true`, plus the notification.* entities. */
+  /** hass as the card sees it — including notifications when the config has a notification rule set. */
   _previewHass() {
-    const n = globalThis.__alertTickerShared?.notifications;
-    if (!this._hass || !n || !this._config?.notifications) return this._hass;
-    n.ensure(this._hass);
-    if (!this._notifyUnsub) this._notifyUnsub = n.onChange(() => this.requestUpdate());
-    return n.augment(this._hass);
+    const shared = globalThis.__alertTickerShared;
+    if (!this._hass || !shared?.hassFor || !shared.usesNotifications(this._config)) return this._hass;
+    if (!this._notifyUnsub) this._notifyUnsub = shared.notifications.onChange(() => this.requestUpdate());
+    return shared.hassFor(this._config, this._hass);
   }
 
   disconnectedCallback() {
@@ -8370,25 +8398,17 @@ class AlertTickerCardEditor extends LitElement {
     if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
   }
 
-  /** Adds a ready-made set matching notifications whose title or message contains a word. */
-  _addNotificationRuleSet() {
-    const list = this._ruleSets();
-    const taken = new Set(list.map((rs) => String(rs.id)));
-    let id = "notifications_alert", n = 2;
-    while (taken.has(id)) id = `notifications_alert_${n++}`;
-    const rs = {
-      id,
-      name: this._t("ruleset_notify_default_name"),
-      groups: [
-        { mode: "include", match: "all", rules: [{ field: "domain", op: "in", values: ["notification"] }] },
-        { mode: "include", match: "any", rules: [
-          { field: "attribute", attribute: "title", op: "contains", value: "Alert" },
-          { field: "attribute", attribute: "message", op: "contains", value: "Alert" },
-        ] },
-      ],
-    };
-    this._rsEditing = list.length;
-    this._fireConfig({ ...this._config, notifications: true, rule_sets: [...list, rs] });
+  _isNotificationSet(rs) {
+    return !!rs && rs.source === "notifications";
+  }
+
+  /** Mobile devices that can receive notifications: the notify.mobile_app_* services. */
+  _mobileDevices() {
+    const svcs = Object.keys(this._hass?.services?.notify || {}).filter((k) => k.startsWith("mobile_app_"));
+    return svcs.sort().map((id) => {
+      const pretty = id.slice("mobile_app_".length).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      return { value: id, label: pretty || id };
+    });
   }
 
   /** Display name for an alert's rule_set value (id, inline object, or missing id). */
@@ -8415,20 +8435,30 @@ class AlertTickerCardEditor extends LitElement {
     this._setRuleSets(list);
   }
 
-  _newRule(field = "label") {
+  _newRule(field) {
+    field = field || "label";
     return { field, op: (RS_FIELD_OPS[field] || ["eq"])[0], ...(RS_LIST_OPS.includes((RS_FIELD_OPS[field] || [])[0]) ? { values: [] } : {}) };
   }
 
-  _addRuleSet() {
+  _addRuleSet(kind = "entities") {
     const list = this._ruleSets();
     const taken = new Set(list.map((rs) => String(rs.id)));
+    const base = kind === "notifications" ? "notifications" : "rule_set";
     let n = list.length + 1;
-    while (taken.has(`rule_set_${n}`)) n++;
-    const rs = {
-      id: `rule_set_${n}`,
-      name: `${this._t("ruleset_default_name")} ${n}`,
-      groups: [{ mode: "include", match: "all", rules: [this._newRule()] }],
-    };
+    while (taken.has(`${base}_${n}`)) n++;
+    const rs = kind === "notifications"
+      ? {
+          id: `${base}_${n}`,
+          name: `${this._t("ruleset_notify_default_name")} ${n}`,
+          source: "notifications",
+          notification_types: ["mobile_app", "persistent"],
+          groups: [{ mode: "include", match: "all", rules: [this._newRule("notification_text")] }],
+        }
+      : {
+          id: `${base}_${n}`,
+          name: `${this._t("ruleset_default_name")} ${n}`,
+          groups: [{ mode: "include", match: "all", rules: [this._newRule()] }],
+        };
     this._rsEditing = list.length;
     this._setRuleSets([...list, rs]);
   }
@@ -8454,6 +8484,29 @@ class AlertTickerCardEditor extends LitElement {
     const ruleSets = list.map((rs, i) => (i === si ? { ...rs, id: slug } : rs));
     const alerts = (this._config.alerts || []).map((a) => (a && a.rule_set === oldId ? { ...a, rule_set: slug } : a));
     this._setRuleSets(ruleSets, alerts);
+  }
+
+  /** Switches a set between watching entities and notifications. Its rules don't carry over. */
+  _setRuleSetSource(si, source) {
+    const rs = this._ruleSets()[si] || {};
+    if ((rs.source === "notifications") === (source === "notifications")) return;
+    const { source: _s, notification_types: _t, mobile_devices: _d, ...rest } = rs;
+    const next = source === "notifications"
+      ? { ...rest, source: "notifications", notification_types: ["mobile_app", "persistent"],
+          groups: [{ mode: "include", match: "all", rules: [this._newRule("notification_text")] }] }
+      : { ...rest, groups: [{ mode: "include", match: "all", rules: [this._newRule()] }] };
+    const list = [...this._ruleSets()];
+    list[si] = next;
+    this._setRuleSets(list);
+  }
+
+  _toggleNotificationType(si, type, on) {
+    const rs = this._ruleSets()[si] || {};
+    const cur = new Set(Array.isArray(rs.notification_types) ? rs.notification_types : ["mobile_app", "persistent"]);
+    if (on) cur.add(type); else cur.delete(type);
+    const order = ["mobile_app", "persistent", "notify"];
+    const types = order.filter((t) => cur.has(t));
+    this._updateRuleSet(si, { notification_types: types, ...(type === "mobile_app" && !on ? { mobile_devices: undefined } : {}) });
   }
 
   /** Copies the set's groups, lets `fn` mutate the copy, then saves it. */
@@ -8515,44 +8568,13 @@ class AlertTickerCardEditor extends LitElement {
       ${this._renderSectionHeader("tab_rulesets")}
       <div class="tab-content">
         <div class="helper-text rs-intro">${this._t("rulesets_intro")}</div>
-        ${this._renderNotificationsBox()}
         ${list.length === 0
           ? html`<div class="empty-alerts">${this._t("ruleset_empty")}</div>`
           : list.map((rs, si) => this._renderRuleSetItem(rs, si))}
-        <button class="btn-add-alert" @click="${() => this._addRuleSet()}">+ ${this._t("ruleset_add")}</button>
-      </div>
-    `;
-  }
-
-  _renderNotificationsBox() {
-    const cfg = this._config;
-    const on = !!cfg.notifications;
-    if (on) this._previewHass(); // starts the subscription so the count is live
-    const count = on ? Object.keys(globalThis.__alertTickerShared?.notifications?.entities() || {}).length : 0;
-    return html`
-      <div class="rs-notify-box">
-        <div class="form-row-inline">
-          <span>🔔 ${this._t("notifications_toggle")}</span>
-          <ha-switch
-            .checked="${on}"
-            @change="${(e) => this._fireConfig({ ...this._config, notifications: e.target.checked || undefined, notifications_retention: e.target.checked ? this._config.notifications_retention : undefined })}"
-          ></ha-switch>
+        <div class="rs-add-row">
+          <button class="btn-add-alert" @click="${() => this._addRuleSet("entities")}">+ ${this._t("ruleset_add")}</button>
+          <button class="btn-add-alert" @click="${() => this._addRuleSet("notifications")}">+ 🔔 ${this._t("ruleset_add_notify")}</button>
         </div>
-        <div class="helper-text">${this._t("notifications_help")}</div>
-        ${on ? html`
-          <div class="helper-text"><b>${count}</b> ${this._t("notifications_current")}</div>
-          ${this._hass?.user?.is_admin !== true ? html`<div class="rs-warning">⚠ ${this._t("notifications_admin_only")}</div>` : ""}
-          <ha-input
-            type="number"
-            .label="${this._t("notifications_retention")}"
-            .value="${cfg.notifications_retention != null ? String(cfg.notifications_retention) : "3600"}"
-            min="60" placeholder="3600"
-            @change="${(e) => { const v = parseInt(e.target.value, 10); this._fireConfig({ ...this._config, notifications_retention: v > 0 && v !== 3600 ? v : undefined }); }}"
-          ></ha-input>
-          <div class="helper-text">${this._t("notifications_retention_help")}</div>
-          <div class="helper-text" style="color:var(--warning-color,#f4a835)">${this._t("client_side_warning")}</div>
-        ` : ""}
-        <button class="rs-btn rs-btn--small" @click="${() => this._addNotificationRuleSet()}">+ ${this._t("ruleset_add_notify")}</button>
       </div>
     `;
   }
@@ -8562,10 +8584,12 @@ class AlertTickerCardEditor extends LitElement {
     const used = this._ruleSetUsage(rs.id);
     return html`
       <div class="alert-item ${open ? "is-editing" : ""}" @click="${() => { this._rsEditing = open ? -1 : si; }}">
-        <span class="alert-icon-badge">🧩</span>
+        <span class="alert-icon-badge">${this._isNotificationSet(rs) ? "🔔" : "🧩"}</span>
         <div class="alert-summary-text">
           <div class="alert-entity-label">${rs.name || rs.id}</div>
-          <div class="alert-msg-label">${rs.id} · ${used ? `${this._t("ruleset_used_by")}: ${used}` : this._t("ruleset_unused")}</div>
+          <div class="alert-msg-label">${this._isNotificationSet(rs)
+            ? (rs.notification_types?.length ? rs.notification_types : ["mobile_app", "persistent"]).map((t) => this._t("notify_type_" + t)).join(", ")
+            : this._t("ruleset_watch_entities")} · ${used ? `${this._t("ruleset_used_by")}: ${used}` : this._t("ruleset_unused")}</div>
         </div>
         <div class="alert-actions">
           <span class="alert-expand-indicator"></span>
@@ -8579,9 +8603,10 @@ class AlertTickerCardEditor extends LitElement {
 
   _renderRuleSetForm(rs, si) {
     const groups = Array.isArray(rs.groups) ? rs.groups : [];
-    const hasInclude = groups.some((g) => g && g.mode !== "exclude" && Array.isArray(g.rules) && g.rules.length);
+    const isN = this._isNotificationSet(rs);
+    const hasInclude = isN || groups.some((g) => g && g.mode !== "exclude" && Array.isArray(g.rules) && g.rules.length);
     const addGroup = (mode) => this._updateRsGroups(si, (gs) =>
-      gs.push({ mode, match: mode === "exclude" ? "any" : "all", rules: [this._newRule()] }));
+      gs.push({ mode, match: mode === "exclude" ? "any" : "all", rules: [this._newRule(isN ? "notification_text" : undefined)] }));
     return html`
       <div class="alert-edit-panel">
         <div class="alert-form">
@@ -8598,6 +8623,16 @@ class AlertTickerCardEditor extends LitElement {
             ></ha-input>
             <div class="helper-text">${this._t("ruleset_id_help")}</div>
           </div>
+          <div>
+            <div class="native-select-label">${this._t("ruleset_watches")}</div>
+            <div class="alert-mode-selector">
+              <button class="alert-mode-btn ${!isN ? "active" : ""}" @click="${() => this._setRuleSetSource(si, "entities")}">🧩 ${this._t("ruleset_watch_entities")}</button>
+              <button class="alert-mode-btn ${isN ? "active" : ""}" @click="${() => this._setRuleSetSource(si, "notifications")}">🔔 ${this._t("ruleset_watch_notifications")}</button>
+            </div>
+          </div>
+          ${isN ? this._renderNotificationOptions(rs, si) : ""}
+          ${isN ? html`<div class="native-select-label">${this._t("notify_conditions")}</div>
+            <div class="helper-text">${this._t("notify_conditions_help")}</div>` : ""}
           ${groups.map((g, gi) => this._renderRsGroup(si, g || {}, gi))}
           ${!hasInclude ? html`<div class="rs-warning">⚠ ${this._t("ruleset_no_include")}</div>` : ""}
           <div class="rs-add-row">
@@ -8606,6 +8641,66 @@ class AlertTickerCardEditor extends LitElement {
           </div>
           ${this._renderRsPreview(rs, `rs_${si}`)}
         </div>
+      </div>
+    `;
+  }
+
+  _renderNotificationOptions(rs, si) {
+    const types = new Set(Array.isArray(rs.notification_types) && rs.notification_types.length ? rs.notification_types : ["mobile_app", "persistent"]);
+    const devices = Array.isArray(rs.mobile_devices) ? rs.mobile_devices : [];
+    const specific = devices.length > 0 || this._rsSpecificDevices?.has(si);
+    const mobile = this._mobileDevices();
+    const needsAdmin = (types.has("mobile_app") || types.has("notify")) && this._hass?.user?.is_admin !== true;
+    const typeRow = (t) => html`
+      <ha-formfield .label="${this._t("notify_type_" + t)}">
+        <ha-checkbox
+          .checked="${types.has(t)}"
+          @change="${(e) => this._toggleNotificationType(si, t, e.target.checked)}"
+        ></ha-checkbox>
+      </ha-formfield>
+      <div class="helper-text rs-type-help">${this._t("notify_type_" + t + "_help")}</div>`;
+    return html`
+      <div class="rs-notify-box">
+        <div class="native-select-label">${this._t("notify_types")}</div>
+        ${typeRow("mobile_app")}
+        ${types.has("mobile_app") ? html`
+          <div class="rs-devices">
+            <select class="native-select rs-select" @change="${(e) => {
+              const only = e.target.value === "specific";
+              const next = new Set(this._rsSpecificDevices || []);
+              if (only) next.add(si); else next.delete(si);
+              this._rsSpecificDevices = next;
+              if (!only) this._updateRuleSet(si, { mobile_devices: undefined });
+              else this.requestUpdate();
+            }}">
+              <option value="all" ?selected="${!specific}">${this._t("notify_devices_all")}</option>
+              <option value="specific" ?selected="${specific}">${this._t("notify_devices_specific")}</option>
+            </select>
+            ${specific ? html`
+              <ha-selector
+                .hass="${this._hass}"
+                .selector="${{ select: { multiple: true, custom_value: true, mode: "list", options: mobile } }}"
+                .value="${devices}"
+                .label="${this._t("notify_devices")}"
+                @value-changed="${(e) => { const v = e.detail.value; this._updateRuleSet(si, { mobile_devices: Array.isArray(v) && v.length ? v : undefined }); }}"
+              ></ha-selector>
+              ${mobile.length === 0 ? html`<div class="helper-text">${this._t("notify_devices_none")}</div>` : ""}
+            ` : ""}
+          </div>` : ""}
+        ${typeRow("persistent")}
+        ${typeRow("notify")}
+        ${types.size === 0 ? html`<div class="rs-warning">⚠ ${this._t("notify_types_none")}</div>` : ""}
+        ${needsAdmin ? html`<div class="rs-warning">⚠ ${this._t("notifications_admin_only")}</div>` : ""}
+        ${types.has("mobile_app") || types.has("notify") ? html`
+          <ha-input
+            type="number"
+            .label="${this._t("notifications_retention")}"
+            .value="${this._config.notifications_retention != null ? String(this._config.notifications_retention) : "3600"}"
+            min="60" placeholder="3600"
+            @change="${(e) => { const v = parseInt(e.target.value, 10); this._fireConfig({ ...this._config, notifications_retention: v > 0 && v !== 3600 ? v : undefined }); }}"
+          ></ha-input>
+          <div class="helper-text">${this._t("notifications_retention_help")}</div>` : ""}
+        <div class="helper-text" style="color:var(--warning-color,#f4a835)">${this._t("notify_client_side")}</div>
       </div>
     `;
   }
@@ -8630,13 +8725,15 @@ class AlertTickerCardEditor extends LitElement {
         </div>
         ${rules.map((r, ri) => this._renderRsRule(si, gi, r || {}, ri))}
         <button class="rs-btn rs-btn--small"
-          @click="${() => this._updateRsGroups(si, (gs) => gs[gi].rules.push(this._newRule()))}">+ ${this._t("ruleset_add_rule")}</button>
+          @click="${() => this._updateRsGroups(si, (gs) => gs[gi].rules.push(this._newRule(this._isNotificationSet(this._ruleSets()[si]) ? "notification_text" : undefined)))}">+ ${this._t("ruleset_add_rule")}</button>
       </div>
     `;
   }
 
   _renderRsRule(si, gi, r, ri) {
-    const fields = globalThis.__alertTickerShared?.ruleFields || Object.keys(RS_FIELD_OPS);
+    const isN = this._isNotificationSet(this._ruleSets()[si]);
+    const fields = isN ? RS_NOTIFICATION_FIELDS
+      : (globalThis.__alertTickerShared?.ruleFields || Object.keys(RS_FIELD_OPS).filter((f) => !RS_NOTIFICATION_FIELDS.includes(f)));
     const ops = [...(RS_FIELD_OPS[r.field] || [])];
     if (r.op && !ops.includes(r.op)) ops.push(r.op); // YAML-written op outside the UI list
     return html`
@@ -8685,6 +8782,9 @@ class AlertTickerCardEditor extends LitElement {
       selector = { select: { multiple: true, custom_value: true, mode: "dropdown", options: this._rsOptions(r.field) } };
     }
     if (!selector && r.field === "entity_id" && isList) selector = { entity: { multiple: true } };
+    if (!selector && r.field === "notification_sent_to" && isList) {
+      selector = { select: { multiple: true, custom_value: true, mode: "dropdown", options: Object.keys(this._hass?.services?.notify || {}).sort() } };
+    }
     if (selector) {
       return html`
         <ha-selector
@@ -8729,9 +8829,10 @@ class AlertTickerCardEditor extends LitElement {
   _renderRsPreview(def, key) {
     const shared = globalThis.__alertTickerShared;
     if (!this._hass || !shared || !def) return "";
+    const isN = this._isNotificationSet(def);
     const matched = shared.filterEntities(this._previewHass(), { rule_set: def }, { applyExclude: false });
     if (!matched.length) {
-      return html`<div class="helper-text"><span style="color:var(--error-color,#db4437)">${this._t("entity_filter_zero")}</span></div>`;
+      return html`<div class="helper-text"><span style="color:${isN ? "var(--secondary-text-color,#888)" : "var(--error-color,#db4437)"}">${this._t(isN ? "notify_preview_zero" : "entity_filter_zero")}</span></div>`;
     }
     const open = this._filterPreviewOpen.has(key);
     return html`
@@ -8741,12 +8842,17 @@ class AlertTickerCardEditor extends LitElement {
           if (next.has(key)) next.delete(key); else next.add(key);
           this._filterPreviewOpen = next;
         }}">
-          <span style="color:var(--success-color,#43a047)"><b>${matched.length}</b> ${this._t("entity_filter_count")}</span>
+          <span style="color:var(--success-color,#43a047)"><b>${matched.length}</b> ${this._t(isN ? "notify_preview_count" : "entity_filter_count")}</span>
           <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
         </button>
         ${open ? html`
           <div class="filter-entity-list">
-            ${matched.map(([id, s]) => html`
+            ${matched.map(([id, s]) => isN ? html`
+              <div class="filter-entity-row">
+                <span class="filter-entity-name">${s.attributes.title || s.attributes.message}</span>
+                <span class="filter-entity-id">${s.attributes.title ? s.attributes.message : ""}</span>
+                <span class="filter-entity-state">${this._t("notify_type_" + s.attributes.notification_type)}${s.attributes.notification_type === "persistent" ? "" : ` · ${s.attributes.service}`}</span>
+              </div>` : html`
               <div class="filter-entity-row">
                 <span class="filter-entity-name">${s.attributes.friendly_name || id}</span>
                 <span class="filter-entity-id">${id}</span>
@@ -8774,13 +8880,14 @@ class AlertTickerCardEditor extends LitElement {
             this._updateAlert(index, { rule_set: v || undefined });
           }}">
             <option value="" ?selected="${!ref}">—</option>
-            ${list.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${rs.name || rs.id}</option>`)}
+            ${list.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${this._isNotificationSet(rs) ? "🔔" : "🧩"} ${rs.name || rs.id}</option>`)}
             ${inline ? html`<option value="__inline__" selected>${this._t("alert_rule_set_inline")}</option>` : ""}
             ${missing ? html`<option value="${ref}" selected>⚠ ${ref}</option>` : ""}
           </select>
         </div>
         ${missing ? html`<div class="rs-warning">⚠ ${this._t("alert_rule_set_missing")}</div>` : ""}
         ${def && !alert.entity_filter && !alert.device_class ? this._renderRsPreview(def, `alert_rs_${index}`) : ""}
+        ${this._isNotificationSet(def) ? html`<div class="helper-text">💬 ${this._t("notify_placeholders_help")}</div>` : ""}
         <div class="helper-text">
           ${this._t("alert_rule_set_help")}
           <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._sectionChanged("rulesets"); }}">${this._t("alert_rule_set_manage")}</a>
@@ -10474,6 +10581,15 @@ class AlertTickerCardEditor extends LitElement {
       }
 
       /* ---- Rule sets ---- */
+      .rs-type-help {
+        margin: -6px 0 2px 52px;
+      }
+      .rs-devices {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 0 0 4px 52px;
+      }
       .rs-notify-box {
         display: flex;
         flex-direction: column;
