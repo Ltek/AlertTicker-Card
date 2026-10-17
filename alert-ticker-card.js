@@ -825,12 +825,31 @@ function _atcIsFilterAlert(a) {
 // (ne / not_in / not_contains) hold when NO value matches.
 // ---------------------------------------------------------------------------
 const ATC_RULE_FIELDS = ["entity_id", "name", "domain", "device_class", "area", "floor", "label",
-  "integration", "state", "attribute", "last_changed_ago"];
+  "integration", "state", "attribute", "last_changed_ago", "other_entity", "time", "weekday"];
 /** Condition fields of a `watch: notifications` rule set. */
 const ATC_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message",
   "notification_tag", "notification_sent_to"];
 const ATC_RULE_OPS = ["eq", "ne", "in", "not_in", "contains", "not_contains", "regex",
-  "gt", "lt", "ge", "le", "between"];
+  "gt", "lt", "ge", "le", "between", "older", "newer"];
+const ATC_WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+// ── Re-check scheduling ──────────────────────────────────────────────────────
+// Time-dependent rules (time, weekday, last_changed_ago, older / newer) change
+// result as time passes, not only when an entity changes. While evaluating,
+// each such rule notes the next moment its result can flip; the card re-checks
+// then. Reset before a pass, read after it.
+const _ATC_WAKE = { at: Infinity };
+function _atcWakeReset() { _ATC_WAKE.at = Infinity; }
+function _atcWakeNote(ms) { if (ms > Date.now() && ms < _ATC_WAKE.at) _ATC_WAKE.at = ms; }
+function _atcNextMinute() { const d = new Date(); d.setSeconds(0, 0); return d.getTime() + 60000; }
+
+/** "HH:MM" → minutes since midnight, or null. */
+function _atcParseHM(v) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(v ?? "").trim());
+  if (!m) return null;
+  const h = +m[1], mi = +m[2];
+  return h < 24 && mi < 60 ? h * 60 + mi : null;
+}
 const _ATC_NEGATED_OP = { ne: "eq", not_in: "in", not_contains: "contains" };
 /** Stand-in for a `rule_set:` id that doesn't exist in `rule_sets:` — matches nothing. */
 const _ATC_MISSING_RULE_SET = Object.freeze({ groups: [], _missing: true });
@@ -857,6 +876,21 @@ function _atcAttachRuleSets(alerts, ruleSets) {
 
 /** The values a rule's field yields for one entity — always an array (empty = field absent). */
 function _atcRuleFieldValues(hass, eid, es, rule) {
+  if (rule.field === "other_entity") {
+    // Another entity's state or attribute; "{entity}" / "this.entity_id" = the matched entity.
+    const oid = (rule.entity === "{entity}" || rule.entity === "this.entity_id") ? eid : rule.entity;
+    const other = oid ? hass.states?.[oid] : null;
+    if (!other) return [];
+    return _atcRuleFieldValues(hass, oid, other, { ...rule, field: rule.attribute ? "attribute" : "state" });
+  }
+  if (rule.field === "time") {
+    const d = new Date();
+    return [String(d.getHours() * 60 + d.getMinutes())];
+  }
+  if (rule.field === "weekday") {
+    const day = new Date().getDay();
+    return [ATC_WEEKDAYS[day], String(day === 0 ? 7 : day)];
+  }
   const meta = hass.entities?.[eid];
   const areaId = meta?.area_id || (meta?.device_id ? hass.devices?.[meta.device_id]?.area_id : null) || null;
   const present = (v) => v != null && v !== "";
@@ -894,30 +928,51 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
   }
 }
 
-/** Compiles one rule into (values[]) → boolean. Unknown fields/ops compile to "never matches". */
+/**
+ * Compiles one rule into (values[], ctx?) → boolean. Unknown fields/ops compile to
+ * "never matches". `ctx.resolve(str)` renders {{ }} values (the card passes its
+ * template cache); without it the mini template evaluator is used.
+ */
 function _atcCompileRule(rule) {
   if (!rule || !(ATC_RULE_FIELDS.includes(rule.field) || ATC_NOTIFICATION_FIELDS.includes(rule.field))
       || !ATC_RULE_OPS.includes(rule.op)) return () => false;
+  const raw = (Array.isArray(rule.values) && rule.values.length ? rule.values : [rule.value]);
+  const isTpl = (v) => typeof v === "string" && (v.includes("{{") || v.includes("{%"));
+  if (raw.some(isTpl) || isTpl(rule.value2)) {
+    // Template values: resolve on each evaluation, compile once per rendered result.
+    const memo = new Map();
+    return (values, ctx) => {
+      const res = (v) => (isTpl(v) ? (ctx?.resolve ? ctx.resolve(v) : (_atcMiniTemplate(ctx?.hass, v) ?? v)) : v);
+      const r = { ...rule, values: Array.isArray(rule.values) ? rule.values.map(res) : undefined, value: res(rule.value), value2: res(rule.value2) };
+      if ([...(r.values || []), r.value, r.value2].some(isTpl)) return false; // not renderable yet
+      const key = JSON.stringify([r.values, r.value, r.value2]);
+      if (!memo.has(key)) { if (memo.size > 20) memo.clear(); memo.set(key, _atcCompileRule(r)); }
+      return memo.get(key)(values, ctx);
+    };
+  }
   const negated = _ATC_NEGATED_OP[rule.op];
   const op = negated || rule.op;
-  const targets = (Array.isArray(rule.values) && rule.values.length ? rule.values : [rule.value])
-    .filter(t => t != null && t !== "").map(String);
-  const lower = targets.map(t => t.toLowerCase());
+  const isTime = rule.field === "time";
+  const conv = (v) => (isTime ? (_atcParseHM(v) ?? NaN) : v);
+  const targets = raw.filter(t => t != null && t !== "").map(t => String(conv(t)));
+  const cs = rule.case_sensitive === true;
+  const norm = (v) => (cs ? v : v.toLowerCase());
+  const lower = targets.map(norm);
   const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
   let test;
   switch (op) {
     case "eq":
     case "in":
       test = (v) => {
-        const lv = v.toLowerCase(), nv = num(v);
+        const lv = norm(v), nv = num(v);
         return lower.some((t, i) => t === lv || (nv !== null && num(targets[i]) === nv));
       };
       break;
     case "contains":
-      test = (v) => { const lv = v.toLowerCase(); return lower.some(t => lv.includes(t)); };
+      test = (v) => { const lv = v.toLowerCase(); return lower.some(t => lv.includes(t.toLowerCase())); };
       break;
     case "regex": {
-      const res = targets.map(t => { try { return new RegExp(t, "i"); } catch (_) { return null; } }).filter(Boolean);
+      const res = targets.map(t => { try { return new RegExp(t, cs ? "" : "i"); } catch (_) { return null; } }).filter(Boolean);
       test = (v) => res.some(re => re.test(v));
       break;
     }
@@ -931,14 +986,43 @@ function _atcCompileRule(rule) {
       break;
     }
     case "between": {
-      const lo = num(rule.value), hi = num(rule.value2);
-      test = (v) => { const n = num(v); return n !== null && lo !== null && hi !== null && n >= lo && n <= hi; };
+      const lo = num(conv(rule.value)), hi = num(conv(rule.value2));
+      test = isTime
+        // time of day: [from, to), crossing midnight when from > to — like time_range
+        ? (v) => { const n = num(v); if (n === null || lo === null || hi === null) return false; return lo <= hi ? (n >= lo && n < hi) : (n >= lo || n < hi); }
+        : (v) => { const n = num(v); return n !== null && lo !== null && hi !== null && n >= lo && n <= hi; };
+      break;
+    }
+    case "older": case "newer": {
+      // value = a timestamp (ISO or epoch); target = seconds. Suppressed right after tab wake (#224).
+      const thr = num(targets[0]);
+      test = (v) => {
+        if (thr === null || _inTimestampGrace()) return false;
+        const ms = _parseTimestamp(v);
+        if (ms == null) return false;
+        _atcWakeNote(ms + thr * 1000);
+        const age = (Date.now() - ms) / 1000;
+        return op === "older" ? age > thr : age < thr;
+      };
       break;
     }
     default: test = () => false;
   }
   if (!targets.length && op !== "between") test = () => false;
-  return negated ? (values) => !values.some(test) : (values) => values.some(test);
+  // Time-dependent fields: note when the result can next change.
+  let wake = null;
+  if (rule.field === "time" || rule.field === "weekday") wake = () => _atcWakeNote(_atcNextMinute());
+  else if (rule.field === "last_changed_ago") {
+    const thrs = [num(rule.value), num(rule.value2), ...targets.map(num)].filter((x) => x !== null);
+    wake = (values) => { const ago = num(values[0]); if (ago !== null) thrs.forEach((t) => _atcWakeNote(Date.now() + (t - ago) * 1000 + 50)); };
+  }
+  const run = negated ? (values) => !values.some(test) : (values) => values.some(test);
+  return wake ? (values) => { wake(values); return run(values); } : run;
+}
+
+/** {{ }} renderer used when no card template cache is available (overlay, editor). */
+function _atcMiniTemplate(hass, str) {
+  try { return hass ? _evalTemplate(hass, str) : null; } catch (_) { return null; }
 }
 
 /**
@@ -953,20 +1037,21 @@ function _atcCompileRuleSet(def) {
   const compileGroup = (g) => {
     const rules = (Array.isArray(g?.rules) ? g.rules : []).map(r => ({ rule: r, test: _atcCompileRule(r) }));
     const any = g?.match === "any";
-    return (hass, eid, es) => {
-      const hit = ({ rule, test }) => test(_atcRuleFieldValues(hass, eid, es, rule));
+    return (hass, eid, es, ctx) => {
+      const c = ctx || { hass };
+      const hit = ({ rule, test }) => test(_atcRuleFieldValues(hass, eid, es, rule), c);
       return any ? rules.some(hit) : rules.every(hit);
     };
   };
   const withRules = allGroups.filter(g => Array.isArray(g?.rules) && g.rules.length);
   const includes = withRules.filter(g => g.mode !== "exclude").map(compileGroup);
   const excludes = withRules.filter(g => g.mode === "exclude").map(compileGroup);
-  const rulesPass = (hass, eid, es) =>
-    includes.every(g => g(hass, eid, es)) && !excludes.some(g => g(hass, eid, es));
+  const rulesPass = (hass, eid, es, ctx) =>
+    includes.every(g => g(hass, eid, es, ctx)) && !excludes.some(g => g(hass, eid, es, ctx));
 
   if (!forNotifications) {
     if (!includes.length) return () => false; // never "every entity in Home Assistant"
-    return (hass, eid, es) => !_ATC_NOTIFY.isNotification(eid, es) && rulesPass(hass, eid, es);
+    return (hass, eid, es, ctx) => !_ATC_NOTIFY.isNotification(eid, es) && rulesPass(hass, eid, es, ctx);
   }
   // Notification set: source and destination first; with neither and no rules,
   // every notification matches.
@@ -974,12 +1059,12 @@ function _atcCompileRuleSet(def) {
     ? new Set(def.notification_source.map(String)) : null;
   const dests = Array.isArray(def.notification_destination) && def.notification_destination.length
     ? def.notification_destination.map(String) : null;
-  return (hass, eid, es) => {
+  return (hass, eid, es, ctx) => {
     if (!_ATC_NOTIFY.isNotification(eid, es)) return false;
     const at = es.attributes;
     if (sources && !(at.sent_by || []).some(s => sources.has(s))) return false;
     if (dests && !_atcDestinationMatches(hass, dests, at.sent_to || [])) return false;
-    return rulesPass(hass, eid, es);
+    return rulesPass(hass, eid, es, ctx);
   };
 }
 
@@ -1512,6 +1597,8 @@ globalThis.__alertTickerShared = Object.freeze({
   attachRuleSets: _atcAttachRuleSets,
   lookupRuleSet: _atcLookupRuleSet,
   ruleFields: ATC_RULE_FIELDS,
+  wakeReset: _atcWakeReset,
+  wakeAt: () => _ATC_WAKE.at,
   notificationFields: ATC_NOTIFICATION_FIELDS,
   isNotificationSet: _atcIsNotificationSet,
   notifyDestinations: _atcNotifyDestinations,
@@ -1550,6 +1637,32 @@ function _isEditMode() {
     const huiRoot = _findHuiRoot(ha.shadowRoot, 0);
     return !!(huiRoot?._editMode);
   } catch (_) { return false; }
+}
+
+// Evaluates common HA template patterns directly from hass.states — no WebSocket needed.
+// Module scope: used by the overlay, the card's navigate action and the rule engine.
+// Supports: {{ state_attr('e','a') }}, {{ states('e') }}, {{ states.e.a }}.
+// Returns the rendered string, or null if the template contains unsupported syntax.
+function _evalTemplate(hass, tpl) {
+  let r = tpl;
+  r = r.replace(/\{\{\s*state_attr\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*\)\s*\}\}/g, (_, e, a) => {
+    const v = hass.states[e]?.attributes?.[a];
+    return v != null ? String(v) : "";
+  });
+  r = r.replace(/\{\{\s*states\s*\(\s*['"]([^'"]+)['"]\s*\)\s*\}\}/g, (_, e) => {
+    return _ovFmtState(hass, hass.states[e], null) || "";
+  });
+  r = r.replace(/\{\{\s*states\.([a-z0-9_]+)\.([a-z0-9_.]+)\s*\}\}/g, (_, e_prefix, rest) => {
+    const parts = rest.split(".");
+    const field = parts[0];
+    const es = hass.states[e_prefix + "." + (field === "state" ? "" : "")];
+    if (!es) return "";
+    if (field === "state") return es.state;
+    let v = es.attributes; for (const p of parts) v = v?.[p];
+    return v != null ? String(v) : "";
+  });
+  if (/\{\{/.test(r) || /\{%/.test(r)) return null; // unsupported syntax remains
+  return r.trim();
 }
 
 // #223 helper: parse a value as a timestamp. Accepts ISO 8601 strings and
@@ -2045,30 +2158,6 @@ const _ATC_OVERLAY = (() => {
     return msg.replace(/\s+/g, " ").trim() || a.badge_label || es?.attributes?.friendly_name || a.entity || "";
   }
 
-  // Evaluates common HA template patterns directly from hass.states — no WebSocket needed.
-  // Supports: {{ state_attr('e','a') }}, {{ states('e') }}, {{ states.e.a }}.
-  // Returns the rendered string, or null if the template contains unsupported syntax.
-  function _evalTemplate(hass, tpl) {
-    let r = tpl;
-    r = r.replace(/\{\{\s*state_attr\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*\)\s*\}\}/g, (_, e, a) => {
-      const v = hass.states[e]?.attributes?.[a];
-      return v != null ? String(v) : "";
-    });
-    r = r.replace(/\{\{\s*states\s*\(\s*['"]([^'"]+)['"]\s*\)\s*\}\}/g, (_, e) => {
-      return _ovFmtState(hass, hass.states[e], null) || "";
-    });
-    r = r.replace(/\{\{\s*states\.([a-z0-9_]+)\.([a-z0-9_.]+)\s*\}\}/g, (_, e_prefix, rest) => {
-      const parts = rest.split(".");
-      const field = parts[0];
-      const es = hass.states[e_prefix + "." + (field === "state" ? "" : "")];
-      if (!es) return "";
-      if (field === "state") return es.state;
-      let v = es.attributes; for (const p of parts) v = v?.[p];
-      return v != null ? String(v) : "";
-    });
-    if (/\{\{/.test(r) || /\{%/.test(r)) return null; // unsupported syntax remains
-    return r.trim();
-  }
 
   // Resolves {placeholders} only — used to pre-substitute before sending to HA engine.
   function _resolvePlaceholders(hass, a, raw) {
