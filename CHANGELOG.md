@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Rule Sets** — named, reusable filters (`rule_sets:`, `rule_set:` on alerts) with include / exclude groups and the fields `entity_id`, `name`, `domain`, `device_class`, `area`, `floor`, `label`, `integration`, `state`, `attribute`, `last_changed_ago`, `other_entity`, `time` and `weekday`; operators `eq` `ne` `in` `not_in` `contains` `not_contains` `regex` `gt` `lt` `ge` `le` `between` `older` `newer`; `{{ template }}` values. Editor: a 🧩 Rule Sets section with HA pickers, a live match list (click to exclude), "used by" links and *Create alert from this rule set*.
+- **Notification alerts** — `watch: notifications` rule sets raise alerts from Home Assistant notifications, by Notification Source (automation / script, via context ids), Notification Destination (phones, notify groups and entities, the bell) and text; placeholders `{title}` `{message}` `{sent_by}` `{sent_to}`; tap dismisses. Editor: a scan for automations that send notifications and a *Recent notifications* list. `notifications_retention` card option.
+- **Inline rules on single-entity alerts** — extra conditions with other entities, time of day, weekday and "unchanged for".
+- Editor: **+ Add** buttons per alert type, collapsible alert-editor sections, summary chips on alerts and rule sets.
+
+### Changed
+
+- The editor converts quick filters (`entity_filter`, `device_class`, `label_filter`, `area_filter`, exclusions), extra `conditions` and `time_range` into rules when a card is opened; the card shows the same alerts. All of them still work in YAML. The Quick filter mode, the extra-conditions list and the time-range section are replaced by rule sets / inline rules.
+- One matching engine for the card, the overlay pop-up and the editor. The pop-up now follows the card where they differed: an empty `state`, no state on an "off" entity, `attribute[n]` paths, missing attributes, `{{ }}` states, and filter alerts' extra conditions (the pop-up ignored them).
+- Faster matching: ~37% less work per card update and ~82% per overlay tick (2,000-entity benchmark); results are shared by the card, the overlay and the editor.
+- `label_filter`- and `area_filter`-only alerts now show the matched entity's name under the message, like `entity_filter` / `device_class` alerts.
+
+### Fixed
+
+- `navigate` tap actions with `{{ }}` in the path threw a ReferenceError.
+
+---
+
 ## [1.3.17] - 2026-10-10
 
 ### Fixed
