@@ -826,10 +826,9 @@ function _atcIsFilterAlert(a) {
 // ---------------------------------------------------------------------------
 const ATC_RULE_FIELDS = ["entity_id", "name", "domain", "device_class", "area", "floor", "label",
   "integration", "state", "attribute", "last_changed_ago"];
-/** Fields of a `source: notifications` rule set. */
+/** Condition fields of a `watch: notifications` rule set. */
 const ATC_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message",
   "notification_tag", "notification_sent_to"];
-const ATC_NOTIFICATION_TYPES = ["mobile_app", "persistent", "notify"];
 const ATC_RULE_OPS = ["eq", "ne", "in", "not_in", "contains", "not_contains", "regex",
   "gt", "lt", "ge", "le", "between"];
 const _ATC_NEGATED_OP = { ne: "eq", not_in: "in", not_contains: "contains" };
@@ -890,7 +889,7 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
     case "notification_message": return [es.attributes?.message ?? ""];
     case "notification_text":    return [es.attributes?.title ?? "", es.attributes?.message ?? ""];
     case "notification_tag":     return present(es.attributes?.tag) ? [es.attributes.tag] : [];
-    case "notification_sent_to": return present(es.attributes?.service) ? [es.attributes.service] : [];
+    case "notification_sent_to": return Array.isArray(es.attributes?.sent_to) ? es.attributes.sent_to.slice() : [];
     default: return [];
   }
 }
@@ -948,7 +947,7 @@ function _atcCompileRule(rule) {
  */
 function _atcCompileRuleSet(def) {
   if (!def || def._missing) return () => false;
-  const forNotifications = def.source === "notifications";
+  const forNotifications = _atcIsNotificationSet(def);
   if (!Array.isArray(def.groups) && !forNotifications) return () => false;
   const allGroups = Array.isArray(def.groups) ? def.groups : [];
   const compileGroup = (g) => {
@@ -969,17 +968,17 @@ function _atcCompileRuleSet(def) {
     if (!includes.length) return () => false; // never "every entity in Home Assistant"
     return (hass, eid, es) => !_ATC_NOTIFY.isNotification(eid, es) && rulesPass(hass, eid, es);
   }
-  // Notification set: type (+ device) filter first; with no rules, every notification
-  // of the chosen types matches.
-  const types = new Set((Array.isArray(def.notification_types) && def.notification_types.length
-    ? def.notification_types : ["mobile_app", "persistent"]).filter(t => ATC_NOTIFICATION_TYPES.includes(t)));
-  const devices = Array.isArray(def.mobile_devices) && def.mobile_devices.length
-    ? new Set(def.mobile_devices.map(d => String(d).replace(/^notify\./, ""))) : null;
+  // Notification set: source and destination first; with neither and no rules,
+  // every notification matches.
+  const sources = Array.isArray(def.notification_source) && def.notification_source.length
+    ? new Set(def.notification_source.map(String)) : null;
+  const dests = Array.isArray(def.notification_destination) && def.notification_destination.length
+    ? def.notification_destination.map(String) : null;
   return (hass, eid, es) => {
     if (!_ATC_NOTIFY.isNotification(eid, es)) return false;
-    const type = es.attributes.notification_type;
-    if (!types.has(type)) return false;
-    if (type === "mobile_app" && devices && !devices.has(es.attributes.service)) return false;
+    const at = es.attributes;
+    if (sources && !(at.sent_by || []).some(s => sources.has(s))) return false;
+    if (dests && !_atcDestinationMatches(hass, dests, at.sent_to || [])) return false;
     return rulesPass(hass, eid, es);
   };
 }
@@ -1012,7 +1011,7 @@ function _atcFilterPredicate(hass, a, { applyExclude = true } = {}) {
   const labelFilter = a.label_filter ? (Array.isArray(a.label_filter) ? a.label_filter : [a.label_filter]) : null;
   const areaFilter  = a.area_filter  ? (Array.isArray(a.area_filter)  ? a.area_filter  : [a.area_filter])  : null;
   const def = ruleSet ? (a._rule_set_def || _atcLookupRuleSet(a.rule_set, null)) : null;
-  const wantsNotifications = !!def && def.source === "notifications";
+  const wantsNotifications = _atcIsNotificationSet(def);
   return (eid, es) => {
     // Notifications are matched only by notification rule sets (and those match nothing else).
     if (_ATC_NOTIFY.isNotification(eid, es) !== wantsNotifications) return false;
@@ -1042,56 +1041,70 @@ function _atcFilterEntities(hass, a, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// Notification source — lets rule sets react to Home Assistant notifications.
+// Notification rule sets — alerts raised by Home Assistant notifications.
 //
-// A rule set with `source: notifications` watches notifications instead of
-// entities. It picks the notification types to watch and, optionally, which
-// mobile devices; its rules then use notification fields (title, message, …):
+// A rule set with `watch: notifications` watches notifications instead of
+// entities. It narrows them by who sent them (Notification Source), where they
+// went (Notification Destination) and, optionally, conditions on the text:
 //
 //   rule_sets:
-//     - id: bypass
-//       name: Bypass notifications
-//       source: notifications
-//       notification_types: [mobile_app]          # mobile_app | persistent | notify
-//       mobile_devices: [mobile_app_pixel_8]      # optional — omitted = every mobile device
-//       groups:
+//     - id: bypass_to_pixel
+//       name: Bypass to Pixel
+//       watch: notifications
+//       notification_source: [automation.garage_bypass]       # omitted = any sender
+//       notification_destination: [notify.mobile_app_pixel_7] # omitted = anywhere
+//       groups:                                               # optional conditions
 //         - mode: include
 //           match: all
 //           rules:
-//             - { field: notification_text, op: contains, value: Bypass }
+//             - { field: notification_text, op: contains, value: bypass }
 //
-//   mobile_app  — notify.mobile_app_* calls (the HA Companion app)
-//   persistent  — persistent notifications (the HA notification bell); stay
-//                 until dismissed in HA
-//   notify      — every other notify service (Telegram, email, notify groups,
-//                 notify.send_message …)
+// Source: automation.* / script.* entity ids. A notification sent from no
+//   automation or script (an integration, Developer Tools, the Companion app)
+//   matches only "any sender".
+// Destination: a notify service or entity id (notify.mobile_app_pixel_7,
+//   notify.all_phones, notify.living_room_tv), or the shortcuts `mobile_app`
+//   (any mobile device) and `persistent` (the HA notification bell). A phone
+//   matches whether it was addressed by its service or its notify entity, and
+//   also when it was reached through a notify group that contains it.
+// Condition fields: notification_text (title or message), notification_title,
+//   notification_message, notification_tag, notification_sent_to.
+// With no source, destination or conditions, every notification matches.
+// Entity rule sets and entity filters never match notifications, and
+// notification rule sets never match entities.
 //
-// A notification rule set with no rules matches every notification of the
-// chosen types. Entity rule sets, entity_filter, device_class, label_filter and
-// area_filter never match notifications, and notification rule sets never
-// match entities.
-//
-// How it works: the card subscribes to persistent_notification/subscribe and,
-// for admin users only (HA restricts call_service events to admins), to
-// call_service events of the notify domain. Each notification is added to the
-// card's own copy of hass.states as an internal notification.* entry, so the
-// alert pipeline (overlay, snooze, history, TTS/push) needs no special case.
-// Those entries exist only in this browser — HA is never written to. notify
-// calls have no "dismissed" event, so they expire after
-// `notifications_retention` seconds (card option, default 3600). Like TTS and
-// push, this works only while a browser has the dashboard open. Notifications
-// this card sends itself (push_notify, TTS via notify) are ignored, so an alert
-// can never re-trigger itself.
+// How it works. The card listens to persistent_notification/subscribe (any
+// user) and, for admin users only — HA restricts these events to admins — to
+// call_service, automation_triggered and script_started. Every service call an
+// automation makes carries the automation run's context id, so:
+//   - context id → the automations/scripts running in it = the sender(s);
+//   - notify calls with the same context, title and message are ONE
+//     notification: a notify group's per-member calls and a repeat over several
+//     phones merge into one alert whose destination list has every target.
+// Each notification is added to the card's own copy of hass.states as an
+// internal notification.* entry, so the alert pipeline (overlay, snooze,
+// history, TTS/push) needs no special case. Those entries exist only in this
+// browser — HA is never written to. notify calls have no "dismissed" event, so
+// they expire after `notifications_retention` seconds (card option, default
+// 3600); persistent ones clear when dismissed in HA. Like TTS and push, this
+// works only while a browser has the dashboard open. Notifications the card
+// sends itself (push_notify, TTS via notify) are ignored, so an alert can never
+// re-trigger itself.
 // ---------------------------------------------------------------------------
 const _ATC_NOTIFY = (() => {
   const DEFAULT_RETENTION_S = 3600;
-  const MAX_NOTIFY_ITEMS = 50;
+  const MAX_ITEMS = 50;
+  const MERGE_WINDOW_MS = 10000;   // same context + text within this window = one notification
+  const CTX_TTL_MS = 3600 * 1000;  // how long "context → sender" links are kept
+  const SENDERS_KEY = "atc-notify-senders";
   let _conn = null;           // connection the subscriptions belong to
   let _gen = 0;               // bumps on every (re)subscribe; late results from an old one are dropped
   let _unsubs = [];
-  let _persistent = {};       // notification_id → { title, message, created_at }
-  let _notifies = [];         // [{ id, type, service, title, message, tag, at }], newest last
+  let _persistent = {};       // notification_id → { title, message, created_at, ctx }
+  let _items = [];            // notify deliveries: [{ id, ctx, parent, title, message, tag, dest: [], at }]
+  let _pendingPersistent = []; // persistent_notification.create calls awaiting their "added" message
   let _outgoing = [];         // [{ service, message, at }] — notify calls this card made itself
+  const _ctx = new Map();     // context id → { senders: Set<entity_id>, parent, at }
   let _seq = 0;
   let _version = 0;           // bumps on every change; keys the merged-states cache
   let _retentionS = DEFAULT_RETENTION_S;
@@ -1099,6 +1112,7 @@ const _ATC_NOTIFY = (() => {
   const _cache = new WeakMap(); // original hass.states → { version, merged }
 
   const slug = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "x";
+  const str = (v) => (v == null ? "" : String(v));
 
   function _changed() {
     _version++;
@@ -1106,28 +1120,63 @@ const _ATC_NOTIFY = (() => {
   }
 
   function _prune() {
-    const cutoff = Date.now() - _retentionS * 1000;
-    const before = _notifies.length;
-    _notifies = _notifies.filter(n => n.at >= cutoff).slice(-MAX_NOTIFY_ITEMS);
-    return _notifies.length !== before;
+    const now = Date.now();
+    const cutoff = now - _retentionS * 1000;
+    const before = _items.length;
+    _items = _items.filter(n => n.at >= cutoff).slice(-MAX_ITEMS);
+    _pendingPersistent = _pendingPersistent.filter(p => now - p.at < MERGE_WINDOW_MS);
+    for (const [id, c] of _ctx) if (now - c.at > CTX_TTL_MS) _ctx.delete(id);
+    return _items.length !== before;
   }
 
-  function _onPersistent(msg) {
-    // persistent_notification/subscribe: { type: "added"|"current"|"updated"|"removed", notifications: { id: {...} } }
-    const list = msg?.notifications || {};
-    if (msg?.type === "current") _persistent = {};
-    for (const [nid, n] of Object.entries(list)) {
-      if (msg.type === "removed") delete _persistent[nid];
-      else _persistent[nid] = { title: n?.title || "", message: n?.message || "", created_at: n?.created_at || new Date().toISOString() };
+  // ── context → sender ──────────────────────────────────────────────────────
+  function _noteContext(context, entityId) {
+    if (!context?.id) return;
+    const c = _ctx.get(context.id) || { senders: new Set(), parent: context.parent_id || null, at: Date.now() };
+    if (entityId) c.senders.add(entityId);
+    _ctx.set(context.id, c);
+  }
+
+  /** Senders of a context, following parent links (an automation that called a script, …). */
+  function _senders(ctxId, parentId) {
+    const out = new Set();
+    let id = ctxId, hops = 0;
+    const seen = new Set();
+    while (id && hops++ < 6 && !seen.has(id)) {
+      seen.add(id);
+      const c = _ctx.get(id);
+      if (!c) { id = hops === 1 ? parentId : null; continue; }
+      c.senders.forEach(s => out.add(s));
+      id = c.parent || (hops === 1 ? parentId : null);
     }
-    _changed();
+    return [...out];
   }
 
+  function _remember(senders) {
+    if (!senders.length) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(SENDERS_KEY) || "{}");
+      const now = Date.now();
+      senders.forEach(s => { saved[s] = now; });
+      const trimmed = Object.fromEntries(Object.entries(saved).sort((a, b) => b[1] - a[1]).slice(0, 200));
+      localStorage.setItem(SENDERS_KEY, JSON.stringify(trimmed));
+    } catch (_) {}
+  }
+
+  /** Automations/scripts this browser has seen send notifications, newest first. */
+  function observedSenders() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SENDERS_KEY) || "{}");
+      return Object.entries(saved).sort((a, b) => b[1] - a[1]).map(([entity_id, last]) => ({ entity_id, last }));
+    } catch (_) { return []; }
+  }
+
+  // ── own sends ────────────────────────────────────────────────────────────
   /** Called right before the card itself calls a notify service, so the echo is ignored. */
   function noteOutgoing(service, message) {
     const now = Date.now();
     _outgoing = _outgoing.filter(o => now - o.at < 15000);
-    _outgoing.push({ service: String(service || "").replace(/^notify\./, ""), message: String(message ?? ""), at: now });
+    _outgoing.push({ service: str(service).replace(/^notify\./, ""), message: str(message), at: now });
   }
 
   function _isOwnEcho(service, message) {
@@ -1138,31 +1187,71 @@ const _ATC_NOTIFY = (() => {
     return true;
   }
 
-  function _onCallService(ev) {
-    const d = ev?.data;
-    if (!d || d.domain !== "notify") return;
-    let svc = String(d.service || "");
+  // ── incoming messages ─────────────────────────────────────────────────────
+  function _onPersistent(msg) {
+    // persistent_notification/subscribe: { type: "added"|"current"|"updated"|"removed", notifications: { id: {...} } }
+    const list = msg?.notifications || {};
+    if (msg?.type === "current") _persistent = {};
+    for (const [nid, n] of Object.entries(list)) {
+      if (msg.type === "removed") { delete _persistent[nid]; continue; }
+      const prev = _persistent[nid];
+      let ctx = prev?.ctx || null;
+      if (!ctx) {
+        // Link to the create call that made it (same id, else same text) to learn its sender.
+        const i = _pendingPersistent.findIndex(p => (p.nid && p.nid === nid) || (!p.nid && p.message === str(n?.message)));
+        if (i >= 0) { ctx = _pendingPersistent[i].ctx; _pendingPersistent.splice(i, 1); }
+      }
+      _persistent[nid] = { title: str(n?.title), message: str(n?.message), created_at: n?.created_at || new Date().toISOString(), ctx };
+    }
+    _changed();
+  }
+
+  function _onEvent(ev) {
+    const t = ev?.event_type;
+    if (t === "automation_triggered" || t === "script_started") {
+      _noteContext(ev.context, ev.data?.entity_id);
+      return;
+    }
+    if (t !== "call_service") return;
+    const d = ev.data || {};
     const data = d.service_data || {};
-    // notify.persistent_notification creates a persistent notification, which the
-    // other subscription already reports — skip it here so it isn't listed twice.
-    if (svc === "persistent_notification") return;
-    // notify.send_message targets notify.* entities; use the entity as "sent to".
+    const ctx = ev.context || {};
+    if (d.domain === "persistent_notification" && d.service === "create") {
+      _pendingPersistent.push({ ctx, nid: data.notification_id ? str(data.notification_id) : null, message: str(data.message), at: Date.now() });
+      return;
+    }
+    if (d.domain !== "notify") return;
+    let svc = str(d.service);
+    if (svc === "persistent_notification") {
+      // Creates a persistent notification, which the other subscription reports.
+      _pendingPersistent.push({ ctx, nid: null, message: str(data.message), at: Date.now() });
+      return;
+    }
+    let dest;
     if (svc === "send_message") {
       const target = data.entity_id ?? d.target?.entity_id;
-      const first = Array.isArray(target) ? target[0] : target;
-      if (first) svc = String(first);
+      dest = (Array.isArray(target) ? target : [target]).filter(Boolean).map(String);
+      if (!dest.length) return;
+      svc = dest[0];
+    } else {
+      dest = [`notify.${svc}`];
     }
-    const message = data.message != null ? String(data.message) : "";
-    if (_isOwnEcho(svc, message)) return;
-    _notifies.push({
-      id: `${slug(svc)}_${++_seq}`,
-      type: /^mobile_app_/.test(svc) ? "mobile_app" : "notify",
-      service: svc,
-      title: data.title != null ? String(data.title) : "",
-      message,
-      tag: data.data?.tag != null ? String(data.data.tag) : "",
-      at: Date.now(),
-    });
+    const title = str(data.title), message = str(data.message);
+    if (_isOwnEcho(svc.replace(/^notify\./, ""), message)) return;
+    const now = Date.now();
+    // Same context + text = the same notification reaching another target
+    // (a notify group's members, or a repeat over several phones).
+    const same = ctx.id && _items.find(n => n.ctx === ctx.id && n.title === title && n.message === message && now - n.at < MERGE_WINDOW_MS);
+    if (same) {
+      dest.forEach(x => { if (!same.dest.includes(x)) same.dest.push(x); });
+    } else {
+      _items.push({
+        id: `${slug(dest[0].replace(/^notify\./, ""))}_${++_seq}`,
+        ctx: ctx.id || null, parent: ctx.parent_id || null,
+        title, message, tag: data.data?.tag != null ? str(data.data.tag) : "",
+        dest, at: now,
+      });
+    }
     _prune();
     _changed();
   }
@@ -1173,7 +1262,9 @@ const _ATC_NOTIFY = (() => {
     _unsubs = [];
     _conn = null;
     _persistent = {};
-    _notifies = [];
+    _items = [];
+    _pendingPersistent = [];
+    _ctx.clear();
     _changed();
   }
 
@@ -1188,9 +1279,11 @@ const _ATC_NOTIFY = (() => {
     if (typeof conn.subscribeMessage === "function") {
       subs.push(conn.subscribeMessage(_onPersistent, { type: "persistent_notification/subscribe" }).catch(() => null));
     }
-    // call_service events are admin-only in HA; non-admins would get "Unauthorized".
+    // These events are admin-only in HA; non-admins would get "Unauthorized".
     if (hass.user?.is_admin === true && typeof conn.subscribeEvents === "function") {
-      subs.push(conn.subscribeEvents(_onCallService, "call_service").catch(() => null));
+      for (const type of ["automation_triggered", "script_started", "call_service"]) {
+        subs.push(conn.subscribeEvents(_onEvent, type).catch(() => null));
+      }
     }
     Promise.all(subs).then(us => {
       const live = us.filter(Boolean);
@@ -1204,31 +1297,37 @@ const _ATC_NOTIFY = (() => {
     _retentionS = n > 0 ? n : DEFAULT_RETENTION_S;
   }
 
-  /** Builds the synthetic entities. Prunes expired notify items first. */
+  /** The internal notification.* entries (hass-independent part). */
   function entities() {
     if (_prune()) _version++;
     const out = {};
     for (const [nid, n] of Object.entries(_persistent)) {
       const id = `notification.persistent_${slug(nid)}`;
+      const senders = n.ctx ? _senders(n.ctx.id, n.ctx.parent_id) : [];
+      if (senders.length && !n.remembered) { n.remembered = true; _remember(senders); }
       out[id] = {
         entity_id: id, state: "active",
         attributes: {
           friendly_name: n.title || n.message || "Notification",
-          title: n.title, message: n.message, notification_type: "persistent", service: "persistent_notification",
-          tag: "", notification_id: nid, created_at: n.created_at, icon: "mdi:bell",
+          title: n.title, message: n.message, notification_type: "persistent", tag: "",
+          sent_by: senders, sent_to: ["persistent"], context_id: n.ctx?.id || null,
+          notification_id: nid, created_at: n.created_at, icon: "mdi:bell",
         },
         last_changed: n.created_at, last_updated: n.created_at,
       };
     }
-    for (const n of _notifies) {
+    for (const n of _items) {
       const id = `notification.${n.id}`;
       const at = new Date(n.at).toISOString();
+      const senders = _senders(n.ctx, n.parent);
+      if (senders.length && !n.remembered) { n.remembered = true; _remember(senders); }
       out[id] = {
         entity_id: id, state: "active",
         attributes: {
-          friendly_name: n.title || n.message || n.service,
-          title: n.title, message: n.message, notification_type: n.type, service: n.service,
-          tag: n.tag, created_at: at, icon: n.type === "mobile_app" ? "mdi:cellphone-message" : "mdi:message-badge",
+          friendly_name: n.title || n.message || n.dest[0],
+          title: n.title, message: n.message, notification_type: "notify", tag: n.tag,
+          sent_by: senders, sent_to: n.dest.slice(), context_id: n.ctx,
+          created_at: at, icon: "mdi:message-badge",
         },
         last_changed: at, last_updated: at,
       };
@@ -1237,9 +1336,9 @@ const _ATC_NOTIFY = (() => {
   }
 
   /**
-   * Returns hass with the synthetic notification entities added to `states`, or the
-   * same hass when there are none. Cached per original states object + version, so
-   * repeated calls within one update are free and identity stays stable.
+   * Returns hass with the notification entries added to `states`, or the same
+   * hass when there are none. Display names for sent_by / sent_to are resolved
+   * against this hass. Cached per original states object + version.
    */
   function augment(hass) {
     if (!hass?.states) return hass;
@@ -1247,56 +1346,149 @@ const _ATC_NOTIFY = (() => {
     if (!Object.keys(extra).length) return hass;
     const hit = _cache.get(hass.states);
     if (hit && hit.version === _version) return hit.merged;
+    for (const es of Object.values(extra)) {
+      es.attributes.sent_by_names = es.attributes.sent_by.map(e => hass.states[e]?.attributes?.friendly_name || e);
+      es.attributes.sent_to_names = es.attributes.sent_to.map(d => _atcDestinationName(hass, d));
+    }
     const merged = Object.create(hass);
     merged.states = { ...hass.states, ...extra };
     _cache.set(hass.states, { version: _version, merged });
     return merged;
   }
 
-  /** Dismisses a persistent notification in HA (notify.* items just drop locally). */
+  /** Dismisses a persistent notification in HA (notify items just drop locally). */
   function dismiss(hass, entityId) {
     const es = augment(hass)?.states?.[entityId];
     if (!es) return;
     if (es.attributes.notification_type === "persistent") {
       hass.callService?.("persistent_notification", "dismiss", { notification_id: es.attributes.notification_id });
     } else {
-      _notifies = _notifies.filter(n => `notification.${n.id}` !== entityId);
+      _items = _items.filter(n => `notification.${n.id}` !== entityId);
       _changed();
     }
   }
 
   return {
-    ensure, augment, dismiss, setRetention, entities, noteOutgoing,
+    ensure, augment, dismiss, setRetention, entities, noteOutgoing, observedSenders,
     /** True for the internal notification.* entries this manager adds to hass.states. */
     isNotification: (eid, es) => typeof eid === "string" && eid.startsWith("notification.") && !!es?.attributes?.notification_type,
     onChange(fn) { _listeners.add(fn); return () => _listeners.delete(fn); },
     // test hooks
-    _onPersistent, _onCallService, _reset() { _stop(); _seq = 0; _outgoing = []; },
+    _onPersistent, _onEvent, _reset() { _stop(); _seq = 0; _outgoing = []; },
   };
 })();
 
-const _ATC_NOTIFICATION_TYPE_LABEL = { mobile_app: "Mobile app", persistent: "Persistent", notify: "Notify" };
+// ── Notification destinations ───────────────────────────────────────────────
+// Mobile app phones exist twice: as a notify service (notify.mobile_app_s23)
+// and as a notify entity (notify.s23). These helpers treat both as one device.
+const _ATC_DEST_CACHE = new WeakMap(); // hass.entities → { byAlias: Map<id, Set<id>>, mobile: Set<id>, names: Map }
+
+function _atcDestIndex(hass) {
+  const key = hass?.entities || hass;
+  if (!key) return { byAlias: new Map(), mobile: new Set(), names: new Map() };
+  const hit = _ATC_DEST_CACHE.get(key);
+  if (hit) return hit;
+  const byAlias = new Map(), mobile = new Set(), names = new Map();
+  const link = (ids, name) => {
+    const set = new Set(ids);
+    ids.forEach(id => { byAlias.set(id, set); if (name) names.set(id, name); });
+  };
+  for (const [eid, meta] of Object.entries(hass.entities || {})) {
+    if (!eid.startsWith("notify.") || meta?.platform !== "mobile_app") continue;
+    const dev = meta.device_id ? hass.devices?.[meta.device_id] : null;
+    const devName = dev?.name || hass.states?.[eid]?.attributes?.friendly_name || eid.slice(7);
+    const svc = `notify.mobile_app_${String(devName).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}`;
+    link([eid, svc], dev?.name_by_user || devName);
+    mobile.add(eid); mobile.add(svc);
+  }
+  for (const svc of Object.keys(hass.services?.notify || {})) {
+    if (!svc.startsWith("mobile_app_")) continue;
+    const id = `notify.${svc}`;
+    mobile.add(id);
+    if (!byAlias.has(id)) link([id], svc.slice(11).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
+  }
+  const idx = { byAlias, mobile, names };
+  _ATC_DEST_CACHE.set(key, idx);
+  return idx;
+}
+
+/** Human name for a destination id: "S23", "All Phones", "Notification bell"… */
+function _atcDestinationName(hass, id) {
+  if (id === "persistent") return "Notification bell";
+  if (id === "mobile_app") return "All mobile devices";
+  const named = _atcDestIndex(hass).names.get(id);
+  if (named) return named;
+  const st = hass?.states?.[id];
+  if (st?.attributes?.friendly_name) return st.attributes.friendly_name;
+  return String(id).replace(/^notify\./, "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/** True when a notification that went to `sentTo` reached any of the `wanted` destinations. */
+function _atcDestinationMatches(hass, wanted, sentTo) {
+  const idx = _atcDestIndex(hass);
+  return wanted.some(w => {
+    if (w === "persistent") return sentTo.includes("persistent");
+    if (w === "mobile_app") return sentTo.some(d => idx.mobile.has(d) || /^notify\.mobile_app_/.test(d));
+    const id = String(w).includes(".") ? String(w) : `notify.${w}`;
+    const aliases = idx.byAlias.get(id) || new Set([id]);
+    return sentTo.some(d => aliases.has(d));
+  });
+}
 
 /**
- * Fills {title} {message} {sent_via} {sent_to} for an alert raised by a notification.
+ * Destinations the user can pick, grouped:
+ *   mobile   — one entry per phone (value = its notify service, like automations use)
+ *   services — other notify services, incl. legacy notify groups (all_phones, …)
+ *   entities — notify entities that aren't phones (Fully Kiosk, PiPup TVs, …)
+ */
+function _atcNotifyDestinations(hass) {
+  const idx = _atcDestIndex(hass);
+  const mobile = [], services = [], entities = [];
+  const seenSet = new Set();
+  for (const [id, aliases] of idx.byAlias) {
+    if (seenSet.has(aliases)) continue;
+    seenSet.add(aliases);
+    const svc = [...aliases].find(a => /^notify\.mobile_app_/.test(a)) || id;
+    mobile.push({ value: svc, label: idx.names.get(id) || _atcDestinationName(hass, svc) });
+  }
+  for (const svc of Object.keys(hass?.services?.notify || {})) {
+    if (svc.startsWith("mobile_app_") || ["send_message", "persistent_notification"].includes(svc)) continue;
+    if (hass.states?.[`notify.${svc}`]) continue; // has an entity — listed below
+    services.push({ value: `notify.${svc}`, label: _atcDestinationName(hass, `notify.${svc}`) });
+  }
+  for (const eid of Object.keys(hass?.states || {})) {
+    if (!eid.startsWith("notify.") || idx.mobile.has(eid)) continue;
+    entities.push({ value: eid, label: _atcDestinationName(hass, eid) });
+  }
+  const byLabel = (a, b) => a.label.localeCompare(b.label);
+  return { mobile: mobile.sort(byLabel), services: services.sort(byLabel), entities: entities.sort(byLabel) };
+}
+
+/**
+ * Fills {title} {message} {sent_by} {sent_to} for an alert raised by a notification.
  * Run AFTER template rendering so notification text is never evaluated as a template.
  * Leaves the placeholders untouched for entity alerts.
  */
 function _atcNotificationPlaceholders(msg, es) {
   if (!msg || !msg.includes("{") || !_ATC_NOTIFY.isNotification(es?.entity_id, es)) return msg;
   const at = es.attributes;
+  const list = (v) => (Array.isArray(v) ? v.join(", ") : "");
   return msg
     .replace(/\{title\}/g, () => at.title || "")
     .replace(/\{message\}/g, () => at.message || "")
-    .replace(/\{sent_via\}/g, () => _ATC_NOTIFICATION_TYPE_LABEL[at.notification_type] || "")
-    .replace(/\{sent_to\}/g, () => at.service || "");
+    .replace(/\{sent_by\}/g, () => list(at.sent_by_names || at.sent_by))
+    .replace(/\{sent_to\}/g, () => list(at.sent_to_names || at.sent_to));
+}
+
+/** True for a rule-set definition that watches notifications. */
+function _atcIsNotificationSet(rs) {
+  return !!rs && typeof rs === "object" && (rs.watch === "notifications" || rs.source === "notifications");
 }
 
 /** True when the card config has a notification rule set (by id or inline). */
 function _atcUsesNotifications(config) {
-  const isN = (rs) => !!rs && typeof rs === "object" && rs.source === "notifications";
-  if (Array.isArray(config?.rule_sets) && config.rule_sets.some(isN)) return true;
-  return Array.isArray(config?.alerts) && config.alerts.some(a => isN(a?.rule_set));
+  if (Array.isArray(config?.rule_sets) && config.rule_sets.some(_atcIsNotificationSet)) return true;
+  return Array.isArray(config?.alerts) && config.alerts.some(a => _atcIsNotificationSet(a?.rule_set));
 }
 
 /** Returns hass as a card with this config sees it: plus notifications when it uses them. */
@@ -1320,7 +1512,9 @@ globalThis.__alertTickerShared = Object.freeze({
   lookupRuleSet: _atcLookupRuleSet,
   ruleFields: ATC_RULE_FIELDS,
   notificationFields: ATC_NOTIFICATION_FIELDS,
-  notificationTypes: ATC_NOTIFICATION_TYPES,
+  isNotificationSet: _atcIsNotificationSet,
+  notifyDestinations: _atcNotifyDestinations,
+  destinationName: _atcDestinationName,
   ruleOps: ATC_RULE_OPS,
 });
 
