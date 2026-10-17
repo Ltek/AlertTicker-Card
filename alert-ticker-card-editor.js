@@ -1665,11 +1665,13 @@ const ET = {
     alert_convert_to_rule_set: "Convert to rule set",
     alert_convert_help: "Moves these filters into a reusable entity rule set and switches this alert to it.",
     show_notification_text: "Show the notification text under the message",
-    rs_notify_conditions_help: "The notification rule set decides when this alert fires. Extra conditions below can limit it further (e.g. only while the alarm is armed).",
     rs_entity_advanced: "Extra state condition (optional)",
     rs_entity_advanced_help: "The rule set already decides which entities alert. Add a state condition here only to narrow it further — leave empty otherwise.",
     rs_back_to_alert: "Back to alert {n}",
-    rs_entity_conditions_help: "The entity rule set decides which entities alert and when — edit it to change that.",
+    rs_entity_conditions_help: "Which entities alert, and when, is set in the rule set. Trigger on any change still applies here.",
+    rs_trigger_section: "Trigger",
+    rs_entity_conditions_where: "Conditions (other entities, time of day, weekday…) are rules in the rule set — use Edit.",
+    rs_notify_conditions_where: "Conditions (text, other entities, time of day, weekday) are rules in the rule set — use Edit.",
     inline_rules_help: "Show this alert only when these rules also hold: another entity's state, the time of day, the day of week, or how long this entity has been unchanged.",
     inline_rules_add_all: "Rules that must all match",
     inline_rules_add_any: "Rules where any one matches",
@@ -1926,7 +1928,7 @@ const ET = {
     mode_entity: "🏷️ Single entity",
     mode_filter: "🔎 Quick filter",
     mode_rs_entity: "🧩 Entity rule set",
-    mode_rs_notify: "📨 Notification rule set",
+    mode_rs_notify: "Notification rule set",
     mode_entity_help: "Monitor one specific entity.",
     mode_filter_help: "Generates a separate alert for each entity that matches the filters below.",
     mode_rs_entity_help: "Generates a separate alert for each entity that matches a reusable entity rule set.",
@@ -5975,7 +5977,8 @@ const RS_FIELD_OPS = {
   notification_sent_to: ["in", "not_in", "contains", "regex"],
 };
 // notification_sent_to stays valid in YAML; the UI covers it with Notification Destination.
-const RS_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message", "notification_tag"];
+const RS_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message", "notification_tag",
+  "other_entity", "time", "weekday"];
 const RS_LIST_OPS = ["in", "not_in"];
 const RS_NUMERIC_OPS = ["gt", "lt", "ge", "le", "between", "older", "newer"];
 // Inline conditions on a single-entity alert: other entities, time, day, plus the entity's own fields.
@@ -7246,7 +7249,7 @@ class AlertTickerCardEditor extends LitElement {
       ${this._renderSectionHeader("tab_alerts")}
       <div class="add-alert-grid">
         ${[["entity", "mode_entity"], ["rs_entity", "mode_rs_entity"], ["rs_notify", "mode_rs_notify"]].map(([m, k]) => html`
-          <button class="btn-add-alert btn-add-alert--mode" title="${this._t(k + "_help")}" @click="${() => this._addAlert(m)}">+ ${this._t(k)}</button>`)}
+          <button class="rs-btn rs-btn--add" title="${this._t(k + "_help")}" @click="${() => this._addAlert(m)}">+ ${m === "rs_notify" ? html`${this._kindIcon(true)} ` : ""}${this._t(k)}</button>`)}
         <div class="native-select-wrap add-alert-template-wrap ${this._templatesHintSeen ? '' : 'tpl-hint-glow'}">
           <select class="native-select" .value="${''}"
             @focus="${() => this._markTemplateHintSeen()}"
@@ -7306,7 +7309,7 @@ class AlertTickerCardEditor extends LitElement {
       : alert.device_class
       ? `[${this._t("device_class")}: "${alert.device_class}"]`
       : alert.rule_set && !alert.entity
-      ? `${this._isNotificationSet(this._alertRuleSetDef(alert)) ? "📨" : "🧩"} ${this._ruleSetLabel(alert.rule_set)}`
+      ? html`${this._kindIcon(this._isNotificationSet(this._alertRuleSetDef(alert)))} ${this._ruleSetLabel(alert.rule_set)}`
       : alert.entity || (this._lang === "it" ? "(non impostato)" : "(not set)");
     const msgSnippet = alert.message
       ? alert.message.length > 40
@@ -7423,7 +7426,7 @@ class AlertTickerCardEditor extends LitElement {
                   const mode = this._getAlertMode(index, alert);
                   return html`
                   <div class="alert-mode-banner">
-                    <span class="alert-mode-banner-title">${this._t({ entity: "mode_entity", filter: "mode_filter", rs_entity: "mode_rs_entity", rs_notify: "mode_rs_notify" }[mode])}</span>
+                    <span class="alert-mode-banner-title">${mode === "rs_notify" ? html`${this._kindIcon(true)} ` : ""}${this._t({ entity: "mode_entity", filter: "mode_filter", rs_entity: "mode_rs_entity", rs_notify: "mode_rs_notify" }[mode])}</span>
                     <span class="helper-text">${this._t({ entity: "mode_entity_help", filter: "mode_filter_help", rs_entity: "mode_rs_entity_help", rs_notify: "mode_rs_notify_help" }[mode])}</span>
                   </div>
 
@@ -7641,9 +7644,9 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
                 <!-- ── 2. CONDIZIONE ──────────────────────────────────────── -->
-                <div class="section-divider">⚡ ${this._t("conditions_section")}</div>
+                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`<div class="section-divider">⚡ ${this._t(this._getAlertMode(index, alert) === "entity" ? "conditions_section" : "rs_trigger_section")}</div>` : ""}
 
-                ${this._getAlertMode(index, alert) !== "entity" ? html`<div class="helper-text">${this._t(this._getAlertMode(index, alert) === "rs_notify" ? "rs_notify_conditions_help" : "rs_entity_conditions_help")}</div>` : ""}
+                ${this._getAlertMode(index, alert) === "rs_entity" ? html`<div class="helper-text">${this._t("rs_entity_conditions_help")}</div>` : ""}
                 ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
                 <!-- on_change toggle — when active hides only the primary operator/state fields -->
                 <div>
@@ -8458,6 +8461,11 @@ class AlertTickerCardEditor extends LitElement {
     if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
   }
 
+  /** Icon for a rule-set kind: 🧩 entities, two speech bubbles (mdi:forum-outline) for notifications. */
+  _kindIcon(notify) {
+    return notify ? html`<ha-icon class="rs-kind-icon" icon="mdi:forum-outline"></ha-icon>` : "🧩";
+  }
+
   _isNotificationSet(rs) {
     return !!globalThis.__alertTickerShared?.isNotificationSet?.(rs);
   }
@@ -8707,8 +8715,8 @@ class AlertTickerCardEditor extends LitElement {
           ? html`<div class="empty-alerts">${this._t("ruleset_empty")}</div>`
           : list.map((rs, si) => this._renderRuleSetItem(rs, si))}
         <div class="rs-add-row">
-          <button class="btn-add-alert" @click="${() => this._addRuleSet("entities")}">+ ${this._t("ruleset_add")}</button>
-          <button class="btn-add-alert" @click="${() => this._addRuleSet("notifications")}">+ 📨 ${this._t("ruleset_add_notify")}</button>
+          <button class="rs-btn rs-btn--add" @click="${() => this._addRuleSet("entities")}">+ ${this._t("ruleset_add")}</button>
+          <button class="rs-btn rs-btn--add" @click="${() => this._addRuleSet("notifications")}">+ ${this._kindIcon(true)} ${this._t("ruleset_add_notify")}</button>
         </div>
       </div>
     `;
@@ -8742,7 +8750,7 @@ class AlertTickerCardEditor extends LitElement {
     const used = this._ruleSetUsage(rs.id);
     return html`
       <div class="alert-item ${open ? "is-editing" : ""}" @click="${() => { this._rsEditing = open ? -1 : si; }}">
-        <span class="alert-icon-badge" title="${this._t(this._isNotificationSet(rs) ? "ruleset_watch_notifications" : "ruleset_watch_entities")}">${this._isNotificationSet(rs) ? "📨" : "🧩"}</span>
+        <span class="alert-icon-badge" title="${this._t(this._isNotificationSet(rs) ? "ruleset_watch_notifications" : "ruleset_watch_entities")}">${this._kindIcon(this._isNotificationSet(rs))}</span>
         <div class="alert-summary-text">
           <div class="alert-entity-label">${rs.name || rs.id}</div>
           <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
@@ -9302,7 +9310,7 @@ class AlertTickerCardEditor extends LitElement {
             this._updateAlert(index, { rule_set: v || undefined });
           }}">
             <option value="" ?selected="${!ref}">—</option>
-            ${ofKind.map(({ rs }) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${notify ? "📨" : "🧩"} ${rs.name || rs.id}</option>`)}
+            ${ofKind.map(({ rs }) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${notify ? "💬" : "🧩"} ${rs.name || rs.id}</option>`)}
             ${inline ? html`<option value="__inline__" selected>${this._t("alert_rule_set_inline")}</option>` : ""}
             ${missing ? html`<option value="${ref}" selected>⚠ ${ref}</option>` : ""}
           </select>
@@ -9316,6 +9324,7 @@ class AlertTickerCardEditor extends LitElement {
         ${quickLeft.length ? html`<div class="rs-warning">⚠ ${this._t("alert_quick_left").replace("{fields}", quickLeft.join(", "))}
           <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._updateAlert(index, Object.fromEntries(quickLeft.map((k) => [k, undefined]))); }}">${this._t("alert_quick_remove")}</a></div>` : ""}
         ${def ? this._renderRsPreview(def, `alert_rs_${index}`) : ""}
+        <div class="helper-text">${this._t(notify ? "rs_notify_conditions_where" : "rs_entity_conditions_where")}</div>
       </div>
     `;
   }
@@ -10997,7 +11006,7 @@ class AlertTickerCardEditor extends LitElement {
       }
       .add-alert-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(3, 1fr);
         gap: 8px;
         margin-bottom: 12px;
       }
@@ -11252,6 +11261,16 @@ class AlertTickerCardEditor extends LitElement {
       }
       .rs-btn:hover {
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent);
+      }
+      .rs-btn--add {
+        padding: 10px 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        line-height: 1.25;
+      }
+      .rs-kind-icon {
+        --mdc-icon-size: 1.15em;
+        vertical-align: -0.15em;
       }
       .rs-btn--small {
         flex: none;
