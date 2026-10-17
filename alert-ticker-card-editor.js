@@ -1645,6 +1645,26 @@ const ET = {
     ruleset_field_notification_tag: "Tag",
     ruleset_field_notification_sent_to: "Sent to",
     ruleset_attribute_path: "Attribute name (dot path, e.g. battery_level)",
+    alert_entity_rule_set: "Entity rule set",
+    alert_notify_rule_set: "Notification rule set",
+    alert_rule_set_edit: "Edit",
+    alert_no_entity_sets: "No entity rule sets yet — create one with the button above.",
+    alert_no_notify_sets: "No notification rule sets yet — create one with the button above.",
+    alert_quick_left: "This alert also has quick-filter fields ({fields}), which still apply.",
+    alert_quick_remove: "Remove them",
+    alert_convert_to_rule_set: "Convert to rule set",
+    alert_convert_help: "Moves these filters into a reusable entity rule set and switches this alert to it.",
+    show_notification_text: "Show the notification text under the message",
+    rs_notify_conditions_help: "The notification rule set decides when this alert fires. Extra conditions below can limit it further (e.g. only while the alarm is armed).",
+    rs_entity_advanced: "Extra state condition (optional)",
+    rs_entity_advanced_help: "The rule set already decides which entities alert. Add a state condition here only to narrow it further — leave empty otherwise.",
+    rs_back_to_alert: "Back to alert {n}",
+    rs_alerts_using: "Alerts using this rule set",
+    rs_create_alert: "Create alert from this rule set",
+    alert_chip_group: "Group",
+    alert_chip_persistent: "Persistent",
+    alert_chip_visible_to: "Some users",
+    alert_chip_push: "Push",
     alert_rule_set: "Rule set (optional)",
     alert_rule_set_help: "Only match entities in this rule set. Combinable with the filters above (AND logic).",
     alert_rule_set_manage: "Edit rule sets",
@@ -1886,9 +1906,13 @@ const ET = {
     anim_roll:    "🎲 Roll — rotateY + slide",
     anim_curtain: "🎭 Curtain — theater open",
     mode_entity: "🏷️ Single entity",
-    mode_filter: "🔎 Multi-entity filter",
+    mode_filter: "🔎 Quick filter",
+    mode_rs_entity: "🧩 Entity rule set",
+    mode_rs_notify: "📨 Notification rule set",
     mode_entity_help: "Monitor one specific entity.",
-    mode_filter_help: "Generates a separate alert for each entity that matches the active filters.",
+    mode_filter_help: "Generates a separate alert for each entity that matches the filters below.",
+    mode_rs_entity_help: "Generates a separate alert for each entity that matches a reusable entity rule set.",
+    mode_rs_notify_help: "Raises an alert for each Home Assistant notification that matches a notification rule set.",
     filter_section: "Entity filters",
     entity_filter: "Entity filter (text)",
     entity_filter_help: "Matches all entities whose ID or name contains this text. Supports wildcard * (e.g. sensor.battery_*_level). Click the count to preview the list and use 'Invert selection'. Use {name}, {entity}, {state}, {device} in the message.",
@@ -6068,6 +6092,8 @@ class AlertTickerCardEditor extends LitElement {
     this._rsEditing = -1;               // -1 = no rule set expanded
     this._filterPreviewOpen = new Set();
     this._alertModeFilter = new Set();
+    this._alertModeChoice = new Map();  // index → mode chosen before any field is set
+    this._rsReturnTo = -1;              // alert index to return to from the Rule Sets section
     this._lang = "en";
     this._initializing = false;         // true during first render microtask burst
     this._haUsers = null;               // null = not yet fetched, [] = fetch failed/empty
@@ -7224,7 +7250,7 @@ class AlertTickerCardEditor extends LitElement {
       : alert.device_class
       ? `[${this._t("device_class")}: "${alert.device_class}"]`
       : alert.rule_set && !alert.entity
-      ? `[${this._t("tab_rulesets")}: "${this._ruleSetLabel(alert.rule_set)}"]`
+      ? `${this._isNotificationSet(this._alertRuleSetDef(alert)) ? "📨" : "🧩"} ${this._ruleSetLabel(alert.rule_set)}`
       : alert.entity || (this._lang === "it" ? "(non impostato)" : "(not set)");
     const msgSnippet = alert.message
       ? alert.message.length > 40
@@ -7255,6 +7281,7 @@ class AlertTickerCardEditor extends LitElement {
           <div class="alert-entity-label">${this._t("alert_num")} ${index + 1}: ${alert.name || entityLabel}</div>
           ${!alert.name && msgSnippet ? html`<div class="alert-msg-label">${msgSnippet}</div>` : ""}
           ${alert.name ? html`<div class="alert-msg-label">${entityLabel}</div>` : ""}
+          ${this._alertChips(alert)}
         </div>
         <span class="alert-prio-badge prio-${prio}">P${prio}</span>
         <div class="alert-actions">
@@ -7335,22 +7362,12 @@ class AlertTickerCardEditor extends LitElement {
                 ${(() => {
                   const mode = this._getAlertMode(index, alert);
                   return html`
-                  <div class="alert-mode-selector">
-                    <button class="alert-mode-btn ${mode === "entity" ? "active" : ""}" @click="${() => {
-                      const next = new Set(this._alertModeFilter);
-                      next.delete(index);
-                      this._alertModeFilter = next;
-                      this._updateAlert(index, { entity_filter: undefined, device_class: undefined, label_filter: undefined, area_filter: undefined, rule_set: undefined, entity_filter_exclude: undefined });
-                    }}">${this._t("mode_entity")}</button>
-                    <button class="alert-mode-btn ${mode === "filter" ? "active" : ""}" @click="${() => {
-                      const next = new Set(this._alertModeFilter);
-                      next.add(index);
-                      this._alertModeFilter = next;
-                      this._updateAlert(index, { entity: undefined });
-                    }}">${this._t("mode_filter")}</button>
+                  <div class="alert-mode-selector alert-mode-selector--4">
+                    ${[["entity", "mode_entity"], ["filter", "mode_filter"], ["rs_entity", "mode_rs_entity"], ["rs_notify", "mode_rs_notify"]].map(([m, k]) => html`
+                      <button class="alert-mode-btn ${mode === m ? "active" : ""}" @click="${() => this._setAlertMode(index, m)}">${this._t(k)}</button>`)}
                   </div>
                   <div class="helper-text" style="margin-top:-4px;margin-bottom:4px">
-                    ${mode === "entity" ? this._t("mode_entity_help") : this._t("mode_filter_help")}
+                    ${this._t({ entity: "mode_entity_help", filter: "mode_filter_help", rs_entity: "mode_rs_entity_help", rs_notify: "mode_rs_notify_help" }[mode])}
                   </div>
 
                   ${mode === "entity" ? html`
@@ -7370,9 +7387,7 @@ class AlertTickerCardEditor extends LitElement {
                       ></ha-input>
                       <div class="helper-text">${this._t("alert_attribute_help")}</div>
                     </div>
-                  ` : html`
-                    <!-- ── MODALITÀ FILTRO MULTI-ENTITÀ ──────────────────── -->
-                  `}
+                  ` : mode === "rs_entity" || mode === "rs_notify" ? this._renderAlertRuleSetPicker(alert, index, mode) : ""}
                   `;
                 })()}
 
@@ -7534,9 +7549,6 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">${this._t("area_filter_help")}</div>
                 </div>
 
-                <!-- Rule set -->
-                ${this._renderAlertRuleSetPicker(alert, index)}
-
                 <!-- Attribute in filter mode -->
                 <div>
                   <ha-input
@@ -7547,20 +7559,29 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">${this._t("alert_attribute_help")}</div>
                 </div>
 
+                <!-- Convert the quick filter into a reusable entity rule set -->
+                ${(alert.entity_filter || alert.device_class || alert.label_filter || alert.area_filter) ? html`
+                  <div>
+                    <button class="rs-btn rs-btn--small" @click="${() => this._convertAlertToRuleSet(index)}">🧩 ${this._t("alert_convert_to_rule_set")}</button>
+                    <div class="helper-text">${this._t("alert_convert_help")}</div>
+                  </div>` : ""}
+                ` : ""}
+
                 <!-- show_filter_name / show_filter_state toggles -->
-                ${(alert.entity_filter || alert.device_class || alert.rule_set) ? html`
-                  <ha-formfield .label="${this._t("show_filter_name")}">
+                ${(() => { const m = this._getAlertMode(index, alert); return (m === "rs_entity" || m === "rs_notify" || (m === "filter" && (alert.entity_filter || alert.device_class))); })() ? html`
+                  <ha-formfield .label="${this._t(this._getAlertMode(index, alert) === "rs_notify" ? "show_notification_text" : "show_filter_name")}">
                     <ha-switch
                       .checked="${alert.show_filter_name !== false}"
                       @change="${(e) => this._updateAlert(index, { show_filter_name: e.target.checked ? undefined : false })}"
                     ></ha-switch>
                   </ha-formfield>
+                  ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
                   <ha-formfield .label="${this._t("show_filter_state")}">
                     <ha-switch
                       .checked="${!!alert.show_filter_state}"
                       @change="${(e) => this._updateAlert(index, { show_filter_state: e.target.checked ? true : undefined })}"
                     ></ha-switch>
-                  </ha-formfield>
+                  </ha-formfield>` : ""}
                   ${alert.theme === "battery" ? html`
                     <ha-formfield .label="${this._t("battery_trim_name")}">
                       <ha-switch
@@ -7569,7 +7590,6 @@ class AlertTickerCardEditor extends LitElement {
                       ></ha-switch>
                     </ha-formfield>
                   ` : ""}
-                ` : ""}
                 ` : ""}
 
                 <!-- ── MUSIC PLAYER OPTIONS ──────────────────────────────── -->
@@ -7677,8 +7697,8 @@ class AlertTickerCardEditor extends LitElement {
                   </div>
                 ` : ""}
 
-                <!-- Group settings — visible only for filter-mode alerts -->
-                ${this._getAlertMode(index, alert) === "filter" ? html`
+                <!-- Group settings — visible for every multi-entity mode -->
+                ${this._getAlertMode(index, alert) !== "entity" ? html`
                 <div class="section-divider">🗂️ ${this._t("group_section")}</div>
                 <div class="form-row">
                   <div class="form-row-inline">
@@ -7737,6 +7757,19 @@ class AlertTickerCardEditor extends LitElement {
                 <!-- ── 2. CONDIZIONE ──────────────────────────────────────── -->
                 <div class="section-divider">⚡ ${this._t("conditions_section")}</div>
 
+                ${(() => { const m = this._getAlertMode(index, alert); return m === "rs_notify" ? html`<div class="helper-text">${this._t("rs_notify_conditions_help")}</div>` : ""; })()}
+                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
+                <details class="rs-advanced" ?open="${this._getAlertMode(index, alert) !== "rs_entity" || !!(alert.attribute || alert.on_change || (alert.state != null && alert.state !== ""))}">
+                ${this._getAlertMode(index, alert) === "rs_entity" ? html`<summary>${this._t("rs_entity_advanced")}</summary>
+                <div class="helper-text">${this._t("rs_entity_advanced_help")}</div>
+                <div>
+                  <ha-input
+                    .label="${this._t("alert_attribute")}"
+                    .value="${alert.attribute || ""}"
+                    @change="${(e) => this._alertAttributeChanged(e.target.value, index)}"
+                  ></ha-input>
+                  <div class="helper-text">${this._t("alert_attribute_help")}</div>
+                </div>` : html`<summary class="rs-advanced-hidden"></summary>`}
                 <!-- on_change toggle — when active hides only the primary operator/state fields -->
                 <div>
                   <ha-formfield .label="${this._t("on_change")}">
@@ -7777,7 +7810,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div>
                     <ha-input
                       .label="${this._t("alert_state")}"
-                      .value="${Array.isArray(alert.state) ? alert.state.join(", ") : (alert.state || "on")}"
+                      .value="${Array.isArray(alert.state) ? alert.state.join(", ") : (alert.state ?? (this._getAlertMode(index, alert) === "rs_entity" ? "" : "on"))}"
                       @change="${(e) => this._alertStateChanged(e.target.value, index)}"
                     ></ha-input>
                     <div class="helper-text">${this._t("alert_state_help")}</div>
@@ -7803,6 +7836,8 @@ class AlertTickerCardEditor extends LitElement {
                 </div>
 
                 ` : ""} <!-- end !alert.on_change primary condition -->
+                </details>
+                ` : ""} <!-- end primary condition (not for notification rule sets) -->
 
                 <!-- Extra AND/OR conditions: always visible (work with both on_change and normal mode) -->
                 <div class="form-row">
@@ -7863,6 +7898,7 @@ class AlertTickerCardEditor extends LitElement {
                 <!-- ── TRIGGER DELAY + AUTO-DISMISS ─────────────────────── -->
                 <div class="section-divider">⏱ ${this._t("auto_dismiss_section")}</div>
 
+                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
                 <div>
                   <ha-input
                     type="number"
@@ -7876,7 +7912,7 @@ class AlertTickerCardEditor extends LitElement {
                     }}"
                   ></ha-input>
                   <div class="helper-text">${this._t("trigger_delay_help")}</div>
-                </div>
+                </div>` : ""}
 
                 <div>
                   <ha-input
@@ -7903,7 +7939,7 @@ class AlertTickerCardEditor extends LitElement {
                   .value="${alert.message || ""}"
                   @change="${(e) => this._alertMessageChanged(e.target.value, index)}"
                 ></ha-input>
-                <div class="helper-text">${this._t("alert_message_help")}</div>
+                <div class="helper-text">${this._getAlertMode(index, alert) === "rs_notify" ? `💬 ${this._t("notify_placeholders_help")}` : this._t("alert_message_help")}</div>
 
 
                 <!-- Icon override -->
@@ -8502,9 +8538,130 @@ class AlertTickerCardEditor extends LitElement {
     this._fireConfig({ ...this._config, alerts, ...extra });
   }
 
+  /** entity | filter (quick filter) | rs_entity | rs_notify */
   _getAlertMode(index, alert) {
-    if (alert.entity_filter || alert.device_class || alert.label_filter || alert.area_filter || alert.rule_set) return "filter";
+    if (alert.rule_set && !alert.entity) {
+      const def = this._alertRuleSetDef(alert);
+      if (def) return this._isNotificationSet(def) ? "rs_notify" : "rs_entity";
+      const chosen = this._alertModeChoice.get(index);
+      return chosen === "rs_notify" ? "rs_notify" : "rs_entity"; // id that no longer exists
+    }
+    if (alert.entity_filter || alert.device_class || alert.label_filter || alert.area_filter) return "filter";
+    const chosen = this._alertModeChoice.get(index);
+    if (chosen) return chosen;
     return this._alertModeFilter.has(index) ? "filter" : "entity";
+  }
+
+  _alertRuleSetDef(alert) {
+    const ref = alert?.rule_set;
+    if (!ref) return null;
+    if (typeof ref === "object") return ref;
+    return this._ruleSets().find((rs) => String(rs.id) === String(ref)) || null;
+  }
+
+  /** Switches an alert's mode, clearing the fields that don't belong to the new one. */
+  _setAlertMode(index, mode) {
+    const alert = (this._config.alerts || [])[index] || {};
+    if (this._getAlertMode(index, alert) === mode) return;
+    const next = new Map(this._alertModeChoice);
+    next.set(index, mode);
+    this._alertModeChoice = next;
+    const quick = { entity_filter: undefined, device_class: undefined, label_filter: undefined, area_filter: undefined,
+      entity_filter_exclude: undefined, device_class_exclude: undefined };
+    const changes = { ...quick };
+    if (mode === "entity") Object.assign(changes, { rule_set: undefined });
+    if (mode === "filter") Object.assign(changes, { entity: undefined, rule_set: undefined });
+    if (mode === "rs_entity" || mode === "rs_notify") {
+      // The rule set decides on its own: drop the default "state is on" condition.
+      Object.assign(changes, { entity: undefined, operator: undefined, state: undefined, on_change: undefined });
+      const def = this._alertRuleSetDef(alert);
+      if (def && this._isNotificationSet(def) !== (mode === "rs_notify")) changes.rule_set = undefined;
+      if (mode === "rs_notify") {
+        Object.assign(changes, { attribute: undefined, trigger_delay: undefined });
+        const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
+        if (!alert.message || alert.message === dflt) changes.message = "{title}";
+      }
+    }
+    this._updateAlert(index, changes);
+  }
+
+  /** Turns an alert's quick-filter fields into a new entity rule set and points the alert at it. */
+  _convertAlertToRuleSet(index) {
+    const alert = (this._config.alerts || [])[index] || {};
+    const arr = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+    const all = [], any = [];
+    if (alert.device_class) all.push({ field: "device_class", op: "in", values: [alert.device_class] });
+    if (arr(alert.label_filter).length) all.push({ field: "label", op: "in", values: arr(alert.label_filter) });
+    if (arr(alert.area_filter).length) all.push({ field: "area", op: "in", values: arr(alert.area_filter) });
+    if (alert.entity_filter) {
+      const f = String(alert.entity_filter);
+      if (f.includes("*")) {
+        const re = "^" + f.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$";
+        any.push({ field: "entity_id", op: "regex", value: re }, { field: "name", op: "regex", value: re });
+      } else {
+        any.push({ field: "entity_id", op: "contains", value: f }, { field: "name", op: "contains", value: f });
+      }
+    }
+    const groups = [];
+    if (all.length) groups.push({ mode: "include", match: "all", rules: all });
+    if (any.length) groups.push({ mode: "include", match: "any", rules: any });
+    const exclude = arr(alert.entity_filter_exclude || alert.device_class_exclude);
+    if (exclude.length) groups.push({ mode: "exclude", match: "any", rules: [{ field: "entity_id", op: "in", values: exclude }] });
+    if (!groups.length) return;
+    const list = this._ruleSets();
+    const taken = new Set(list.map((rs) => String(rs.id)));
+    const base = String(alert.name || alert.device_class || alert.entity_filter || "rule_set").toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "rule_set";
+    let id = base, n = 2;
+    while (taken.has(id)) id = `${base}_${n++}`;
+    const rs = { id, name: alert.name || `${this._t("ruleset_default_name")} ${list.length + 1}`, groups };
+    const alerts = [...(this._config.alerts || [])];
+    const a = { ...alert, rule_set: id };
+    for (const k of ["entity_filter", "device_class", "label_filter", "area_filter", "entity_filter_exclude", "device_class_exclude"]) delete a[k];
+    alerts[index] = a;
+    const next = new Map(this._alertModeChoice); next.set(index, "rs_entity"); this._alertModeChoice = next;
+    this._fireConfig({ ...this._config, rule_sets: [...list, rs], alerts });
+  }
+
+  /** Opens a rule set in the Rule Sets section, remembering the alert to come back to. */
+  _openRuleSetFromAlert(index, rsIndex) {
+    this._rsReturnTo = index;
+    this._rsEditing = rsIndex;
+    this._sectionChanged("rulesets");
+  }
+
+  /** Creates a rule set of the alert's kind, points the alert at it, and opens it. */
+  _newRuleSetForAlert(index, kind) {
+    const list = this._ruleSets();
+    this._addRuleSet(kind);           // appends and fires config
+    const created = this._ruleSets()[list.length];
+    if (!created) return;
+    this._updateAlert(index, { rule_set: created.id });
+    this._openRuleSetFromAlert(index, list.length);
+  }
+
+  _backToAlert() {
+    const idx = this._rsReturnTo;
+    this._rsReturnTo = -1;
+    this._sectionChanged("alerts");
+    if (idx >= 0) this._editingIndex = idx;
+  }
+
+  /** Adds an alert that uses the given rule set and opens it. */
+  _createAlertForRuleSet(si) {
+    const rs = this._ruleSets()[si];
+    if (!rs) return;
+    const notify = this._isNotificationSet(rs);
+    const theme = notify ? "notification" : "warning";
+    const alerts = [...(this._config.alerts || []), {
+      rule_set: rs.id, message: notify ? "{title}" : "{name}", priority: notify ? 2 : 1, theme, icon: "",
+      name: rs.name || undefined,
+    }];
+    this._editingIndex = alerts.length - 1;
+    const next = new Map(this._alertModeChoice); next.set(alerts.length - 1, notify ? "rs_notify" : "rs_entity"); this._alertModeChoice = next;
+    this._rsReturnTo = -1;
+    this._fireConfig({ ...this._config, alerts });
+    this._sectionChanged("alerts");
   }
 
   _toggleFilterExclude(alertIndex, entityId) {
@@ -8598,6 +8755,19 @@ class AlertTickerCardEditor extends LitElement {
         rules: [{ field: "notification_text", op: "contains", value: text.slice(0, 60) }] }];
     }
     this._updateRuleSet(si, changes);
+  }
+
+  /** Small chips on an alert row for options that change how it behaves. */
+  _alertChips(alert) {
+    const chips = [];
+    if (alert.group) chips.push(`🗂️ ${this._t("alert_chip_group")}`);
+    if (alert.persistent) chips.push(`📌 ${this._t("alert_chip_persistent")}`);
+    if (alert.time_range && (alert.time_range.from || alert.time_range.to)) chips.push(`🕘 ${alert.time_range.from || ""}–${alert.time_range.to || ""}`);
+    if (alert.visible_to) chips.push(`👤 ${this._t("alert_chip_visible_to")}`);
+    if (alert.tts) chips.push("🗣️ TTS");
+    if (alert.push_notify) chips.push(`📱 ${this._t("alert_chip_push")}`);
+    if (!chips.length) return "";
+    return html`<div class="rs-chips rs-chips--summary">${chips.map((c) => html`<span class="rs-chip rs-chip--static">${c}</span>`)}</div>`;
   }
 
   /** Display name for an alert's rule_set value (id, inline object, or missing id). */
@@ -8732,6 +8902,8 @@ class AlertTickerCardEditor extends LitElement {
     return html`
       ${this._renderSectionHeader("tab_rulesets")}
       <div class="tab-content">
+        ${this._rsReturnTo >= 0 ? html`
+          <button class="rs-btn rs-back" @click="${() => this._backToAlert()}">← ${this._t("rs_back_to_alert").replace("{n}", this._rsReturnTo + 1)}</button>` : ""}
         <div class="helper-text rs-intro">${this._t("rulesets_intro")}</div>
         ${list.length === 0
           ? html`<div class="empty-alerts">${this._t("ruleset_empty")}</div>`
@@ -8819,8 +8991,23 @@ class AlertTickerCardEditor extends LitElement {
             <button class="rs-btn" @click="${() => addGroup("exclude")}">+ ${this._t("ruleset_add_exclude")}</button>
           </div>
           ${this._renderRsPreview(rs, `rs_${si}`)}
+          ${this._renderRsUsage(rs, si)}
         </div>
       </div>
+    `;
+  }
+
+  /** Alerts that use this rule set, each openable, plus "Create alert from this rule set". */
+  _renderRsUsage(rs, si) {
+    const users = (this._config.alerts || []).map((a, i) => ({ a, i })).filter(({ a }) => a && a.rule_set === rs.id);
+    return html`
+      <div class="rs-section-title">🚨 ${this._t("rs_alerts_using")}</div>
+      ${users.length ? html`<div class="rs-chips">
+        ${users.map(({ a, i }) => html`<a href="#" class="rs-chip rs-chip--link" @click="${(e) => {
+          e.preventDefault(); this._rsReturnTo = -1; this._sectionChanged("alerts"); this._editingIndex = i;
+        }}">${this._t("alert_num")} ${i + 1}${a.name ? `: ${a.name}` : ""}</a>`)}
+      </div>` : html`<div class="helper-text">${this._t("ruleset_unused")}</div>`}
+      <button class="rs-btn rs-btn--small" @click="${() => this._createAlertForRuleSet(si)}">+ ${this._t("rs_create_alert")}</button>
     `;
   }
 
@@ -9232,40 +9419,41 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
-  /** Rule-set picker inside an alert's filter mode. */
-  _renderAlertRuleSetPicker(alert, index) {
+  /** Rule-set picker for an alert in rs_entity / rs_notify mode. */
+  _renderAlertRuleSetPicker(alert, index, mode) {
+    const notify = mode === "rs_notify";
     const list = this._ruleSets();
+    const ofKind = list.map((rs, i) => ({ rs, i })).filter(({ rs }) => this._isNotificationSet(rs) === notify);
     const ref = alert.rule_set;
     const inline = ref && typeof ref === "object";
-    const missing = ref && !inline && !list.some((rs) => String(rs.id) === String(ref));
-    const def = inline ? ref : list.find((rs) => String(rs.id) === String(ref));
+    const def = this._alertRuleSetDef(alert);
+    const missing = ref && !inline && !def;
+    const defIndex = def && !inline ? list.indexOf(def) : -1;
+    const quickLeft = ["entity_filter", "device_class", "label_filter", "area_filter"].filter((k) => alert[k]);
     return html`
-      <div>
+      <div class="rs-alert-picker">
         <div class="native-select-wrap">
-          <label class="native-select-label">${this._t("alert_rule_set")}</label>
+          <label class="native-select-label">${this._t(notify ? "alert_notify_rule_set" : "alert_entity_rule_set")}</label>
           <select class="native-select" @change="${(e) => {
             const v = e.target.value;
             if (v === "__inline__") return;
             this._updateAlert(index, { rule_set: v || undefined });
           }}">
             <option value="" ?selected="${!ref}">—</option>
-            ${[["ruleset_group_label_entities", list.filter((rs) => !this._isNotificationSet(rs))],
-               ["ruleset_group_label_notifications", list.filter((rs) => this._isNotificationSet(rs))]]
-              .filter(([, items]) => items.length)
-              .map(([labelKey, items]) => html`<optgroup label="${this._t(labelKey)}">
-                ${items.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${this._isNotificationSet(rs) ? "📨" : "🧩"} ${rs.name || rs.id}</option>`)}
-              </optgroup>`)}
+            ${ofKind.map(({ rs }) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${notify ? "📨" : "🧩"} ${rs.name || rs.id}</option>`)}
             ${inline ? html`<option value="__inline__" selected>${this._t("alert_rule_set_inline")}</option>` : ""}
             ${missing ? html`<option value="${ref}" selected>⚠ ${ref}</option>` : ""}
           </select>
         </div>
-        ${missing ? html`<div class="rs-warning">⚠ ${this._t("alert_rule_set_missing")}</div>` : ""}
-        ${def && !alert.entity_filter && !alert.device_class ? this._renderRsPreview(def, `alert_rs_${index}`) : ""}
-        ${this._isNotificationSet(def) ? html`<div class="helper-text">💬 ${this._t("notify_placeholders_help")}</div>` : ""}
-        <div class="helper-text">
-          ${this._t("alert_rule_set_help")}
-          <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._sectionChanged("rulesets"); }}">${this._t("alert_rule_set_manage")}</a>
+        <div class="rs-add-row">
+          ${defIndex >= 0 ? html`<button class="rs-btn rs-btn--small" @click="${() => this._openRuleSetFromAlert(index, defIndex)}">✏️ ${this._t("alert_rule_set_edit")}</button>` : ""}
+          <button class="rs-btn rs-btn--small" @click="${() => this._newRuleSetForAlert(index, notify ? "notifications" : "entities")}">+ ${this._t(notify ? "ruleset_add_notify" : "ruleset_add")}</button>
         </div>
+        ${missing ? html`<div class="rs-warning">⚠ ${this._t("alert_rule_set_missing")}</div>` : ""}
+        ${!ref && !ofKind.length ? html`<div class="helper-text">${this._t(notify ? "alert_no_notify_sets" : "alert_no_entity_sets")}</div>` : ""}
+        ${quickLeft.length ? html`<div class="rs-warning">⚠ ${this._t("alert_quick_left").replace("{fields}", quickLeft.join(", "))}
+          <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._updateAlert(index, Object.fromEntries(quickLeft.map((k) => [k, undefined]))); }}">${this._t("alert_quick_remove")}</a></div>` : ""}
+        ${def ? this._renderRsPreview(def, `alert_rs_${index}`) : ""}
       </div>
     `;
   }
@@ -10968,6 +11156,38 @@ class AlertTickerCardEditor extends LitElement {
         border-radius: 14px;
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, transparent);
         font-size: 0.85rem;
+      }
+      .alert-mode-selector--4 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .rs-advanced > summary {
+        cursor: pointer;
+        font-weight: 500;
+        padding: 4px 0;
+      }
+      .rs-advanced > summary.rs-advanced-hidden {
+        display: none;
+      }
+      .rs-advanced[open] {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .rs-alert-picker {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .rs-back {
+        flex: none;
+        align-self: flex-start;
+        margin-bottom: 8px;
+      }
+      .rs-chip--link {
+        color: inherit;
+        text-decoration: none;
+        padding: 2px 10px;
       }
       .rs-chips--summary {
         margin-top: 4px;
