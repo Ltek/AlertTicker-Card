@@ -1539,7 +1539,7 @@ const ET = {
     hub_desc_rulesets: "Reusable filters for entities and Home Assistant notifications",
     rulesets_intro: "A rule set is a reusable filter. It watches either entities (by label, area, floor, device class, state…) or Home Assistant notifications (mobile app, persistent…). Pick one in an alert's filter mode and the alert shows once for every match. Edit a set here and every alert using it follows.",
     ruleset_empty: "No rule sets yet.",
-    ruleset_add: "Add rule set",
+    ruleset_add: "Add Entity Rule Set",
     ruleset_default_name: "Rule set",
     ruleset_name: "Name",
     ruleset_id: "ID",
@@ -1587,34 +1587,59 @@ const ET = {
     ruleset_watches: "Watches",
     ruleset_watch_entities: "Entities",
     ruleset_watch_notifications: "Notifications",
-    ruleset_add_notify: "Add notification rule set",
+    ruleset_add_notify: "Add Notification Rule Set",
     ruleset_notify_default_name: "Notifications",
-    notify_types: "Notification types to detect",
-    notify_type_mobile_app: "Mobile app",
-    notify_type_mobile_app_help: "Notifications sent to the Home Assistant Companion app (notify.mobile_app_…).",
-    notify_type_persistent: "Persistent",
-    notify_type_persistent_help: "Notifications in the Home Assistant notification bell. They stay until dismissed in HA.",
-    notify_type_notify: "Other notify services",
-    notify_type_notify_help: "Every other notify service: Telegram, email, notify groups, notify.send_message…",
-    notify_types_none: "Pick at least one notification type.",
-    notify_devices_all: "All mobile devices",
-    notify_devices_specific: "Only these mobile devices",
-    notify_devices: "Mobile devices",
-    notify_devices_none: "No mobile app devices found in Home Assistant.",
+    ruleset_group_label_entities: "Entity rule sets",
+    ruleset_group_label_notifications: "Notification rule sets",
+    notify_summary: "Alert when {source} sends a notification to {destination}",
+    notify_summary_conditions: "that meets the conditions below.",
+    notify_any_source: "any automation, script or integration",
+    notify_any_destination: "anywhere",
+    notify_any_source_short: "Any sender",
+    notify_any_destination_short: "anywhere",
+    notify_source: "Notification Source",
+    notify_source_help: "Who sends the notification.",
+    notify_only_sources: "Only these automations or scripts",
+    notify_seen_sending: "Seen sending notifications",
+    notify_scan: "Scan automations for notifications",
+    notify_rescan: "Scan again",
+    notify_scan_help: "Reads your automations and scripts to find the ones that send notifications.",
+    notify_scan_admin: "Scanning needs an admin user.",
+    notify_scan_running: "Scanning… {done} / {total}",
+    notify_scan_done: "{n} automations and scripts send notifications ({skipped} couldn't be read: blueprints or YAML without an id).",
+    notify_found_by_scan: "Found by scan",
+    notify_template_target: "templated target",
+    notify_via_scripts: "through script",
+    notify_use: "Use",
+    notify_any_automation_script: "Any automation or script",
+    notify_destination: "Notification Destination",
+    notify_destination_help: "Where the notification goes.",
+    notify_only_destinations: "Only these destinations",
+    notify_dest_all_mobile: "All mobile devices",
+    notify_dest_persistent: "Notification bell (persistent)",
+    notify_dest_mobile: "Mobile devices",
+    notify_dest_services: "Notify services & groups",
+    notify_dest_entities: "Other notify entities",
+    notify_dest_other: "Other (from YAML)",
+    notify_dest_group_help: "A phone also matches notifications sent to a notify group it belongs to.",
+    notify_recent: "Recent notifications",
+    notify_recent_help: "Notifications seen while this dashboard was open. Use one to fill in its sender and destination.",
+    notify_recent_empty: "None yet — send a notification and it appears here.",
+    notify_no_sender: "Integration / manual",
     notify_conditions: "Conditions (optional)",
-    notify_conditions_help: "Without conditions, every notification of the types above raises the alert. Text comparisons ignore upper/lower case.",
+    notify_conditions_help: "Narrow it down by the notification's text. Without conditions, every notification from the source to the destination raises the alert. Upper/lower case is ignored.",
     notify_preview_count: "matching notification(s) right now",
     notify_preview_zero: "No matching notifications right now — the alert appears when one arrives.",
-    notify_placeholders_help: "Use {title}, {message}, {sent_via} and {sent_to} in the alert message to show the notification.",
+    notify_placeholders_help: "Use {title}, {message}, {sent_by} and {sent_to} in the alert message to show the notification.",
     notify_client_side: "Only notifications that arrive while this dashboard is open in a browser or the Companion app are detected.",
-    notifications_admin_only: "Only admin users can see Mobile app and Other notify notifications — Home Assistant doesn't share them with other users.",
-    notifications_retention: "Keep each mobile / notify alert for (seconds)",
-    notifications_retention_help: "Home Assistant doesn't report when these are dismissed, so each one is shown for this long. Default 3600 (1 hour). Persistent notifications clear when dismissed in HA.",
+    notifications_admin_only: "Only admin users can see who sent a notification and notifications other than the notification bell — Home Assistant doesn't share them with other users.",
+    notifications_retention: "Keep each notification alert for (seconds)",
+    notifications_retention_help: "Home Assistant doesn't report when a sent notification is dismissed, so each one is shown for this long. Default 3600 (1 hour). Notification-bell notifications clear when dismissed in HA.",
     ruleset_field_notification_text: "Title or message",
     ruleset_field_notification_title: "Title",
     ruleset_field_notification_message: "Message",
     ruleset_field_notification_tag: "Tag",
-    ruleset_field_notification_sent_to: "Sent to (notify service)",
+    ruleset_field_notification_sent_to: "Sent to",
     ruleset_attribute_path: "Attribute name (dot path, e.g. battery_level)",
     alert_rule_set: "Rule set (optional)",
     alert_rule_set_help: "Only match entities in this rule set. Combinable with the filters above (AND logic).",
@@ -5900,9 +5925,122 @@ const RS_FIELD_OPS = {
   notification_tag:     ["eq", "ne", "in", "not_in", "contains", "regex"],
   notification_sent_to: ["in", "not_in", "contains", "regex"],
 };
-const RS_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message", "notification_tag", "notification_sent_to"];
+// notification_sent_to stays valid in YAML; the UI covers it with Notification Destination.
+const RS_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message", "notification_tag"];
 const RS_LIST_OPS = ["in", "not_in"];
 const RS_NUMERIC_OPS = ["gt", "lt", "ge", "le", "between"];
+
+// ---------------------------------------------------------------------------
+// Notification scan — finds which automations and scripts send notifications.
+// Read-only port of the discovery engine of Notification Manager Card
+// (https://github.com/Ltek/notification-manager-card): it reads each source's
+// config through HA's config API (admin only, the same API HA's own editors
+// use), walks the action tree — including choose / if-then-else / repeat /
+// parallel / sequence — and records each notify call's target, title and
+// message. Runs only when the user presses "Scan", from the editor. Blueprint
+// automations and YAML automations without an id can't be read this way.
+// ---------------------------------------------------------------------------
+const ATC_SCAN = { status: "idle", results: [], done: 0, total: 0, at: 0 };
+
+function _scanNotifyService(node, forEach) {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return null;
+  for (const k of ["action", "service"]) {
+    const v = node[k];
+    if (typeof v !== "string") continue;
+    if (v.startsWith("notify.")) return v;
+    // `action: "{{ repeat.item }}"` inside a repeat over notify.* services (a common
+    // "send to each phone" pattern) — the loop's items are the targets.
+    if (forEach && /\{\{[^}]*repeat\.item[^}]*\}\}/.test(v)) return { forEach };
+    if (v.includes("{{") && /notify/.test(v)) return { template: true };
+  }
+  return null;
+}
+
+function _scanScriptCalls(node) {
+  const k = typeof node.action === "string" ? node.action : (typeof node.service === "string" ? node.service : "");
+  if (k.startsWith("script.") && k !== "script.turn_on" && k !== "script.toggle") return [k];
+  if (k === "script.turn_on" || k === "script.toggle") {
+    const t = node.target?.entity_id ?? node.data?.entity_id ?? node.entity_id;
+    return (Array.isArray(t) ? t : [t]).filter((x) => typeof x === "string" && x.startsWith("script."));
+  }
+  return [];
+}
+
+function _scanWalk(node, out, forEach = null) {
+  if (Array.isArray(node)) { node.forEach((n) => _scanWalk(n, out, forEach)); return; }
+  if (!node || typeof node !== "object") return;
+  const svc = _scanNotifyService(node, forEach);
+  if (svc) {
+    const data = node.data && typeof node.data === "object" ? node.data : {};
+    let targets;
+    if (typeof svc === "object") {
+      targets = svc.forEach || null;
+    } else if (svc === "notify.send_message") {
+      const t = node.target?.entity_id ?? data.entity_id;
+      targets = (Array.isArray(t) ? t : [t]).filter(Boolean).map(String);
+    } else {
+      targets = [svc];
+    }
+    if (!targets.length || targets.some((t) => t.includes("{{") || t.includes("{%"))) targets = null; // templated target
+    out.notifies.push({ targets, title: data.title != null ? String(data.title) : "", message: data.message != null ? String(data.message) : "" });
+  }
+  _scanScriptCalls(node).forEach((sc) => out.scripts.add(sc));
+  if (Array.isArray(node.choose)) node.choose.forEach((b) => b && _scanWalk(b.sequence, out, forEach));
+  for (const k of ["default", "then", "else", "sequence", "parallel"]) if (node[k] !== undefined) _scanWalk(node[k], out, forEach);
+  if (node.repeat && typeof node.repeat === "object") {
+    const items = Array.isArray(node.repeat.for_each) ? node.repeat.for_each : null;
+    const notifyItems = items && items.length && items.every((x) => typeof x === "string" && x.startsWith("notify.")) ? items.slice() : null;
+    _scanWalk(node.repeat.sequence, out, notifyItems || forEach);
+  }
+}
+
+/** Scans every automation and script. Calls onProgress() as results arrive. */
+async function _atcScanNotifySources(hass, onProgress) {
+  if (!hass?.callApi || ATC_SCAN.status === "running") return;
+  const sources = Object.keys(hass.states)
+    .filter((e) => e.startsWith("automation.") || e.startsWith("script."))
+    .map((e) => ({
+      entity_id: e,
+      kind: e.startsWith("automation.") ? "automation" : "script",
+      name: hass.states[e].attributes?.friendly_name || e,
+      path: e.startsWith("automation.")
+        ? (hass.states[e].attributes?.id ? `config/automation/config/${hass.states[e].attributes.id}` : null)
+        : `config/script/config/${e.slice(7)}`,
+    }));
+  Object.assign(ATC_SCAN, { status: "running", results: [], done: 0, total: sources.length });
+  onProgress?.();
+  const results = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < sources.length) {
+      const src = sources[next++];
+      const r = { ...src, notifies: [], scripts: [], blueprint: false, readable: !!src.path };
+      if (src.path) {
+        try {
+          const cfg = await hass.callApi("GET", src.path);
+          if (cfg?.use_blueprint) r.blueprint = true;
+          const out = { notifies: [], scripts: new Set() };
+          _scanWalk(src.kind === "automation" ? (cfg.actions ?? cfg.action) : cfg.sequence, out);
+          r.notifies = out.notifies;
+          r.scripts = [...out.scripts];
+        } catch (_) { r.readable = false; }
+      }
+      delete r.path;
+      results.push(r);
+      ATC_SCAN.done++;
+      if (ATC_SCAN.done % 10 === 0) onProgress?.();
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, worker));
+  // One level of script calls: an automation that calls a notifying script sends notifications too.
+  const byId = Object.fromEntries(results.map((r) => [r.entity_id, r]));
+  for (const r of results) r.via = r.scripts.filter((sc) => byId[sc]?.notifies.length);
+  ATC_SCAN.results = results.filter((r) => r.notifies.length || r.via.length)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  ATC_SCAN.unreadable = results.filter((r) => !r.readable || r.blueprint).length;
+  Object.assign(ATC_SCAN, { status: "done", at: Date.now() });
+  onProgress?.();
+}
 
 class AlertTickerCardEditor extends LitElement {
   static get properties() {
@@ -8399,16 +8537,74 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _isNotificationSet(rs) {
-    return !!rs && rs.source === "notifications";
+    return !!globalThis.__alertTickerShared?.isNotificationSet?.(rs);
   }
 
-  /** Mobile devices that can receive notifications: the notify.mobile_app_* services. */
-  _mobileDevices() {
-    const svcs = Object.keys(this._hass?.services?.notify || {}).filter((k) => k.startsWith("mobile_app_"));
-    return svcs.sort().map((id) => {
-      const pretty = id.slice("mobile_app_".length).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      return { value: id, label: pretty || id };
-    });
+  _entityName(eid) {
+    return this._hass?.states?.[eid]?.attributes?.friendly_name || eid;
+  }
+
+  _destName(id) {
+    return globalThis.__alertTickerShared?.destinationName?.(this._hass, id) || id;
+  }
+
+  /** One-line plain-language description of a notification rule set. */
+  _notificationSummary(rs) {
+    const src = Array.isArray(rs.notification_source) && rs.notification_source.length
+      ? rs.notification_source.map((e) => this._entityName(e)).join(", ") : this._t("notify_any_source");
+    const dst = Array.isArray(rs.notification_destination) && rs.notification_destination.length
+      ? rs.notification_destination.map((d) => this._destName(d)).join(", ") : this._t("notify_any_destination");
+    const hasCond = (rs.groups || []).some((g) => (g?.rules || []).length);
+    return this._t("notify_summary").replace("{source}", src).replace("{destination}", dst)
+      + (hasCond ? ` ${this._t("notify_summary_conditions")}` : "");
+  }
+
+  /** Adds or removes one value of a list key (notification_source / notification_destination). */
+  _rsToggleList(si, key, value, on) {
+    const rs = this._ruleSets()[si] || {};
+    const cur = Array.isArray(rs[key]) ? rs[key].slice() : [];
+    const i = cur.indexOf(value);
+    if (on && i < 0) cur.push(value);
+    if (!on && i >= 0) cur.splice(i, 1);
+    this._updateRuleSet(si, { [key]: cur.length ? cur : undefined });
+  }
+
+  /** "Only these" chosen but nothing picked yet — kept in the editor until something is picked. */
+  _rsOnly(si, key) {
+    const rs = this._ruleSets()[si] || {};
+    return (Array.isArray(rs[key]) && rs[key].length > 0) || !!this._rsOnlyOpen?.has(`${si}:${key}`);
+  }
+
+  _rsSetOnly(si, key, only) {
+    const next = new Set(this._rsOnlyOpen || []);
+    if (only) next.add(`${si}:${key}`); else next.delete(`${si}:${key}`);
+    this._rsOnlyOpen = next;
+    if (!only) this._updateRuleSet(si, { [key]: undefined });
+    else this.requestUpdate();
+  }
+
+  /** Runs the notification scan (see ATC_SCAN); resolves when it's done. */
+  _scanNotifications() {
+    return _atcScanNotifySources(this._hass, () => this.requestUpdate());
+  }
+
+  _scanState() {
+    return ATC_SCAN;
+  }
+
+  /** Fills a notification set from a notification or a scanned notify action. */
+  _rsUseNotification(si, { sources = [], destinations = [], text = "" }) {
+    const rs = this._ruleSets()[si] || {};
+    const merge = (cur, add) => [...new Set([...(Array.isArray(cur) ? cur : []), ...add])];
+    const changes = {};
+    if (sources.length) changes.notification_source = merge(rs.notification_source, sources);
+    if (destinations.length) changes.notification_destination = merge(rs.notification_destination, destinations);
+    // With no sender to tell it apart, match on its text.
+    if (!sources.length && text) {
+      changes.groups = [...(rs.groups || []), { mode: "include", match: "all",
+        rules: [{ field: "notification_text", op: "contains", value: text.slice(0, 60) }] }];
+    }
+    this._updateRuleSet(si, changes);
   }
 
   /** Display name for an alert's rule_set value (id, inline object, or missing id). */
@@ -8450,9 +8646,8 @@ class AlertTickerCardEditor extends LitElement {
       ? {
           id: `${base}_${n}`,
           name: `${this._t("ruleset_notify_default_name")} ${n}`,
-          source: "notifications",
-          notification_types: ["mobile_app", "persistent"],
-          groups: [{ mode: "include", match: "all", rules: [this._newRule("notification_text")] }],
+          watch: "notifications",
+          groups: [],
         }
       : {
           id: `${base}_${n}`,
@@ -8487,26 +8682,17 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /** Switches a set between watching entities and notifications. Its rules don't carry over. */
-  _setRuleSetSource(si, source) {
+  _setRuleSetSource(si, watch) {
     const rs = this._ruleSets()[si] || {};
-    if ((rs.source === "notifications") === (source === "notifications")) return;
-    const { source: _s, notification_types: _t, mobile_devices: _d, ...rest } = rs;
-    const next = source === "notifications"
-      ? { ...rest, source: "notifications", notification_types: ["mobile_app", "persistent"],
-          groups: [{ mode: "include", match: "all", rules: [this._newRule("notification_text")] }] }
+    if (this._isNotificationSet(rs) === (watch === "notifications")) return;
+    const { watch: _w, source: _s, notification_source: _ns, notification_destination: _nd,
+      notification_types: _t, mobile_devices: _d, ...rest } = rs;
+    const next = watch === "notifications"
+      ? { ...rest, watch: "notifications", groups: [] }
       : { ...rest, groups: [{ mode: "include", match: "all", rules: [this._newRule()] }] };
     const list = [...this._ruleSets()];
     list[si] = next;
     this._setRuleSets(list);
-  }
-
-  _toggleNotificationType(si, type, on) {
-    const rs = this._ruleSets()[si] || {};
-    const cur = new Set(Array.isArray(rs.notification_types) ? rs.notification_types : ["mobile_app", "persistent"]);
-    if (on) cur.add(type); else cur.delete(type);
-    const order = ["mobile_app", "persistent", "notify"];
-    const types = order.filter((t) => cur.has(t));
-    this._updateRuleSet(si, { notification_types: types, ...(type === "mobile_app" && !on ? { mobile_devices: undefined } : {}) });
   }
 
   /** Copies the set's groups, lets `fn` mutate the copy, then saves it. */
@@ -8588,7 +8774,7 @@ class AlertTickerCardEditor extends LitElement {
         <div class="alert-summary-text">
           <div class="alert-entity-label">${rs.name || rs.id}</div>
           <div class="alert-msg-label">${this._isNotificationSet(rs)
-            ? (rs.notification_types?.length ? rs.notification_types : ["mobile_app", "persistent"]).map((t) => this._t("notify_type_" + t)).join(", ")
+            ? `${(rs.notification_source || []).map((e) => this._entityName(e)).join(", ") || this._t("notify_any_source_short")} → ${(rs.notification_destination || []).map((d) => this._destName(d)).join(", ") || this._t("notify_any_destination_short")}`
             : this._t("ruleset_watch_entities")} · ${used ? `${this._t("ruleset_used_by")}: ${used}` : this._t("ruleset_unused")}</div>
         </div>
         <div class="alert-actions">
@@ -8630,8 +8816,9 @@ class AlertTickerCardEditor extends LitElement {
               <button class="alert-mode-btn ${isN ? "active" : ""}" @click="${() => this._setRuleSetSource(si, "notifications")}">🔔 ${this._t("ruleset_watch_notifications")}</button>
             </div>
           </div>
+          ${isN ? html`<div class="rs-summary">🔔 ${this._notificationSummary(rs)}</div>` : ""}
           ${isN ? this._renderNotificationOptions(rs, si) : ""}
-          ${isN ? html`<div class="native-select-label">${this._t("notify_conditions")}</div>
+          ${isN ? html`<div class="rs-section-title">🔎 ${this._t("notify_conditions")}</div>
             <div class="helper-text">${this._t("notify_conditions_help")}</div>` : ""}
           ${groups.map((g, gi) => this._renderRsGroup(si, g || {}, gi))}
           ${!hasInclude ? html`<div class="rs-warning">⚠ ${this._t("ruleset_no_include")}</div>` : ""}
@@ -8646,63 +8833,158 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _renderNotificationOptions(rs, si) {
-    const types = new Set(Array.isArray(rs.notification_types) && rs.notification_types.length ? rs.notification_types : ["mobile_app", "persistent"]);
-    const devices = Array.isArray(rs.mobile_devices) ? rs.mobile_devices : [];
-    const specific = devices.length > 0 || this._rsSpecificDevices?.has(si);
-    const mobile = this._mobileDevices();
-    const needsAdmin = (types.has("mobile_app") || types.has("notify")) && this._hass?.user?.is_admin !== true;
-    const typeRow = (t) => html`
-      <ha-formfield .label="${this._t("notify_type_" + t)}">
-        <ha-checkbox
-          .checked="${types.has(t)}"
-          @change="${(e) => this._toggleNotificationType(si, t, e.target.checked)}"
-        ></ha-checkbox>
-      </ha-formfield>
-      <div class="helper-text rs-type-help">${this._t("notify_type_" + t + "_help")}</div>`;
+    const isAdmin = this._hass?.user?.is_admin === true;
+    return html`
+      ${this._renderRsRecent(si)}
+      <div class="rs-notify-box">
+        <div class="rs-section-title">📤 ${this._t("notify_source")}</div>
+        <div class="helper-text">${this._t("notify_source_help")}</div>
+        ${this._renderAnyOnly(si, "notification_source", "notify_any_source", "notify_only_sources")}
+        ${this._rsOnly(si, "notification_source") ? this._renderSourcePicker(rs, si) : ""}
+      </div>
+      <div class="rs-notify-box">
+        <div class="rs-section-title">📥 ${this._t("notify_destination")}</div>
+        <div class="helper-text">${this._t("notify_destination_help")}</div>
+        ${this._renderAnyOnly(si, "notification_destination", "notify_any_destination", "notify_only_destinations")}
+        ${this._rsOnly(si, "notification_destination") ? this._renderDestinationPicker(rs, si) : ""}
+      </div>
+      ${!isAdmin ? html`<div class="rs-warning">⚠ ${this._t("notifications_admin_only")}</div>` : ""}
+      <ha-input
+        type="number"
+        .label="${this._t("notifications_retention")}"
+        .value="${this._config.notifications_retention != null ? String(this._config.notifications_retention) : "3600"}"
+        min="60" placeholder="3600"
+        @change="${(e) => { const v = parseInt(e.target.value, 10); this._fireConfig({ ...this._config, notifications_retention: v > 0 && v !== 3600 ? v : undefined }); }}"
+      ></ha-input>
+      <div class="helper-text">${this._t("notifications_retention_help")}</div>
+      <div class="helper-text" style="color:var(--warning-color,#f4a835)">${this._t("notify_client_side")}</div>
+    `;
+  }
+
+  _renderAnyOnly(si, key, anyKey, onlyKey) {
+    const only = this._rsOnly(si, key);
+    return html`
+      <select class="native-select rs-select" @change="${(e) => this._rsSetOnly(si, key, e.target.value === "only")}">
+        <option value="any" ?selected="${!only}">${this._t(anyKey)}</option>
+        <option value="only" ?selected="${only}">${this._t(onlyKey)}</option>
+      </select>`;
+  }
+
+  _rsCheck(si, key, value, label, extra) {
+    const rs = this._ruleSets()[si] || {};
+    const on = Array.isArray(rs[key]) && rs[key].includes(value);
+    return html`
+      <div class="rs-check-row">
+        <ha-formfield .label="${label}">
+          <ha-checkbox .checked="${on}" @change="${(e) => this._rsToggleList(si, key, value, e.target.checked)}"></ha-checkbox>
+        </ha-formfield>
+        ${extra || ""}
+      </div>`;
+  }
+
+  /** Source picker: automations seen sending, scan results, then any automation / script. */
+  _renderSourcePicker(rs, si) {
+    const shared = globalThis.__alertTickerShared;
+    const picked = Array.isArray(rs.notification_source) ? rs.notification_source : [];
+    const seen = (shared?.notifications?.observedSenders?.() || []).filter((s) => this._hass?.states?.[s.entity_id]);
+    const scanned = ATC_SCAN.status === "done" ? ATC_SCAN.results : [];
+    const scannedIds = new Set(scanned.map((r) => r.entity_id));
+    const isAdmin = this._hass?.user?.is_admin === true;
+    return html`
+      ${seen.length ? html`
+        <div class="native-select-label">${this._t("notify_seen_sending")}</div>
+        ${seen.filter((s) => !scannedIds.has(s.entity_id)).map((s) => this._rsCheck(si, "notification_source", s.entity_id, this._entityName(s.entity_id)))}
+      ` : ""}
+      <div class="rs-scan-row">
+        <button class="rs-btn rs-btn--small" ?disabled="${!isAdmin || ATC_SCAN.status === "running"}"
+          @click="${() => this._scanNotifications()}">🔍 ${this._t(ATC_SCAN.status === "done" ? "notify_rescan" : "notify_scan")}</button>
+        <span class="helper-text">${ATC_SCAN.status === "running"
+          ? this._t("notify_scan_running").replace("{done}", ATC_SCAN.done).replace("{total}", ATC_SCAN.total)
+          : ATC_SCAN.status === "done"
+            ? this._t("notify_scan_done").replace("{n}", scanned.length).replace("{skipped}", ATC_SCAN.unreadable || 0)
+            : this._t(isAdmin ? "notify_scan_help" : "notify_scan_admin")}</span>
+      </div>
+      ${scanned.length ? html`
+        <div class="native-select-label">${this._t("notify_found_by_scan")}</div>
+        ${scanned.map((r) => this._rsCheck(si, "notification_source", r.entity_id, r.name, html`
+          <div class="rs-scan-detail">
+            ${r.notifies.map((n) => html`
+              <div class="rs-scan-line">
+                <span>→ ${n.targets ? n.targets.map((t) => this._destName(t)).join(", ") : this._t("notify_template_target")}</span>
+                <span class="rs-scan-text">${n.title || n.message}</span>
+                <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._rsUseNotification(si, { sources: [r.entity_id], destinations: n.targets || [] }); }}">${this._t("notify_use")}</a>
+              </div>`)}
+            ${r.via.length ? html`<div class="rs-scan-line">↳ ${this._t("notify_via_scripts")}: ${r.via.map((sc) => this._entityName(sc)).join(", ")}</div>` : ""}
+          </div>`))}
+      ` : ""}
+      <ha-selector
+        .hass="${this._hass}"
+        .selector="${{ entity: { multiple: true, filter: [{ domain: "automation" }, { domain: "script" }] } }}"
+        .value="${picked}"
+        .label="${this._t("notify_any_automation_script")}"
+        @value-changed="${(e) => { const v = e.detail.value; this._updateRuleSet(si, { notification_source: Array.isArray(v) && v.length ? v : undefined }); }}"
+      ></ha-selector>
+    `;
+  }
+
+  /** Destination picker: shortcuts, phones, notify services & groups, other notify entities. */
+  _renderDestinationPicker(rs, si) {
+    const d = globalThis.__alertTickerShared?.notifyDestinations?.(this._hass) || { mobile: [], services: [], entities: [] };
+    const picked = Array.isArray(rs.notification_destination) ? rs.notification_destination : [];
+    const known = new Set(["mobile_app", "persistent", ...d.mobile.map((x) => x.value), ...d.services.map((x) => x.value), ...d.entities.map((x) => x.value)]);
+    const other = picked.filter((v) => !known.has(v));
+    const section = (titleKey, items) => items.length ? html`
+      <div class="native-select-label">${this._t(titleKey)}</div>
+      ${items.map((x) => this._rsCheck(si, "notification_destination", x.value, x.label))}` : "";
+    return html`
+      ${this._rsCheck(si, "notification_destination", "mobile_app", `📱 ${this._t("notify_dest_all_mobile")}`)}
+      ${this._rsCheck(si, "notification_destination", "persistent", `🔔 ${this._t("notify_dest_persistent")}`)}
+      ${section("notify_dest_mobile", d.mobile)}
+      ${section("notify_dest_services", d.services)}
+      ${section("notify_dest_entities", d.entities)}
+      ${section("notify_dest_other", other.map((v) => ({ value: v, label: v })))}
+      <div class="helper-text">${this._t("notify_dest_group_help")}</div>
+    `;
+  }
+
+  /** Notifications seen so far — click "Use" to build the set from one. Doubles as a live log. */
+  _renderRsRecent(si) {
+    const shared = globalThis.__alertTickerShared;
+    const h = this._previewHass();
+    const items = Object.values(h?.states || {})
+      .filter((es) => shared?.notifications?.isNotification(es.entity_id, es))
+      .sort((a, b) => String(b.last_changed).localeCompare(String(a.last_changed)));
+    const key = `recent_${si}`;
+    const open = this._filterPreviewOpen.has(key);
     return html`
       <div class="rs-notify-box">
-        <div class="native-select-label">${this._t("notify_types")}</div>
-        ${typeRow("mobile_app")}
-        ${types.has("mobile_app") ? html`
-          <div class="rs-devices">
-            <select class="native-select rs-select" @change="${(e) => {
-              const only = e.target.value === "specific";
-              const next = new Set(this._rsSpecificDevices || []);
-              if (only) next.add(si); else next.delete(si);
-              this._rsSpecificDevices = next;
-              if (!only) this._updateRuleSet(si, { mobile_devices: undefined });
-              else this.requestUpdate();
-            }}">
-              <option value="all" ?selected="${!specific}">${this._t("notify_devices_all")}</option>
-              <option value="specific" ?selected="${specific}">${this._t("notify_devices_specific")}</option>
-            </select>
-            ${specific ? html`
-              <ha-selector
-                .hass="${this._hass}"
-                .selector="${{ select: { multiple: true, custom_value: true, mode: "list", options: mobile } }}"
-                .value="${devices}"
-                .label="${this._t("notify_devices")}"
-                @value-changed="${(e) => { const v = e.detail.value; this._updateRuleSet(si, { mobile_devices: Array.isArray(v) && v.length ? v : undefined }); }}"
-              ></ha-selector>
-              ${mobile.length === 0 ? html`<div class="helper-text">${this._t("notify_devices_none")}</div>` : ""}
-            ` : ""}
-          </div>` : ""}
-        ${typeRow("persistent")}
-        ${typeRow("notify")}
-        ${types.size === 0 ? html`<div class="rs-warning">⚠ ${this._t("notify_types_none")}</div>` : ""}
-        ${needsAdmin ? html`<div class="rs-warning">⚠ ${this._t("notifications_admin_only")}</div>` : ""}
-        ${types.has("mobile_app") || types.has("notify") ? html`
-          <ha-input
-            type="number"
-            .label="${this._t("notifications_retention")}"
-            .value="${this._config.notifications_retention != null ? String(this._config.notifications_retention) : "3600"}"
-            min="60" placeholder="3600"
-            @change="${(e) => { const v = parseInt(e.target.value, 10); this._fireConfig({ ...this._config, notifications_retention: v > 0 && v !== 3600 ? v : undefined }); }}"
-          ></ha-input>
-          <div class="helper-text">${this._t("notifications_retention_help")}</div>` : ""}
-        <div class="helper-text" style="color:var(--warning-color,#f4a835)">${this._t("notify_client_side")}</div>
-      </div>
-    `;
+        <button class="filter-count-btn" @click="${() => {
+          const next = new Set(this._filterPreviewOpen);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          this._filterPreviewOpen = next;
+        }}">
+          <span>🕘 ${this._t("notify_recent")} (<b>${items.length}</b>)</span>
+          <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
+        </button>
+        ${open ? (items.length ? html`
+          <div class="helper-text">${this._t("notify_recent_help")}</div>
+          <div class="filter-entity-list">
+            ${items.map((es) => {
+              const a = es.attributes;
+              const by = (a.sent_by_names || a.sent_by || []).join(", ") || this._t("notify_no_sender");
+              const to = (a.sent_to_names || a.sent_to || []).join(", ");
+              return html`
+                <div class="filter-entity-row rs-recent-row">
+                  <div class="rs-recent-text">
+                    <div class="filter-entity-name">${a.title || a.message}</div>
+                    ${a.title && a.message ? html`<div class="filter-entity-id">${a.message}</div>` : ""}
+                    <div class="filter-entity-id">${by} → ${to} · ${new Date(es.last_changed).toLocaleTimeString(this._lang || undefined)}${a.context_id ? html` · <span class="rs-ctx">${a.context_id}</span>` : ""}</div>
+                  </div>
+                  <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._rsUseNotification(si, { sources: a.sent_by || [], destinations: (a.sent_to || []).slice(0, 1), text: a.title || a.message }); }}">${this._t("notify_use")}</a>
+                </div>`;
+            })}
+          </div>` : html`<div class="helper-text">${this._t("notify_recent_empty")}</div>`) : ""}
+      </div>`;
   }
 
   _renderRsGroup(si, g, gi) {
@@ -8851,7 +9133,7 @@ class AlertTickerCardEditor extends LitElement {
               <div class="filter-entity-row">
                 <span class="filter-entity-name">${s.attributes.title || s.attributes.message}</span>
                 <span class="filter-entity-id">${s.attributes.title ? s.attributes.message : ""}</span>
-                <span class="filter-entity-state">${this._t("notify_type_" + s.attributes.notification_type)}${s.attributes.notification_type === "persistent" ? "" : ` · ${s.attributes.service}`}</span>
+                <span class="filter-entity-state">${(s.attributes.sent_by_names || []).join(", ") || this._t("notify_no_sender")} → ${(s.attributes.sent_to_names || s.attributes.sent_to || []).join(", ")}</span>
               </div>` : html`
               <div class="filter-entity-row">
                 <span class="filter-entity-name">${s.attributes.friendly_name || id}</span>
@@ -8880,7 +9162,12 @@ class AlertTickerCardEditor extends LitElement {
             this._updateAlert(index, { rule_set: v || undefined });
           }}">
             <option value="" ?selected="${!ref}">—</option>
-            ${list.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${this._isNotificationSet(rs) ? "🔔" : "🧩"} ${rs.name || rs.id}</option>`)}
+            ${[["ruleset_group_label_entities", list.filter((rs) => !this._isNotificationSet(rs))],
+               ["ruleset_group_label_notifications", list.filter((rs) => this._isNotificationSet(rs))]]
+              .filter(([, items]) => items.length)
+              .map(([labelKey, items]) => html`<optgroup label="${this._t(labelKey)}">
+                ${items.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${this._isNotificationSet(rs) ? "🔔" : "🧩"} ${rs.name || rs.id}</option>`)}
+              </optgroup>`)}
             ${inline ? html`<option value="__inline__" selected>${this._t("alert_rule_set_inline")}</option>` : ""}
             ${missing ? html`<option value="${ref}" selected>⚠ ${ref}</option>` : ""}
           </select>
@@ -10581,14 +10868,56 @@ class AlertTickerCardEditor extends LitElement {
       }
 
       /* ---- Rule sets ---- */
-      .rs-type-help {
-        margin: -6px 0 2px 52px;
+      .rs-summary {
+        padding: 8px 10px;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 10%, transparent);
+        font-size: 0.9rem;
       }
-      .rs-devices {
+      .rs-section-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+      .rs-check-row {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        margin: 0 0 4px 52px;
+      }
+      .rs-scan-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .rs-scan-detail {
+        margin: -4px 0 4px 52px;
+        font-size: 0.82rem;
+        color: var(--secondary-text-color, #888);
+      }
+      .rs-scan-line {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .rs-scan-text {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-style: italic;
+      }
+      .rs-recent-row {
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .rs-recent-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .rs-ctx {
+        font-family: monospace;
+        font-size: 0.75rem;
+        opacity: 0.7;
       }
       .rs-notify-box {
         display: flex;
