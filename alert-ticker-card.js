@@ -1711,6 +1711,25 @@ function _atcExtraConditionResults(hass, alert, ctx) {
   });
 }
 
+/**
+ * The line shown under a multi-entity alert's message (show_filter_name, default on):
+ * the matched entity's name, or a notification's message. null for single-entity
+ * alerts. (Label- and area-only filters were left out before.)
+ */
+function _atcMatchedLine(alert, es) {
+  if (!alert?._expanded || alert.show_filter_name === false) return null;
+  if (_ATC_NOTIFY.isNotification(alert.entity, es)) return es?.attributes?.message || null;
+  return es?.attributes?.friendly_name || alert.entity;
+}
+
+/** Stable identity of an alert config entry for overlay keys and fingerprints. */
+function _atcAlertKey(a) {
+  if (!a) return "";
+  if (a.entity) return a.entity;
+  const rs = a.rule_set ? (typeof a.rule_set === "object" ? "rs:inline" : "rs:" + a.rule_set) : "";
+  return a.entity_filter || a.device_class || rs || [].concat(a.label_filter || [], a.area_filter || []).join(",");
+}
+
 /** Entities an alert's extra conditions look at — its `conditions` and its rule set's other-entity rules. */
 function _atcConditionEntities(alert) {
   const ids = _atcNormConditions(alert.conditions).map((c) => c.entity);
@@ -2690,7 +2709,7 @@ const _ATC_OVERLAY = (() => {
 
           // ── Single-entity alerts ──────────────────────────────────────────────
           if (newBases.has(i)) continue; // already notified or was already active
-          const key = "e:" + (a.entity || a.entity_filter || a.device_class || "") + ":" + i;
+          const key = "e:" + _atcAlertKey(a) + ":" + i;
           if (_isDupe(key)) continue;
           const cat     = (THEME_META[a.theme] || {}).category || "info";
           const rawIcon = a.icon || (THEME_META[a.theme] || {}).icon || "🔔";
@@ -2761,12 +2780,12 @@ const _ATC_OVERLAY = (() => {
         //   that card is legitimately on another view and must keep firing cross-view banners.
         // - Delete orphans: element gone AND detach() was never called (hot-reload leftovers).
         // - Delete same-slot remounts: same alert fingerprint AND properly disconnected.
-        const fp = (alerts || []).map(a => a.entity || a.entity_filter || "").join("|");
+        const fp = (alerts || []).map(_atcAlertKey).join("|");
         for (const [oid, oreg] of _regs) {
           if (oid === id) continue;
           const oel = oreg.element;
           if (oel && (oel.isConnected || oel._mounted)) continue; // active — leave it alone
-          const ofp = (oreg.alerts || []).map(a => a.entity || a.entity_filter || "").join("|");
+          const ofp = (oreg.alerts || []).map(_atcAlertKey).join("|");
           const isOrphan   = !oreg.disconnected;       // never called detach() — leftover
           const isSameSlot = oreg.disconnected && ofp === fp; // same card remounting
           if (isOrphan || isSameSlot) {
@@ -2777,8 +2796,8 @@ const _ATC_OVERLAY = (() => {
         // indices don't cause already-notified alerts to re-fire after an edit.
         const existing = _regs.get(id);
         if (existing) {
-          const oldSig = (existing.alerts || []).map((a, i) => i + ":" + (a.entity || a.entity_filter || "")).join("|");
-          const newSig = (alerts || []).map((a, i) => i + ":" + (a.entity || a.entity_filter || "")).join("|");
+          const oldSig = (existing.alerts || []).map((a, i) => i + ":" + _atcAlertKey(a)).join("|");
+          const newSig = (alerts || []).map((a, i) => i + ":" + _atcAlertKey(a)).join("|");
           if (oldSig !== newSig) { _bases.delete(id); _prevS.delete(id); _filterNotified.delete(id); }
         }
         _regs.set(id, { alerts: alerts || [], config, lang, element, disconnected: false });
@@ -3394,7 +3413,7 @@ class AlertTickerCard extends LitElement {
             // the card is mounted and visible. No showDirect() here — avoids
             // the race condition where set hass() fires before connectedCallback.
             if (this._config?.overlay_mode && this._mounted) {
-              const dedupeKey = "e:" + (alert.entity || alert.entity_filter || alert.device_class || "") + ":" + (alert._configIdx ?? 0);
+              const dedupeKey = "e:" + _atcAlertKey(alert) + ":" + (alert._configIdx ?? 0);
               _ATC_OVERLAY.suppress(dedupeKey);
             }
           }
@@ -5905,9 +5924,11 @@ class AlertTickerCard extends LitElement {
     const lines = [];
 
     // entity_filter / device_class: auto-show the matched entity's friendly name (opt-out with show_filter_name: false)
-    if (alert && (alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false) {
-      const es = this._hass && this._hass.states[alert.entity];
-      const name = es ? (es.attributes.friendly_name || alert.entity) : alert.entity;
+    const matchedEs = alert && this._hass && this._hass.states[alert.entity];
+    const matchedName = _atcMatchedLine(alert, matchedEs);
+    if (matchedName) {
+      const es = matchedEs;
+      const name = matchedName;
       const stateStr = alert.show_filter_state && es
         ? this._formatStateValue(es, alert.attribute || null)
         : null;
@@ -6555,8 +6576,8 @@ class AlertTickerCard extends LitElement {
     // suppress inline state (already shown prominently on the right).
     let secondaryEl;
     const trimName = alert.battery_trim_name === true;
-    if (es && (alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false) {
-      let name = es.attributes?.friendly_name || alert.entity;
+    if (es && _atcMatchedLine(alert, es)) {
+      let name = _atcMatchedLine(alert, es);
       if (trimName) name = name.replace(/\s*battery\s*$/i, "").trim();
       const stateStr = alert.show_filter_state && !showLevel
         ? this._formatStateValue(es, alert.attribute || null) : null;
@@ -7062,8 +7083,7 @@ class AlertTickerCard extends LitElement {
               const _parts = [
                 (_showArtist && artist) ? artist : null,
                 _showTitle ? title : null,
-                ((alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false)
-                  ? (es.attributes.friendly_name || alert.entity) : null
+                _atcMatchedLine(alert, es)
               ].filter(Boolean);
               const _meta = _parts.join(' · ');
               return _meta ? html`<div class="mu-compact-meta mu-marquee-wrap"><span class="mu-marquee-inner" style="animation-duration:${Math.max(8, _meta.length * 0.22).toFixed(1)}s">${_meta}      ${_meta}</span></div>` : "";
@@ -7074,8 +7094,8 @@ class AlertTickerCard extends LitElement {
               ${(_showArtist && artist) ? (artist.length > 28
                 ? html`<div class="mu-player-artist mu-marquee-wrap"><span class="mu-marquee-inner" style="animation-duration:${Math.max(5, artist.length * 0.25).toFixed(1)}s">${artist}      ${artist}</span></div>`
                 : html`<div class="mu-player-artist">${artist}</div>`) : ""}
-              ${(alert.entity_filter || alert.device_class || alert.rule_set) && alert.show_filter_name !== false
-                ? html`<div class="mu-player-artist" style="opacity:0.6">${es.attributes.friendly_name || alert.entity}</div>`
+              ${_atcMatchedLine(alert, es)
+                ? html`<div class="mu-player-artist" style="opacity:0.6">${_atcMatchedLine(alert, es)}</div>`
                 : ""}
             `}
           </div>
