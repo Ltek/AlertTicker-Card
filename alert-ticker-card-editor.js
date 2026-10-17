@@ -1584,19 +1584,12 @@ const ET = {
     ruleset_value_to: "To",
     ruleset_and: "and",
     ruleset_value_list_help: "Separate several values with commas.",
-    ruleset_watches: "Watches",
     ruleset_watch_entities: "Entities",
     ruleset_watch_notifications: "Notifications",
     ruleset_add_notify: "Add Notification Rule Set",
     ruleset_notify_default_name: "Notifications",
     ruleset_group_label_entities: "Entity rule sets",
     ruleset_group_label_notifications: "Notification rule sets",
-    notify_summary: "Alert when {source} sends a notification to {destination}",
-    notify_summary_conditions: "that meets the conditions below.",
-    notify_any_source: "any automation, script or integration",
-    notify_any_destination: "anywhere",
-    notify_any_source_short: "Any sender",
-    notify_any_destination_short: "anywhere",
     notify_source: "Notification Source",
     notify_source_help: "Who sends the notification.",
     notify_src_all: "ALL Automations & Scripts",
@@ -8559,17 +8552,6 @@ class AlertTickerCardEditor extends LitElement {
     return globalThis.__alertTickerShared?.destinationName?.(this._hass, id) || id;
   }
 
-  /** One-line plain-language description of a notification rule set. */
-  _notificationSummary(rs) {
-    const src = Array.isArray(rs.notification_source) && rs.notification_source.length
-      ? rs.notification_source.map((e) => this._entityName(e)).join(", ") : this._t("notify_any_source");
-    const dst = Array.isArray(rs.notification_destination) && rs.notification_destination.length
-      ? rs.notification_destination.map((d) => this._destName(d)).join(", ") : this._t("notify_any_destination");
-    const hasCond = (rs.groups || []).some((g) => (g?.rules || []).length);
-    return this._t("notify_summary").replace("{source}", src).replace("{destination}", dst)
-      + (hasCond ? ` ${this._t("notify_summary_conditions")}` : "");
-  }
-
   /** Adds or removes one value of a list key (notification_source / notification_destination). */
   _rsToggleList(si, key, value, on) {
     const rs = this._ruleSets()[si] || {};
@@ -8692,20 +8674,6 @@ class AlertTickerCardEditor extends LitElement {
     this._setRuleSets(ruleSets, alerts);
   }
 
-  /** Switches a set between watching entities and notifications. Its rules don't carry over. */
-  _setRuleSetSource(si, watch) {
-    const rs = this._ruleSets()[si] || {};
-    if (this._isNotificationSet(rs) === (watch === "notifications")) return;
-    const { watch: _w, source: _s, notification_source: _ns, notification_destination: _nd,
-      notification_types: _t, mobile_devices: _d, ...rest } = rs;
-    const next = watch === "notifications"
-      ? { ...rest, watch: "notifications", groups: [] }
-      : { ...rest, groups: [{ mode: "include", match: "all", rules: [this._newRule()] }] };
-    const list = [...this._ruleSets()];
-    list[si] = next;
-    this._setRuleSets(list);
-  }
-
   /** Copies the set's groups, lets `fn` mutate the copy, then saves it. */
   _updateRsGroups(si, fn) {
     const rs = this._ruleSets()[si] || {};
@@ -8770,7 +8738,7 @@ class AlertTickerCardEditor extends LitElement {
           : list.map((rs, si) => this._renderRuleSetItem(rs, si))}
         <div class="rs-add-row">
           <button class="btn-add-alert" @click="${() => this._addRuleSet("entities")}">+ ${this._t("ruleset_add")}</button>
-          <button class="btn-add-alert" @click="${() => this._addRuleSet("notifications")}">+ 🔔 ${this._t("ruleset_add_notify")}</button>
+          <button class="btn-add-alert" @click="${() => this._addRuleSet("notifications")}">+ 📨 ${this._t("ruleset_add_notify")}</button>
         </div>
       </div>
     `;
@@ -8783,7 +8751,6 @@ class AlertTickerCardEditor extends LitElement {
     const rules = (rs.groups || []).reduce((sum, g) => sum + ((g?.rules || []).length), 0);
     const out = [];
     if (this._isNotificationSet(rs)) {
-      out.push(chip(`🔔 ${this._t("ruleset_watch_notifications")}`, "rs-chip--kind"));
       const src = Array.isArray(rs.notification_source) ? rs.notification_source : [];
       out.push(chip(src.length ? n("ruleset_chip_sources", src.length) : this._t("notify_src_all")));
       const dst = Array.isArray(rs.notification_destination) ? rs.notification_destination : [];
@@ -8794,7 +8761,6 @@ class AlertTickerCardEditor extends LitElement {
       if (others) out.push(chip(n("ruleset_chip_destinations", others)));
       if (rules) out.push(chip(n("ruleset_chip_conditions", rules)));
     } else {
-      out.push(chip(`🧩 ${this._t("ruleset_watch_entities")}`, "rs-chip--kind"));
       out.push(chip(n("ruleset_chip_rules", rules)));
     }
     out.push(chip(used ? n("ruleset_chip_used", used) : this._t("ruleset_unused"), used ? "" : "rs-chip--off"));
@@ -8806,7 +8772,7 @@ class AlertTickerCardEditor extends LitElement {
     const used = this._ruleSetUsage(rs.id);
     return html`
       <div class="alert-item ${open ? "is-editing" : ""}" @click="${() => { this._rsEditing = open ? -1 : si; }}">
-        <span class="alert-icon-badge">${this._isNotificationSet(rs) ? "🔔" : "🧩"}</span>
+        <span class="alert-icon-badge" title="${this._t(this._isNotificationSet(rs) ? "ruleset_watch_notifications" : "ruleset_watch_entities")}">${this._isNotificationSet(rs) ? "📨" : "🧩"}</span>
         <div class="alert-summary-text">
           <div class="alert-entity-label">${rs.name || rs.id}</div>
           <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
@@ -8843,14 +8809,6 @@ class AlertTickerCardEditor extends LitElement {
             ></ha-input>
             <div class="helper-text">${this._t("ruleset_id_help")}</div>
           </div>
-          <div>
-            <div class="native-select-label">${this._t("ruleset_watches")}</div>
-            <div class="alert-mode-selector">
-              <button class="alert-mode-btn ${!isN ? "active" : ""}" @click="${() => this._setRuleSetSource(si, "entities")}">🧩 ${this._t("ruleset_watch_entities")}</button>
-              <button class="alert-mode-btn ${isN ? "active" : ""}" @click="${() => this._setRuleSetSource(si, "notifications")}">🔔 ${this._t("ruleset_watch_notifications")}</button>
-            </div>
-          </div>
-          ${isN ? html`<div class="rs-summary">🔔 ${this._notificationSummary(rs)}</div>` : ""}
           ${isN ? this._renderNotificationOptions(rs, si) : ""}
           ${isN ? html`<div class="rs-section-title">🔎 ${this._t("notify_conditions")}</div>
             <div class="helper-text">${this._t("notify_conditions_help")}</div>` : ""}
@@ -9295,7 +9253,7 @@ class AlertTickerCardEditor extends LitElement {
                ["ruleset_group_label_notifications", list.filter((rs) => this._isNotificationSet(rs))]]
               .filter(([, items]) => items.length)
               .map(([labelKey, items]) => html`<optgroup label="${this._t(labelKey)}">
-                ${items.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${this._isNotificationSet(rs) ? "🔔" : "🧩"} ${rs.name || rs.id}</option>`)}
+                ${items.map((rs) => html`<option value="${rs.id}" ?selected="${!inline && String(ref) === String(rs.id)}">${this._isNotificationSet(rs) ? "📨" : "🧩"} ${rs.name || rs.id}</option>`)}
               </optgroup>`)}
             ${inline ? html`<option value="__inline__" selected>${this._t("alert_rule_set_inline")}</option>` : ""}
             ${missing ? html`<option value="${ref}" selected>⚠ ${ref}</option>` : ""}
@@ -11077,12 +11035,6 @@ class AlertTickerCardEditor extends LitElement {
         max-height: 320px;
         overflow-y: auto;
         padding: 0 8px 6px;
-      }
-      .rs-summary {
-        padding: 8px 10px;
-        border-radius: 6px;
-        background: color-mix(in srgb, var(--primary-color, #03a9f4) 10%, transparent);
-        font-size: 0.9rem;
       }
       .rs-section-title {
         font-weight: 600;
