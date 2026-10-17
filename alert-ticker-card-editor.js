@@ -1614,13 +1614,16 @@ const ET = {
     notify_any_automation_script: "Any automation or script",
     notify_destination: "Notification Destination",
     notify_destination_help: "Where the notification goes.",
-    notify_only_destinations: "Only these destinations",
+    notify_dest_all: "All destinations",
     notify_dest_all_mobile: "All mobile devices",
+    notify_dest_pick_one: "Add at least one destination, or tick All destinations.",
+    notify_add: "Add",
+    notify_none_left: "All added",
+    notify_close: "Close",
     notify_dest_persistent: "Notification bell (persistent)",
-    notify_dest_mobile: "Mobile devices",
-    notify_dest_services: "Notify services & groups",
-    notify_dest_entities: "Other notify entities",
-    notify_dest_other: "Other (from YAML)",
+    notify_dest_mobile: "Mobile device",
+    notify_dest_services: "Notify service or group",
+    notify_dest_entities: "Other notify entity",
     notify_dest_group_help: "A phone also matches notifications sent to a notify group it belongs to.",
     notify_recent: "Recent notifications",
     notify_recent_help: "Notifications seen while this dashboard was open. Use one to fill in its sender and destination.",
@@ -8845,8 +8848,7 @@ class AlertTickerCardEditor extends LitElement {
       <div class="rs-notify-box">
         <div class="rs-section-title">📥 ${this._t("notify_destination")}</div>
         <div class="helper-text">${this._t("notify_destination_help")}</div>
-        ${this._renderAnyOnly(si, "notification_destination", "notify_any_destination", "notify_only_destinations")}
-        ${this._rsOnly(si, "notification_destination") ? this._renderDestinationPicker(rs, si) : ""}
+        ${this._renderDestinationPicker(rs, si)}
       </div>
       ${!isAdmin ? html`<div class="rs-warning">⚠ ${this._t("notifications_admin_only")}</div>` : ""}
       <ha-input
@@ -8882,41 +8884,99 @@ class AlertTickerCardEditor extends LitElement {
       </div>`;
   }
 
-  /** Source picker: automations seen sending, scan results, then any automation / script. */
+  /** A collapsible list header: "▸ Title (n)" plus an optional ✕ that closes it. */
+  _rsCollapsible(key, title, count, body, { defaultOpen = true, onClose = null } = {}) {
+    const closed = this._rsCollapsed?.has(key);
+    const open = defaultOpen ? !closed : !!this._rsExpanded?.has(key);
+    const toggle = () => {
+      if (defaultOpen) {
+        const next = new Set(this._rsCollapsed || []);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        this._rsCollapsed = next;
+      } else {
+        const next = new Set(this._rsExpanded || []);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        this._rsExpanded = next;
+      }
+      this.requestUpdate();
+    };
+    return html`
+      <div class="rs-collapsible">
+        <div class="rs-collapsible-head">
+          <button class="rs-collapsible-toggle" @click="${toggle}">
+            <span class="filter-count-chevron">${open ? "▾" : "▸"}</span>
+            <span>${title}</span>
+            <span class="rs-count">${count}</span>
+          </button>
+          ${onClose ? html`<button class="btn-icon" title="${this._t("notify_close")}" @click="${onClose}">✕</button>` : ""}
+        </div>
+        ${open ? html`<div class="rs-collapsible-body">${body}</div>` : ""}
+      </div>`;
+  }
+
+  /**
+   * Ticks/unticks the "All mobile devices" (mobile_app) or "Notification bell"
+   * (persistent) destination. Ticking All mobile devices drops the individual
+   * phones it now covers.
+   */
+  _rsDestShortcut(si, value, on) {
+    const key = "notification_destination";
+    const rs = this._ruleSets()[si] || {};
+    let cur = Array.isArray(rs[key]) ? rs[key].slice() : [];
+    if (on && value === "mobile_app") {
+      const d = globalThis.__alertTickerShared?.notifyDestinations?.(this._hass) || { mobile: [] };
+      const phones = new Set(d.mobile.map((x) => x.value));
+      cur = cur.filter((v) => !phones.has(v) && !/^notify\.mobile_app_/.test(v));
+    }
+    cur = cur.filter((v) => v !== value);
+    if (on) cur.push(value);
+    const next = new Set(this._rsOnlyOpen || []);
+    next.add(`${si}:${key}`);
+    this._rsOnlyOpen = next;
+    this._updateRuleSet(si, { [key]: cur.length ? cur : undefined });
+  }
+
+  /** Removable chips for the values of a list key. */
+  _rsChips(si, key, labelFn, disabled = false) {
+    const rs = this._ruleSets()[si] || {};
+    const vals = Array.isArray(rs[key]) ? rs[key] : [];
+    if (!vals.length) return "";
+    return html`
+      <div class="rs-chips">
+        ${vals.map((v) => html`
+          <span class="rs-chip ${disabled ? "rs-chip--off" : ""}">
+            ${labelFn(v)}
+            <button class="rs-chip-x" title="${this._t("delete")}" @click="${() => this._rsToggleList(si, key, v, false)}">✕</button>
+          </span>`)}
+      </div>`;
+  }
+
+  /** "+ Add …" dropdown: picking an option adds it to the list key, then resets. */
+  _rsAddSelect(si, key, labelKey, items, disabled) {
+    const rs = this._ruleSets()[si] || {};
+    const picked = new Set(Array.isArray(rs[key]) ? rs[key] : []);
+    const left = items.filter((x) => !picked.has(x.value));
+    return html`
+      <div class="native-select-wrap ${disabled ? "rs-disabled" : ""}">
+        <label class="native-select-label">${this._t(labelKey)}</label>
+        <select class="native-select rs-select" ?disabled="${disabled || !left.length}" .value="${""}"
+          @change="${(e) => { const v = e.target.value; e.target.value = ""; if (v) this._rsToggleList(si, key, v, true); }}">
+          <option value="">${left.length ? `+ ${this._t("notify_add")}…` : this._t("notify_none_left")}</option>
+          ${left.map((x) => html`<option value="${x.value}">${x.label}</option>`)}
+        </select>
+      </div>`;
+  }
+
+  /** Source picker: chosen automations/scripts on top, then "seen sending" and the scan list. */
   _renderSourcePicker(rs, si) {
     const shared = globalThis.__alertTickerShared;
     const picked = Array.isArray(rs.notification_source) ? rs.notification_source : [];
     const seen = (shared?.notifications?.observedSenders?.() || []).filter((s) => this._hass?.states?.[s.entity_id]);
-    const scanned = ATC_SCAN.status === "done" ? ATC_SCAN.results : [];
+    const scanned = ATC_SCAN.status === "done" && !this._rsScanHidden ? ATC_SCAN.results : [];
     const scannedIds = new Set(scanned.map((r) => r.entity_id));
+    const seenOnly = seen.filter((s) => !scannedIds.has(s.entity_id));
     const isAdmin = this._hass?.user?.is_admin === true;
     return html`
-      ${seen.length ? html`
-        <div class="native-select-label">${this._t("notify_seen_sending")}</div>
-        ${seen.filter((s) => !scannedIds.has(s.entity_id)).map((s) => this._rsCheck(si, "notification_source", s.entity_id, this._entityName(s.entity_id)))}
-      ` : ""}
-      <div class="rs-scan-row">
-        <button class="rs-btn rs-btn--small" ?disabled="${!isAdmin || ATC_SCAN.status === "running"}"
-          @click="${() => this._scanNotifications()}">🔍 ${this._t(ATC_SCAN.status === "done" ? "notify_rescan" : "notify_scan")}</button>
-        <span class="helper-text">${ATC_SCAN.status === "running"
-          ? this._t("notify_scan_running").replace("{done}", ATC_SCAN.done).replace("{total}", ATC_SCAN.total)
-          : ATC_SCAN.status === "done"
-            ? this._t("notify_scan_done").replace("{n}", scanned.length).replace("{skipped}", ATC_SCAN.unreadable || 0)
-            : this._t(isAdmin ? "notify_scan_help" : "notify_scan_admin")}</span>
-      </div>
-      ${scanned.length ? html`
-        <div class="native-select-label">${this._t("notify_found_by_scan")}</div>
-        ${scanned.map((r) => this._rsCheck(si, "notification_source", r.entity_id, r.name, html`
-          <div class="rs-scan-detail">
-            ${r.notifies.map((n) => html`
-              <div class="rs-scan-line">
-                <span>→ ${n.targets ? n.targets.map((t) => this._destName(t)).join(", ") : this._t("notify_template_target")}</span>
-                <span class="rs-scan-text">${n.title || n.message}</span>
-                <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._rsUseNotification(si, { sources: [r.entity_id], destinations: n.targets || [] }); }}">${this._t("notify_use")}</a>
-              </div>`)}
-            ${r.via.length ? html`<div class="rs-scan-line">↳ ${this._t("notify_via_scripts")}: ${r.via.map((sc) => this._entityName(sc)).join(", ")}</div>` : ""}
-          </div>`))}
-      ` : ""}
       <ha-selector
         .hass="${this._hass}"
         .selector="${{ entity: { multiple: true, filter: [{ domain: "automation" }, { domain: "script" }] } }}"
@@ -8924,25 +8984,62 @@ class AlertTickerCardEditor extends LitElement {
         .label="${this._t("notify_any_automation_script")}"
         @value-changed="${(e) => { const v = e.detail.value; this._updateRuleSet(si, { notification_source: Array.isArray(v) && v.length ? v : undefined }); }}"
       ></ha-selector>
+      ${seenOnly.length ? this._rsCollapsible(`seen_${si}`, this._t("notify_seen_sending"), seenOnly.length,
+        seenOnly.map((s) => this._rsCheck(si, "notification_source", s.entity_id, this._entityName(s.entity_id)))) : ""}
+      <div class="rs-scan-row">
+        <button class="rs-btn rs-btn--small" ?disabled="${!isAdmin || ATC_SCAN.status === "running"}"
+          @click="${() => { this._rsScanHidden = false; this._scanNotifications(); }}">🔍 ${this._t(ATC_SCAN.status === "done" ? "notify_rescan" : "notify_scan")}</button>
+        <span class="helper-text">${ATC_SCAN.status === "running"
+          ? this._t("notify_scan_running").replace("{done}", ATC_SCAN.done).replace("{total}", ATC_SCAN.total)
+          : ATC_SCAN.status === "done"
+            ? this._t("notify_scan_done").replace("{n}", ATC_SCAN.results.length).replace("{skipped}", ATC_SCAN.unreadable || 0)
+            : this._t(isAdmin ? "notify_scan_help" : "notify_scan_admin")}</span>
+      </div>
+      ${scanned.length ? this._rsCollapsible(`scan_${si}`, this._t("notify_found_by_scan"), scanned.length,
+        scanned.map((r) => this._rsCheck(si, "notification_source", r.entity_id, r.name, html`
+          <div class="rs-scan-detail">
+            ${r.notifies.map((n) => html`
+              <div class="rs-scan-line">
+                <span>→ ${n.targets ? n.targets.map((t) => this._destName(t)).join(", ") : this._t("notify_template_target")}</span>
+                <span class="rs-scan-text">${n.title || n.message}</span>
+              </div>`)}
+            ${r.via.length ? html`<div class="rs-scan-line">↳ ${this._t("notify_via_scripts")}: ${r.via.map((sc) => this._entityName(sc)).join(", ")}</div>` : ""}
+          </div>`)),
+        { onClose: () => { this._rsScanHidden = true; this.requestUpdate(); } }) : ""}
     `;
   }
 
-  /** Destination picker: shortcuts, phones, notify services & groups, other notify entities. */
+  /**
+   * Destination picker. Chips show what's chosen. "All destinations" (= no filter),
+   * "All mobile devices" and "Notification bell" are always-visible checkboxes;
+   * each kind of destination has its own "+ Add" dropdown. A dropdown is greyed out
+   * while a checkbox already covers it.
+   */
   _renderDestinationPicker(rs, si) {
+    const key = "notification_destination";
     const d = globalThis.__alertTickerShared?.notifyDestinations?.(this._hass) || { mobile: [], services: [], entities: [] };
-    const picked = Array.isArray(rs.notification_destination) ? rs.notification_destination : [];
-    const known = new Set(["mobile_app", "persistent", ...d.mobile.map((x) => x.value), ...d.services.map((x) => x.value), ...d.entities.map((x) => x.value)]);
-    const other = picked.filter((v) => !known.has(v));
-    const section = (titleKey, items) => items.length ? html`
-      <div class="native-select-label">${this._t(titleKey)}</div>
-      ${items.map((x) => this._rsCheck(si, "notification_destination", x.value, x.label))}` : "";
+    const picked = Array.isArray(rs[key]) ? rs[key] : [];
+    const all = !this._rsOnly(si, key);
+    const allMobile = all || picked.includes("mobile_app");
+    const bell = all || picked.includes("persistent");
+    const setAll = (on) => this._rsSetOnly(si, key, !on);
+    const setAllMobile = (on) => this._rsDestShortcut(si, "mobile_app", on);
+    const setBell = (on) => this._rsDestShortcut(si, "persistent", on);
+    const box = (label, checked, disabled, onChange) => html`
+      <ha-formfield .label="${label}" class="${disabled ? "rs-disabled" : ""}">
+        <ha-checkbox .checked="${checked}" ?disabled="${disabled}" @change="${(e) => onChange(e.target.checked)}"></ha-checkbox>
+      </ha-formfield>`;
     return html`
-      ${this._rsCheck(si, "notification_destination", "mobile_app", `📱 ${this._t("notify_dest_all_mobile")}`)}
-      ${this._rsCheck(si, "notification_destination", "persistent", `🔔 ${this._t("notify_dest_persistent")}`)}
-      ${section("notify_dest_mobile", d.mobile)}
-      ${section("notify_dest_services", d.services)}
-      ${section("notify_dest_entities", d.entities)}
-      ${section("notify_dest_other", other.map((v) => ({ value: v, label: v })))}
+      ${!all ? this._rsChips(si, key, (v) => this._destName(v)) : ""}
+      ${!all && !picked.length ? html`<div class="rs-warning">⚠ ${this._t("notify_dest_pick_one")}</div>` : ""}
+      <div class="rs-dest-boxes">
+        ${box(`🌐 ${this._t("notify_dest_all")}`, all, false, setAll)}
+        ${box(`📱 ${this._t("notify_dest_all_mobile")}`, allMobile, all, setAllMobile)}
+        ${box(`🔔 ${this._t("notify_dest_persistent")}`, bell, all, setBell)}
+      </div>
+      ${this._rsAddSelect(si, key, "notify_dest_mobile", d.mobile, allMobile)}
+      ${this._rsAddSelect(si, key, "notify_dest_services", d.services, all)}
+      ${this._rsAddSelect(si, key, "notify_dest_entities", d.entities, all)}
       <div class="helper-text">${this._t("notify_dest_group_help")}</div>
     `;
   }
@@ -10868,6 +10965,77 @@ class AlertTickerCardEditor extends LitElement {
       }
 
       /* ---- Rule sets ---- */
+      .rs-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .rs-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 4px 2px 10px;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, transparent);
+        font-size: 0.85rem;
+      }
+      .rs-chip--off {
+        opacity: 0.5;
+      }
+      .rs-chip-x {
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: inherit;
+        font-size: 0.8rem;
+        padding: 2px 4px;
+        border-radius: 50%;
+      }
+      .rs-chip-x:hover {
+        background: color-mix(in srgb, var(--primary-text-color, #000) 12%, transparent);
+      }
+      .rs-dest-boxes {
+        display: flex;
+        flex-direction: column;
+      }
+      .rs-disabled {
+        opacity: 0.45;
+      }
+      .rs-collapsible {
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: 6px;
+      }
+      .rs-collapsible-head {
+        display: flex;
+        align-items: center;
+      }
+      .rs-collapsible-toggle {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+        font-size: 0.9rem;
+        text-align: left;
+      }
+      .rs-count {
+        min-width: 18px;
+        padding: 0 6px;
+        border-radius: 9px;
+        background: var(--secondary-background-color, #eee);
+        font-size: 0.75rem;
+        text-align: center;
+      }
+      .rs-collapsible-body {
+        max-height: 320px;
+        overflow-y: auto;
+        padding: 0 8px 6px;
+      }
       .rs-summary {
         padding: 8px 10px;
         border-radius: 6px;
