@@ -880,7 +880,7 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
     // Another entity's state or attribute; "{entity}" / "this.entity_id" = the matched entity.
     const oid = (rule.entity === "{entity}" || rule.entity === "this.entity_id") ? eid : rule.entity;
     const other = oid ? hass.states?.[oid] : null;
-    if (!other) return [];
+    if (!other) return null; // missing entity: the rule fails, whatever its operator
     return _atcRuleFieldValues(hass, oid, other, { ...rule, field: rule.attribute ? "attribute" : "state" });
   }
   if (rule.field === "time") {
@@ -917,6 +917,7 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
     case "state":        return [es.state];
     case "attribute": {
       if (!rule.attribute) return [];
+      if (rule.as_text) return [_atcCondValue(es, rule.attribute)]; // one string, "" when missing (alert conditions' form)
       let v = es.attributes;
       for (const p of String(rule.attribute).replace(/\[(\d+)\]/g, ".$1").split(".")) v = v?.[p];
       if (v == null) return [];
@@ -971,10 +972,12 @@ function _atcCompileRule(rule) {
   switch (op) {
     case "eq":
     case "in":
-      test = (v) => {
-        const lv = norm(v), nv = num(v);
-        return lower.some((t, i) => t === lv || (nv !== null && num(targets[i]) === nv));
-      };
+      test = rule.exact
+        ? (v) => targets.includes(v) // exact text only (lists in alert conditions)
+        : (v) => {
+          const lv = norm(v), nv = num(v);
+          return lower.some((t, i) => t === lv || (nv !== null && num(targets[i]) === nv));
+        };
       break;
     case "contains":
       test = (v) => { const lv = v.toLowerCase(); return lower.some(t => lv.includes(t.toLowerCase())); };
@@ -1047,7 +1050,7 @@ function _atcCompileRuleSet(def) {
     const any = g?.match === "any";
     return (hass, eid, es, ctx) => {
       const c = ctx || { hass };
-      const hit = ({ rule, test }) => test(_atcRuleFieldValues(hass, eid, es, rule), c);
+      const hit = ({ rule, test }) => { const v = _atcRuleFieldValues(hass, eid, es, rule); return v !== null && test(v, c); };
       return any ? rules.some(hit) : rules.every(hit);
     };
   };
@@ -1708,6 +1711,21 @@ function _atcExtraConditionResults(hass, alert, ctx) {
   });
 }
 
+/** Entities an alert's extra conditions look at — its `conditions` and its rule set's other-entity rules. */
+function _atcConditionEntities(alert) {
+  const ids = _atcNormConditions(alert.conditions).map((c) => c.entity);
+  const def = alert._rule_set_def || (typeof alert.rule_set === "object" ? alert.rule_set : null);
+  for (const g of def?.groups || []) for (const r of g?.rules || []) if (r?.field === "other_entity") ids.push(r.entity);
+  return ids.filter((e) => e && e !== "{entity}" && e !== "this.entity_id");
+}
+
+/** Single-entity alert with a rule_set (inline conditions): the entity must also pass it. */
+function _atcEntityRulesPass(hass, alert, es, ctx) {
+  if (!alert.entity || !alert.rule_set || alert._expanded) return true;
+  const def = alert._rule_set_def || (typeof alert.rule_set === "object" ? alert.rule_set : null);
+  return def ? _atcCompiledRuleSet(def)(hass, alert.entity, es, ctx) : false;
+}
+
 /** The alert's own condition — no state means no condition. */
 function _atcPrimaryPass(alert, es, ctx) {
   if (alert.state == null || alert.state === "") return true;
@@ -1719,7 +1737,7 @@ function _atcPrimaryPass(alert, es, ctx) {
  * AND → own && all; OR → own && any.
  */
 function _atcConditionsPass(hass, alert, es, ctx) {
-  const primary = _atcPrimaryPass(alert, es, ctx);
+  const primary = _atcPrimaryPass(alert, es, ctx) && _atcEntityRulesPass(hass, alert, es, ctx);
   const extra = _atcExtraConditionResults(hass, alert, ctx);
   if (!extra.length) return primary;
   return alert.conditions_logic === "or" ? primary && extra.some(Boolean) : primary && extra.every(Boolean);
@@ -1733,10 +1751,130 @@ function _atcAlertMatches(hass, alert, ctx) {
   if (!_evalVisibleTo(hass, alert) || !_evalTimeRange(alert)) return [];
   if (_atcIsFilterAlert(alert)) {
     return _atcFilterEntities(hass, alert, { ctx })
-      .filter(([eid, es]) => _atcConditionsPass(hass, { ...alert, entity: eid }, es, ctx));
+      .filter(([eid, es]) => _atcConditionsPass(hass, { ...alert, entity: eid, _expanded: true }, es, ctx));
   }
   const es = alert.entity ? hass.states?.[alert.entity] : null;
   return es && _atcConditionsPass(hass, alert, es, ctx) ? [[alert.entity, es]] : [];
+}
+
+// ---------------------------------------------------------------------------
+// Migration — turns an alert's own matching fields into rules. Used by the
+// editor (the card evaluates both forms, so old YAML keeps working as written):
+//   multi-entity alerts (quick-filter fields, or a rule set plus their own
+//     condition / extra conditions / time_range) → a shared rule set
+//     (identical definitions are shared, not duplicated)
+//   single-entity alerts → extra conditions and time_range become inline rules;
+//     the alert keeps its own entity condition
+// Every converted rule keeps the condition's exact comparison (case-sensitive
+// text, exact lists, attributes as text, a missing condition entity = false).
+// trigger_delay, on_change, visible_to and display options stay on the alert.
+// ---------------------------------------------------------------------------
+const _ATC_MIGRATED_KEYS = ["entity_filter", "device_class", "label_filter", "area_filter",
+  "entity_filter_exclude", "device_class_exclude", "conditions", "conditions_logic", "time_range"];
+
+/** One alert condition (alert-level or extra) as a rule, or undefined if it can't be expressed. */
+function _atcConditionRule(c, { other = false, missingStateIsOn = true } = {}) {
+  let trigger = c.state;
+  if (trigger == null || trigger === "") {
+    if (!missingStateIsOn) return null; // no condition
+    trigger = "on";
+  }
+  const base = other
+    ? { field: "other_entity", entity: c.entity, ...(c.attribute ? { attribute: c.attribute, as_text: true } : {}) }
+    : (c.attribute ? { field: "attribute", attribute: c.attribute, as_text: true } : { field: "state" });
+  if (Array.isArray(trigger)) return { ...base, op: "in", values: trigger.map(String), exact: true, case_sensitive: true };
+  const op = _ATC_COND_OPS[c.operator || "="];
+  if (!op) return undefined;
+  return { ...base, op, value: String(trigger), case_sensitive: true };
+}
+
+/** Rule groups for an alert's own condition, extra conditions and time_range; null if one can't be converted. */
+function _atcConditionGroups(a, { includePrimary }) {
+  const groups = [];
+  const all = [];
+  if (includePrimary) {
+    const r = _atcConditionRule(a, { missingStateIsOn: false });
+    if (r === undefined) return null;
+    if (r) all.push(r);
+  }
+  const tr = a.time_range;
+  if (tr && tr.from && tr.to) all.push({ field: "time", op: "between", value: tr.from, value2: tr.to });
+  if (all.length) groups.push({ mode: "include", match: "all", rules: all });
+  const conds = _atcNormConditions(a.conditions);
+  if (conds.length) {
+    const rules = conds.map((c) => (c.entity ? _atcConditionRule(c, { other: true }) : { field: "other_entity", op: "eq", value: "on" }));
+    if (rules.some((r) => r === undefined)) return null;
+    groups.push({ mode: "include", match: a.conditions_logic === "or" ? "any" : "all", rules });
+  }
+  return groups;
+}
+
+function _atcRuleSetSlug(v) {
+  return String(v || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "rule_set";
+}
+
+/**
+ * Migrates a card config. Returns { config, migrated } — `config` is a new object
+ * (the input is not changed); `migrated` lists the alert indices that changed.
+ */
+function _atcMigrateConfig(config) {
+  const alerts = Array.isArray(config?.alerts) ? config.alerts : [];
+  const sets = Array.isArray(config?.rule_sets) ? config.rule_sets.map((x) => x) : [];
+  const migrated = [];
+  const notifyKey = (rs) => (_atcIsNotificationSet(rs) ? JSON.stringify([rs.watch || rs.source, rs.notification_source, rs.notification_destination]) : null);
+  const byGroups = new Map(sets.map((rs) => [JSON.stringify({ g: rs.groups || [], w: notifyKey(rs) }), rs.id]));
+  const taken = new Set(sets.map((rs) => String(rs.id)));
+  const newId = (base) => { let id = _atcRuleSetSlug(base), n = 2; const b = id; while (taken.has(id)) id = `${b}_${n++}`; taken.add(id); return id; };
+  const strip = (a, keys) => { const o = { ...a }; keys.forEach((k) => delete o[k]); return o; };
+  const out = alerts.map((a, i) => {
+    if (!a || typeof a !== "object") return a;
+    const hasConds = _atcNormConditions(a.conditions).length > 0;
+    const hasTime = !!(a.time_range && (a.time_range.from || a.time_range.to));
+    if (a.entity) {
+      // single entity: extra conditions + time_range → inline rules; own condition stays
+      if (!hasConds && !hasTime) return a;
+      if (a.rule_set && typeof a.rule_set !== "object") return a; // shared ref on an entity alert: leave it
+      const groups = _atcConditionGroups(a, { includePrimary: false });
+      if (!groups) return a;
+      const inline = a.rule_set && typeof a.rule_set === "object" ? a.rule_set : { groups: [] };
+      migrated.push(i);
+      const res = strip(a, ["conditions", "conditions_logic", "time_range"]);
+      if (groups.length || (inline.groups || []).length) res.rule_set = { ...inline, groups: [...(inline.groups || []), ...groups] };
+      return res;
+    }
+    const legacy = _atcLegacyFilterDef(a);
+    const hasPrimary = a.state != null && a.state !== "";
+    if (!legacy && !a.rule_set) return a;
+    const baseDef = a.rule_set ? (typeof a.rule_set === "object" ? a.rule_set : sets.find((rs) => String(rs.id) === String(a.rule_set))) : null;
+    const notify = _atcIsNotificationSet(baseDef);
+    const inlineRef = a.rule_set && typeof a.rule_set === "object";
+    if (!legacy && !hasConds && !hasTime && !hasPrimary && !inlineRef) return a; // already just a shared rule set
+    if (legacy && notify) return a; // quick-filter fields on a notification set never matched anything; leave as written
+    const extra = _atcConditionGroups(a, { includePrimary: !notify });
+    if (!extra) return a;
+    if (!legacy && !inlineRef && !extra.length) {
+      // only a state condition on a notification set (notifications are always "active"): drop it
+      migrated.push(i);
+      return strip(a, ["state", "operator"]);
+    }
+    const def = notify
+      ? { ...strip(baseDef, ["id", "name"]), groups: [...(baseDef.groups || []), ...extra] }
+      : { groups: [...(baseDef?.groups || []), ...(legacy?.groups || []), ...extra] };
+    const key = JSON.stringify({ g: def.groups, w: notifyKey(def) });
+    let id = byGroups.get(key);
+    if (!id) {
+      id = newId(a.name || baseDef?.name || a.device_class || a.entity_filter || (Array.isArray(a.label_filter) ? a.label_filter[0] : a.label_filter) || "rule_set");
+      const name = a.name || baseDef?.name || id.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+      sets.push({ id, name, ...def });
+      byGroups.set(key, id);
+    }
+    migrated.push(i);
+    // `attribute` stays: it also decides what {state} shows in the message.
+    const keys = [..._ATC_MIGRATED_KEYS, ...(notify || hasPrimary ? ["state", "operator"] : [])];
+    return { ...strip(a, keys), rule_set: id };
+  });
+  if (!migrated.length) return { config, migrated };
+  return { config: { ...config, rule_sets: sets.length ? sets : undefined, alerts: out }, migrated };
 }
 
 // The editor is a separate module (loaded on demand by getConfigElement), so it
@@ -1745,6 +1883,7 @@ function _atcAlertMatches(hass, alert, ctx) {
 globalThis.__alertTickerShared = Object.freeze({
   notifications: _ATC_NOTIFY,
   legacyFilterDef: _atcLegacyFilterDef,
+  migrateConfig: _atcMigrateConfig,
   usesNotifications: _atcUsesNotifications,
   hassFor: _atcHassFor,
   isFilterAlert: _atcIsFilterAlert,
@@ -3059,6 +3198,7 @@ class AlertTickerCard extends LitElement {
             ...alert,
             _sourceAlert: alert,
             _configIdx: idx,
+            _expanded: true,
             entity: entityId,
             message: (alert.message || "")
               .replace(/\{entity\}/g, entityId)
@@ -3093,6 +3233,7 @@ class AlertTickerCard extends LitElement {
           // is visible only while the player is actually playing, suppressing
           // idle/paused/buffering transitions. (#83)
           if (entityState && !_atcPrimaryPass(alert, entityState, condCtx)) return false;
+          if (entityState && !_atcEntityRulesPass(this._hass, alert, entityState, condCtx)) return false;
           // Extra AND/OR conditions still apply for on_change alerts
           const results = _atcExtraConditionResults(this._hass, alert, condCtx);
           if (results.length > 0) {
@@ -3101,7 +3242,7 @@ class AlertTickerCard extends LitElement {
           }
         } else {
           // Normal condition check — shared with the overlay (_atcConditionsPass)
-          const primaryOk = _atcPrimaryPass(alert, entityState, condCtx);
+          const primaryOk = _atcPrimaryPass(alert, entityState, condCtx) && _atcEntityRulesPass(this._hass, alert, entityState, condCtx);
           const results = _atcExtraConditionResults(this._hass, alert, condCtx);
           if (results.length > 0) {
             const logic = alert.conditions_logic || "and";
@@ -3148,13 +3289,11 @@ class AlertTickerCard extends LitElement {
               if (!this._triggerDelayTimers[key]) {
                 let latestLc = entityState?.last_changed
                   ? new Date(entityState.last_changed).getTime() : 0;
-                if (Array.isArray(alert.conditions)) {
-                  for (const cond of alert.conditions) {
-                    const ces = cond.entity ? this._hass.states[cond.entity] : null;
-                    if (ces?.last_changed) {
-                      const t = new Date(ces.last_changed).getTime();
-                      if (t > latestLc) latestLc = t;
-                    }
+                for (const ceid of _atcConditionEntities(alert)) {
+                  const ces = this._hass.states[ceid];
+                  if (ces?.last_changed) {
+                    const t = new Date(ces.last_changed).getTime();
+                    if (t > latestLc) latestLc = t;
                   }
                 }
                 const elapsed = latestLc ? (Date.now() - latestLc) / 1000 : 0;
