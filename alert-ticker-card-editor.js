@@ -1678,6 +1678,9 @@ const ET = {
     alert_quick_filter_left: "This alert still uses quick-filter fields that couldn't be converted automatically. Convert them to a rule set, or edit them in YAML.",
     migration_notice: "{n} alert(s) were converted to rule sets: their filters, conditions and time ranges are now rules. Nothing changes on the card; save to keep it.",
     sections_expand_all: "Expand all",
+    add_btn_entity: "Single Entity",
+    add_btn_rs_entity: "Entity Rule Set",
+    add_btn_rs_notify: "Notification Rule Set",
     sections_collapse_all: "Collapse all",
     rs_alerts_using: "Alerts using this rule set",
     rs_create_alert: "Create alert from this rule set",
@@ -7248,8 +7251,8 @@ class AlertTickerCardEditor extends LitElement {
     return html`
       ${this._renderSectionHeader("tab_alerts")}
       <div class="add-alert-grid">
-        ${[["entity", "mode_entity"], ["rs_entity", "mode_rs_entity"], ["rs_notify", "mode_rs_notify"]].map(([m, k]) => html`
-          <button class="rs-btn rs-btn--add" title="${this._t(k + "_help")}" @click="${() => this._addAlert(m)}">+ ${m === "rs_notify" ? html`${this._kindIcon(true)} ` : ""}${this._t(k)}</button>`)}
+        ${[["entity", "add_btn_entity", "mode_entity_help"], ["rs_entity", "add_btn_rs_entity", "mode_rs_entity_help"], ["rs_notify", "add_btn_rs_notify", "mode_rs_notify_help"]].map(([m, k, h]) => html`
+          <button class="rs-btn rs-btn--add" title="${this._t(h)}" @click="${() => this._addAlert(m)}">${this._modeIcon(m)}<span>${this._t(k)}</span></button>`)}
         <div class="native-select-wrap add-alert-template-wrap ${this._templatesHintSeen ? '' : 'tpl-hint-glow'}">
           <select class="native-select" .value="${''}"
             @focus="${() => this._markTemplateHintSeen()}"
@@ -7275,8 +7278,6 @@ class AlertTickerCardEditor extends LitElement {
       ${alerts.length === 0
         ? html`<div class="empty-alerts">${this._t("no_alerts")}</div>`
         : alerts.map((alert, index) => this._renderAlertItem(alert, index))}
-
-      ${this._renderAlertEditPanel()}
 
       <div class="test-mode-box${this._config.test_mode ? " test-mode-box--active" : ""}">
         <div class="test-mode-box-header">
@@ -7304,12 +7305,13 @@ class AlertTickerCardEditor extends LitElement {
     const icon = (rawIcon && /^[\w-]+:/.test(rawIcon))
       ? html`<ha-icon icon="${rawIcon}" style="--mdc-icon-size:1.2em;vertical-align:middle;"></ha-icon>`
       : rawIcon;
+    const mode = this._getAlertMode(index, alert);
     const entityLabel = alert.entity_filter
       ? `[${this._t("entity_filter")}: "${alert.entity_filter}"]`
       : alert.device_class
       ? `[${this._t("device_class")}: "${alert.device_class}"]`
       : alert.rule_set && !alert.entity
-      ? html`${this._kindIcon(this._isNotificationSet(this._alertRuleSetDef(alert)))} ${this._ruleSetLabel(alert.rule_set)}`
+      ? this._ruleSetLabel(alert.rule_set)
       : alert.entity || (this._lang === "it" ? "(non impostato)" : "(not set)");
     const msgSnippet = alert.message
       ? alert.message.length > 40
@@ -7319,6 +7321,7 @@ class AlertTickerCardEditor extends LitElement {
 
     const total = (this._config.alerts || []).length;
     return html`
+      <div class="atc-row ${isEditing ? "is-open" : ""}">
       <div class="${`alert-item${isEditing ? " is-editing" : ""}`}"
            @click="${() => this._editAlert(index)}">
         <div class="alert-move-col">
@@ -7337,22 +7340,14 @@ class AlertTickerCardEditor extends LitElement {
         </div>
         <span class="alert-icon-badge">${icon}</span>
         <div class="alert-summary-text">
-          <div class="alert-entity-label">${this._t("alert_num")} ${index + 1}: ${alert.name || entityLabel}</div>
-          ${!alert.name && msgSnippet ? html`<div class="alert-msg-label">${msgSnippet}</div>` : ""}
-          ${alert.name ? html`<div class="alert-msg-label">${entityLabel}</div>` : ""}
+          <div class="alert-entity-label">${this._modeIcon(mode)} ${alert.name || html`${this._t("alert_num")} ${index + 1}: ${entityLabel}`}</div>
+          ${alert.name ? html`<div class="alert-msg-label">${entityLabel}</div>` : (msgSnippet ? html`<div class="alert-msg-label">${msgSnippet}</div>` : "")}
           ${this._alertChips(alert)}
         </div>
         <span class="alert-prio-badge prio-${prio}">P${prio}</span>
-        <div class="alert-actions">
-          <span class="alert-expand-indicator"></span>
-          <button
-            class="btn-icon btn-delete"
-            title="${this._t("delete")}"
-            @click="${(e) => { e.stopPropagation(); this._deleteAlert(index); }}"
-          >
-            🗑 ${this._t("delete")}
-          </button>
-        </div>
+        <div class="alert-actions">${this._deleteButton(() => this._deleteAlert(index))}</div>
+      </div>
+      ${isEditing ? this._renderAlertEditPanel() : ""}
       </div>
     `;
   }
@@ -7365,11 +7360,7 @@ class AlertTickerCardEditor extends LitElement {
     if (index < 0 || index >= alerts.length) return "";
     const alert = alerts[index];
     return html`
-      <div class="alert-edit-panel">
-        <div class="alert-edit-panel-header">
-          <span>${this._t("alert_num")} ${index + 1}</span>
-          <button class="btn-icon alert-edit-close" @click="${() => { this._editingIndex = -1; }}">✕</button>
-        </div>
+      <div class="atc-row-body">
         <div class="alert-form">
           <div class="sections-toolbar">
             <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._setAllSections(true); }}">${this._t("sections_expand_all")}</a>
@@ -8463,7 +8454,19 @@ class AlertTickerCardEditor extends LitElement {
 
   /** Icon for a rule-set kind: 🧩 entities, two speech bubbles (mdi:forum-outline) for notifications. */
   _kindIcon(notify) {
-    return notify ? html`<ha-icon class="rs-kind-icon" icon="mdi:forum-outline"></ha-icon>` : "🧩";
+    return this._modeIcon(notify ? "rs_notify" : "rs_entity");
+  }
+
+  /** Icon per alert type: single entity, (quick filter), entity rule set, notification rule set. */
+  _modeIcon(mode) {
+    const icon = { entity: "mdi:tag-outline", filter: "mdi:filter-outline", rs_entity: "mdi:puzzle-outline", rs_notify: "mdi:forum-outline" }[mode] || "mdi:tag-outline";
+    return html`<ha-icon class="rs-kind-icon" icon="${icon}"></ha-icon>`;
+  }
+
+  /** Delete button: trash icon only, neutral, red on hover (design system). */
+  _deleteButton(onClick) {
+    return html`<button class="btn-icon atc-del" title="${this._t("delete")}"
+      @click="${(e) => { e.stopPropagation(); onClick(); }}"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>`;
   }
 
   _isNotificationSet(rs) {
@@ -8711,13 +8714,14 @@ class AlertTickerCardEditor extends LitElement {
         ${this._rsReturnTo >= 0 ? html`
           <button class="rs-btn rs-back" @click="${() => this._backToAlert()}">← ${this._t("rs_back_to_alert").replace("{n}", this._rsReturnTo + 1)}</button>` : ""}
         <div class="helper-text rs-intro">${this._t("rulesets_intro")}</div>
+        <div class="rs-add-row rs-add-row--top">
+          <button class="rs-btn rs-btn--add" @click="${() => this._addRuleSet("entities")}">${this._modeIcon("rs_entity")}<span>${this._t("add_btn_rs_entity")}</span></button>
+          <button class="rs-btn rs-btn--add" @click="${() => this._addRuleSet("notifications")}">${this._modeIcon("rs_notify")}<span>${this._t("add_btn_rs_notify")}</span></button>
+        </div>
         ${list.length === 0
           ? html`<div class="empty-alerts">${this._t("ruleset_empty")}</div>`
           : list.map((rs, si) => this._renderRuleSetItem(rs, si))}
-        <div class="rs-add-row">
-          <button class="rs-btn rs-btn--add" @click="${() => this._addRuleSet("entities")}">+ ${this._t("ruleset_add")}</button>
-          <button class="rs-btn rs-btn--add" @click="${() => this._addRuleSet("notifications")}">+ ${this._kindIcon(true)} ${this._t("ruleset_add_notify")}</button>
-        </div>
+
       </div>
     `;
   }
@@ -8749,30 +8753,28 @@ class AlertTickerCardEditor extends LitElement {
     const open = this._rsEditing === si;
     const used = this._ruleSetUsage(rs.id);
     return html`
+      <div class="atc-row ${open ? "is-open" : ""}">
       <div class="alert-item ${open ? "is-editing" : ""}" @click="${() => { this._rsEditing = open ? -1 : si; }}">
-        <span class="alert-icon-badge" title="${this._t(this._isNotificationSet(rs) ? "ruleset_watch_notifications" : "ruleset_watch_entities")}">${this._kindIcon(this._isNotificationSet(rs))}</span>
         <div class="alert-summary-text">
-          <div class="alert-entity-label">${rs.name || rs.id}</div>
+          <div class="alert-entity-label" title="${this._t(this._isNotificationSet(rs) ? "ruleset_watch_notifications" : "ruleset_watch_entities")}">${this._kindIcon(this._isNotificationSet(rs))} ${rs.name || rs.id}</div>
           <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
         </div>
-        <div class="alert-actions">
-          <span class="alert-expand-indicator"></span>
-          <button class="btn-icon btn-delete" title="${this._t("delete")}"
-            @click="${(e) => { e.stopPropagation(); this._deleteRuleSet(si); }}">🗑 ${this._t("delete")}</button>
-        </div>
+        <div class="alert-actions">${this._deleteButton(() => this._deleteRuleSet(si))}</div>
       </div>
       ${open ? this._renderRuleSetForm(rs, si) : ""}
+      </div>
     `;
   }
 
   _renderRuleSetForm(rs, si) {
+    // (rendered inside the rule set's row panel)
     const groups = Array.isArray(rs.groups) ? rs.groups : [];
     const isN = this._isNotificationSet(rs);
     const hasInclude = isN || groups.some((g) => g && g.mode !== "exclude" && Array.isArray(g.rules) && g.rules.length);
     const addGroup = (mode) => this._updateRsGroups(si, (gs) =>
       gs.push({ mode, match: mode === "exclude" ? "any" : "all", rules: [this._newRule(isN ? "notification_text" : undefined)] }));
     return html`
-      <div class="alert-edit-panel">
+      <div class="atc-row-body">
         <div class="alert-form">
           <ha-input
             .label="${this._t("ruleset_name")}"
@@ -11005,13 +11007,13 @@ class AlertTickerCardEditor extends LitElement {
         font-size: 0.85rem;
       }
       .add-alert-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         margin-bottom: 12px;
       }
       .add-alert-grid .add-alert-template-wrap {
-        grid-column: 1 / -1;
+        flex-basis: 100%;
       }
       .btn-add-alert--mode {
         margin-top: 0;
@@ -11262,11 +11264,64 @@ class AlertTickerCardEditor extends LitElement {
       .rs-btn:hover {
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent);
       }
+      /* Add buttons: icon + label, sized to the label, wrapping (design system) */
       .rs-btn--add {
-        padding: 10px 6px;
-        font-size: 0.9rem;
-        font-weight: 500;
-        line-height: 1.25;
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+      .rs-btn--add ha-icon {
+        --mdc-icon-size: 22px;
+      }
+      .rs-add-row--top {
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      /* One panel per alert / rule set: the row is its header, the settings open inside it */
+      .atc-row {
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: 10px;
+        margin-bottom: 6px;
+        background: var(--card-background-color, #fff);
+        overflow: hidden;
+      }
+      .atc-row.is-open {
+        border: 2px solid var(--primary-color, #03a9f4);
+        margin-bottom: 12px;
+      }
+      .atc-row > .alert-item {
+        border: none;
+        border-radius: 0;
+        margin-bottom: 0;
+        background: transparent;
+      }
+      .atc-row.is-open > .alert-item {
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, var(--card-background-color, #fff));
+      }
+      .atc-row-body .alert-form {
+        border-top: 1px solid var(--divider-color, #e0e0e0);
+      }
+      .alert-entity-label .rs-kind-icon {
+        --mdc-icon-size: 18px;
+        color: var(--primary-color, #03a9f4);
+        margin-right: 2px;
+      }
+      .atc-del {
+        padding: 4px;
+        color: var(--secondary-text-color, #aaa);
+        line-height: 0;
+      }
+      .atc-del ha-icon {
+        --mdc-icon-size: 22px;
+      }
+      .atc-del:hover {
+        color: var(--error-color, #f44336);
+        background: color-mix(in srgb, var(--error-color, #f44336) 15%, transparent);
       }
       .rs-kind-icon {
         --mdc-icon-size: 1.15em;
