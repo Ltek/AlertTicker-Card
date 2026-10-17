@@ -1584,6 +1584,14 @@ const ET = {
     ruleset_value_to: "To",
     ruleset_and: "and",
     ruleset_value_list_help: "Separate several values with commas.",
+    notifications_toggle: "Use HA notifications as alert sources",
+    notifications_help: "Each Home Assistant notification becomes a temporary entity your rule sets can match: notification.* with attributes title, message, source (persistent / notify), service and tag. Persistent notifications stay until dismissed in HA; notify.* messages (mobile app, Telegram…) are kept for the time set below.",
+    notifications_current: "notification(s) right now",
+    notifications_admin_only: "notify.* messages can only be seen by admin users. For this user only persistent notifications are available.",
+    notifications_retention: "Keep notify.* messages for (seconds)",
+    notifications_retention_help: "notify.* calls have no \"dismissed\" event in HA, so they expire after this time. Default 3600 (1 hour).",
+    ruleset_add_notify: "Add notification rule set (title or message contains \"Alert\")",
+    ruleset_notify_default_name: "Notifications containing Alert",
     ruleset_attribute_path: "Attribute name (dot path, e.g. battery_level)",
     alert_rule_set: "Rule set (optional)",
     alert_rule_set_help: "Only match entities in this rule set. Combinable with the filters above (AND logic).",
@@ -8348,6 +8356,41 @@ class AlertTickerCardEditor extends LitElement {
     return Array.isArray(this._config?.rule_sets) ? this._config.rule_sets : [];
   }
 
+  /** hass as the card sees it: with `notifications: true`, plus the notification.* entities. */
+  _previewHass() {
+    const n = globalThis.__alertTickerShared?.notifications;
+    if (!this._hass || !n || !this._config?.notifications) return this._hass;
+    n.ensure(this._hass);
+    if (!this._notifyUnsub) this._notifyUnsub = n.onChange(() => this.requestUpdate());
+    return n.augment(this._hass);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
+  }
+
+  /** Adds a ready-made set matching notifications whose title or message contains a word. */
+  _addNotificationRuleSet() {
+    const list = this._ruleSets();
+    const taken = new Set(list.map((rs) => String(rs.id)));
+    let id = "notifications_alert", n = 2;
+    while (taken.has(id)) id = `notifications_alert_${n++}`;
+    const rs = {
+      id,
+      name: this._t("ruleset_notify_default_name"),
+      groups: [
+        { mode: "include", match: "all", rules: [{ field: "domain", op: "in", values: ["notification"] }] },
+        { mode: "include", match: "any", rules: [
+          { field: "attribute", attribute: "title", op: "contains", value: "Alert" },
+          { field: "attribute", attribute: "message", op: "contains", value: "Alert" },
+        ] },
+      ],
+    };
+    this._rsEditing = list.length;
+    this._fireConfig({ ...this._config, notifications: true, rule_sets: [...list, rs] });
+  }
+
   /** Display name for an alert's rule_set value (id, inline object, or missing id). */
   _ruleSetLabel(ref) {
     if (ref && typeof ref === "object") return ref.name || this._t("alert_rule_set_inline");
@@ -8457,7 +8500,7 @@ class AlertTickerCardEditor extends LitElement {
 
   /** Dropdown choices for device_class / domain / integration, from this HA instance. */
   _rsOptions(field) {
-    const h = this._hass;
+    const h = this._previewHass();
     if (!h) return [];
     const set = new Set();
     if (field === "device_class") Object.values(h.states).forEach((s) => s.attributes?.device_class && set.add(s.attributes.device_class));
@@ -8472,10 +8515,44 @@ class AlertTickerCardEditor extends LitElement {
       ${this._renderSectionHeader("tab_rulesets")}
       <div class="tab-content">
         <div class="helper-text rs-intro">${this._t("rulesets_intro")}</div>
+        ${this._renderNotificationsBox()}
         ${list.length === 0
           ? html`<div class="empty-alerts">${this._t("ruleset_empty")}</div>`
           : list.map((rs, si) => this._renderRuleSetItem(rs, si))}
         <button class="btn-add-alert" @click="${() => this._addRuleSet()}">+ ${this._t("ruleset_add")}</button>
+      </div>
+    `;
+  }
+
+  _renderNotificationsBox() {
+    const cfg = this._config;
+    const on = !!cfg.notifications;
+    if (on) this._previewHass(); // starts the subscription so the count is live
+    const count = on ? Object.keys(globalThis.__alertTickerShared?.notifications?.entities() || {}).length : 0;
+    return html`
+      <div class="rs-notify-box">
+        <div class="form-row-inline">
+          <span>🔔 ${this._t("notifications_toggle")}</span>
+          <ha-switch
+            .checked="${on}"
+            @change="${(e) => this._fireConfig({ ...this._config, notifications: e.target.checked || undefined, notifications_retention: e.target.checked ? this._config.notifications_retention : undefined })}"
+          ></ha-switch>
+        </div>
+        <div class="helper-text">${this._t("notifications_help")}</div>
+        ${on ? html`
+          <div class="helper-text"><b>${count}</b> ${this._t("notifications_current")}</div>
+          ${this._hass?.user?.is_admin !== true ? html`<div class="rs-warning">⚠ ${this._t("notifications_admin_only")}</div>` : ""}
+          <ha-input
+            type="number"
+            .label="${this._t("notifications_retention")}"
+            .value="${cfg.notifications_retention != null ? String(cfg.notifications_retention) : "3600"}"
+            min="60" placeholder="3600"
+            @change="${(e) => { const v = parseInt(e.target.value, 10); this._fireConfig({ ...this._config, notifications_retention: v > 0 && v !== 3600 ? v : undefined }); }}"
+          ></ha-input>
+          <div class="helper-text">${this._t("notifications_retention_help")}</div>
+          <div class="helper-text" style="color:var(--warning-color,#f4a835)">${this._t("client_side_warning")}</div>
+        ` : ""}
+        <button class="rs-btn rs-btn--small" @click="${() => this._addNotificationRuleSet()}">+ ${this._t("ruleset_add_notify")}</button>
       </div>
     `;
   }
@@ -8652,7 +8729,7 @@ class AlertTickerCardEditor extends LitElement {
   _renderRsPreview(def, key) {
     const shared = globalThis.__alertTickerShared;
     if (!this._hass || !shared || !def) return "";
-    const matched = shared.filterEntities(this._hass, { rule_set: def }, { applyExclude: false });
+    const matched = shared.filterEntities(this._previewHass(), { rule_set: def }, { applyExclude: false });
     if (!matched.length) {
       return html`<div class="helper-text"><span style="color:var(--error-color,#db4437)">${this._t("entity_filter_zero")}</span></div>`;
     }
@@ -9078,7 +9155,7 @@ class AlertTickerCardEditor extends LitElement {
     const shared = globalThis.__alertTickerShared;
     if (!this._hass || !shared) return [];
     const [resolved] = shared.attachRuleSets([alert], this._config?.rule_sets);
-    return shared.filterEntities(this._hass, resolved, { applyExclude: false });
+    return shared.filterEntities(this._previewHass(), resolved, { applyExclude: false });
   }
 
   /** Returns the default badge label for a given alert based on its theme category */
@@ -10397,6 +10474,16 @@ class AlertTickerCardEditor extends LitElement {
       }
 
       /* ---- Rule sets ---- */
+      .rs-notify-box {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: 8px;
+        background: var(--secondary-background-color, #f9f9f9);
+      }
       .rs-intro {
         margin-bottom: 10px;
       }

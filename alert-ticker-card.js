@@ -1007,10 +1007,196 @@ function _atcFilterEntities(hass, a, opts) {
   return Object.entries(hass.states).filter(([eid, es]) => matches(eid, es));
 }
 
+// ---------------------------------------------------------------------------
+// Notification source — Home Assistant notifications as matchable entities.
+//
+// With `notifications: true` on a card, every HA notification appears to that
+// card's rules as a synthetic entity in hass.states:
+//   notification.persistent_<id>    persistent (UI) notifications — any user
+//   notification.<service>_<n>      notify.* service calls (mobile app, Telegram, …)
+//                                   — admin users only, like alertticker_sync
+// state: "active" · attributes: title, message, source ("persistent" | "notify"),
+//   service, tag, created_at, friendly_name (title, else message, else service)
+//
+// Persistent notifications stay until dismissed in HA. notify.* calls have no
+// "dismissed" event, so they expire after `notifications_retention` seconds
+// (card option, default 3600). Because the entities live in hass.states, rule
+// sets, message placeholders, the overlay and the editor preview all handle
+// them like any other entity — e.g. a rule set
+//   { field: domain, op: eq, value: notification } + { field: attribute, attribute: title, op: contains, value: Alert }
+// Synthetic entities exist only in this browser; HA never sees them. Like TTS
+// and push, this works only while a browser has the dashboard open.
+// ---------------------------------------------------------------------------
+const _ATC_NOTIFY = (() => {
+  const DEFAULT_RETENTION_S = 3600;
+  const MAX_NOTIFY_ITEMS = 50;
+  let _conn = null;           // connection the subscriptions belong to
+  let _gen = 0;               // bumps on every (re)subscribe; late results from an old one are dropped
+  let _unsubs = [];
+  let _persistent = {};       // notification_id → { title, message, created_at }
+  let _notifies = [];         // [{ id, service, title, message, tag, at }], newest last
+  let _seq = 0;
+  let _version = 0;           // bumps on every change; keys the merged-states cache
+  let _retentionS = DEFAULT_RETENTION_S;
+  const _listeners = new Set();
+  const _cache = new WeakMap(); // original hass.states → { version, merged }
+
+  const slug = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "x";
+
+  function _changed() {
+    _version++;
+    for (const fn of _listeners) { try { fn(); } catch (_) {} }
+  }
+
+  function _prune() {
+    const cutoff = Date.now() - _retentionS * 1000;
+    const before = _notifies.length;
+    _notifies = _notifies.filter(n => n.at >= cutoff).slice(-MAX_NOTIFY_ITEMS);
+    return _notifies.length !== before;
+  }
+
+  function _onPersistent(msg) {
+    // persistent_notification/subscribe: { type: "added"|"current"|"updated"|"removed", notifications: { id: {...} } }
+    const list = msg?.notifications || {};
+    if (msg?.type === "current") _persistent = {};
+    for (const [nid, n] of Object.entries(list)) {
+      if (msg.type === "removed") delete _persistent[nid];
+      else _persistent[nid] = { title: n?.title || "", message: n?.message || "", created_at: n?.created_at || new Date().toISOString() };
+    }
+    _changed();
+  }
+
+  function _onCallService(ev) {
+    const d = ev?.data;
+    if (!d || d.domain !== "notify") return;
+    const svc = String(d.service || "");
+    const data = d.service_data || {};
+    // notify.persistent_notification creates a persistent notification, which the
+    // other subscription already reports — skip it here so it isn't listed twice.
+    if (svc === "persistent_notification") return;
+    _notifies.push({
+      id: `${slug(svc)}_${++_seq}`,
+      service: svc,
+      title: data.title != null ? String(data.title) : "",
+      message: data.message != null ? String(data.message) : "",
+      tag: data.data?.tag != null ? String(data.data.tag) : "",
+      at: Date.now(),
+    });
+    _prune();
+    _changed();
+  }
+
+  function _stop() {
+    _gen++;
+    for (const u of _unsubs) { try { typeof u === "function" && u(); } catch (_) {} }
+    _unsubs = [];
+    _conn = null;
+    _persistent = {};
+    _notifies = [];
+    _changed();
+  }
+
+  /** Subscribes once per connection. Safe to call on every hass update. */
+  function ensure(hass) {
+    const conn = hass?.connection;
+    if (!conn || conn === _conn) return;
+    if (_conn) _stop();
+    _conn = conn;
+    const gen = ++_gen;
+    const subs = [];
+    if (typeof conn.subscribeMessage === "function") {
+      subs.push(conn.subscribeMessage(_onPersistent, { type: "persistent_notification/subscribe" }).catch(() => null));
+    }
+    // call_service events are admin-only in HA; non-admins would get "Unauthorized".
+    if (hass.user?.is_admin === true && typeof conn.subscribeEvents === "function") {
+      subs.push(conn.subscribeEvents(_onCallService, "call_service").catch(() => null));
+    }
+    Promise.all(subs).then(us => {
+      const live = us.filter(Boolean);
+      if (gen === _gen) { _unsubs = live; return; }
+      for (const u of live) { try { typeof u === "function" && u(); } catch (_) {} } // superseded
+    });
+  }
+
+  function setRetention(seconds) {
+    const n = Number(seconds);
+    _retentionS = n > 0 ? n : DEFAULT_RETENTION_S;
+  }
+
+  /** Builds the synthetic entities. Prunes expired notify items first. */
+  function entities() {
+    if (_prune()) _version++;
+    const out = {};
+    for (const [nid, n] of Object.entries(_persistent)) {
+      const id = `notification.persistent_${slug(nid)}`;
+      out[id] = {
+        entity_id: id, state: "active",
+        attributes: {
+          friendly_name: n.title || n.message || "Notification",
+          title: n.title, message: n.message, source: "persistent", service: "persistent_notification",
+          tag: "", notification_id: nid, created_at: n.created_at, icon: "mdi:bell",
+        },
+        last_changed: n.created_at, last_updated: n.created_at,
+      };
+    }
+    for (const n of _notifies) {
+      const id = `notification.${n.id}`;
+      const at = new Date(n.at).toISOString();
+      out[id] = {
+        entity_id: id, state: "active",
+        attributes: {
+          friendly_name: n.title || n.message || n.service,
+          title: n.title, message: n.message, source: "notify", service: n.service,
+          tag: n.tag, created_at: at, icon: "mdi:message-badge",
+        },
+        last_changed: at, last_updated: at,
+      };
+    }
+    return out;
+  }
+
+  /**
+   * Returns hass with the synthetic notification entities added to `states`, or the
+   * same hass when there are none. Cached per original states object + version, so
+   * repeated calls within one update are free and identity stays stable.
+   */
+  function augment(hass) {
+    if (!hass?.states) return hass;
+    const extra = entities();
+    if (!Object.keys(extra).length) return hass;
+    const hit = _cache.get(hass.states);
+    if (hit && hit.version === _version) return hit.merged;
+    const merged = Object.create(hass);
+    merged.states = { ...hass.states, ...extra };
+    _cache.set(hass.states, { version: _version, merged });
+    return merged;
+  }
+
+  /** Dismisses a persistent notification in HA (notify.* items just drop locally). */
+  function dismiss(hass, entityId) {
+    const es = augment(hass)?.states?.[entityId];
+    if (!es) return;
+    if (es.attributes.source === "persistent") {
+      hass.callService?.("persistent_notification", "dismiss", { notification_id: es.attributes.notification_id });
+    } else {
+      _notifies = _notifies.filter(n => `notification.${n.id}` !== entityId);
+      _changed();
+    }
+  }
+
+  return {
+    ensure, augment, dismiss, setRetention, entities,
+    onChange(fn) { _listeners.add(fn); return () => _listeners.delete(fn); },
+    // test hooks
+    _onPersistent, _onCallService, _reset() { _stop(); _seq = 0; },
+  };
+})();
+
 // The editor is a separate module (loaded on demand by getConfigElement), so it
 // reaches the same matcher through this namespace instead of keeping its own copy —
 // the editor's entity preview then always agrees with what the card shows.
 globalThis.__alertTickerShared = Object.freeze({
+  notifications: _ATC_NOTIFY,
   isFilterAlert: _atcIsFilterAlert,
   filterEntities: _atcFilterEntities,
   attachRuleSets: _atcAttachRuleSets,
@@ -1622,11 +1808,19 @@ const _ATC_OVERLAY = (() => {
   }
 
   function _tick() {
-    const hass = _getHass();
-    if (!hass) return;
+    const rawHass = _getHass();
+    if (!rawHass) return;
+    let notifyHass = null; // rawHass + synthetic notification entities, built on first use
     for (const [id, reg] of _regs) {
       try {
         if (!reg.config?.overlay_mode) continue;
+        // Only cards with `notifications: true` see notification.* entities.
+        let hass = rawHass;
+        if (reg.config.notifications) {
+          _ATC_NOTIFY.ensure(rawHass);
+          _ATC_NOTIFY.setRetention(reg.config.notifications_retention);
+          hass = notifyHass || (notifyHass = _ATC_NOTIFY.augment(rawHass));
+        }
         const prevMap  = _prevS.get(id) || new Map();
         const newMap   = new Map();
         for (const a of reg.alerts) {
@@ -2231,6 +2425,16 @@ class AlertTickerCard extends LitElement {
     // Resolve `rule_set: <id>` references once, so the card and the overlay watcher
     // both evaluate the alert's rule set without needing the card config.
     this._config.alerts = _atcAttachRuleSets(this._config.alerts, this._config.rule_sets);
+    // Re-derive the hass this card sees in case `notifications` was just switched on/off.
+    if (this._rawHass) {
+      if (this._config.notifications) {
+        _ATC_NOTIFY.ensure(this._rawHass);
+        _ATC_NOTIFY.setRetention(this._config.notifications_retention);
+        this._hass = _ATC_NOTIFY.augment(this._rawHass);
+      } else {
+        this._hass = this._rawHass;
+      }
+    }
     // Stop/start cycle timer based on test_mode
     if (this._config.test_mode) {
       this._stopCycleTimer();
@@ -2266,6 +2470,13 @@ class AlertTickerCard extends LitElement {
 
   set hass(hass) {
     const prevHass = this._hass;
+    this._rawHass = hass;
+    // notifications: true → add HA notifications as notification.* entities (see _ATC_NOTIFY)
+    if (this._config?.notifications && hass) {
+      _ATC_NOTIFY.ensure(hass);
+      _ATC_NOTIFY.setRetention(this._config.notifications_retention);
+      hass = _ATC_NOTIFY.augment(hass);
+    }
     this._hass = hass;
     // Detect language (default to "en" if HA language is not IT)
     const raw = (hass.language || "en").toLowerCase().split("-")[0];
@@ -4892,6 +5103,11 @@ class AlertTickerCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._mounted = true;
+    if (!this._notifyUnsub) {
+      this._notifyUnsub = _ATC_NOTIFY.onChange(() => {
+        if (this._config?.notifications && this._rawHass) this.hass = this._rawHass;
+      });
+    }
     // Bug #135 fix 1: if a watcher-fired overlay is showing for this card's alerts,
     // dismiss it now that the card is visible on screen.
     _ATC_OVERLAY.hideIfFromCard(this._cardId);
@@ -4913,6 +5129,7 @@ class AlertTickerCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._mounted = false;
+    if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
     this._stopCycleTimer();
     this._stopTimerTick();
     if (this._snoozeOutsideHandler) {
