@@ -15,16 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inline rules on single-entity alerts** — extra conditions with other entities, time of day, weekday and "unchanged for".
 - Editor: Add buttons per alert type, one panel per alert / rule set (settings open inside the row), collapsible sections with a "changed" marker on non-default ones, summary chips.
 - **Duplicate** an alert or a rule set (#233); **switch an alert off** with `enabled: false` (#232).
-- **Order instead of priority:** drag-and-drop or ▲▼ reorder; a pop-up switch on each alert row and an "Alerts that pop up" list in the Overlay tab.
+- **Order instead of priority:** drag-and-drop or ▲▼ reorder; a **Show in overlay** switch on each alert row and an "Alerts shown in the overlay" list in the Overlay tab.
 - Rule fields `visibility` (hidden in HA) and `sun`.
 
 ### Changed
 
 - The editor converts quick filters (`entity_filter`, `device_class`, `label_filter`, `area_filter`, exclusions), extra `conditions` and `time_range` into rules when a card is opened; the card shows the same alerts. All of them still work in YAML. The Quick filter mode, the extra-conditions list and the time-range section are replaced by rule sets / inline rules.
-- One matching engine for the card, the overlay pop-up and the editor. The pop-up now follows the card where they differed: an empty `state`, no state on an "off" entity, `attribute[n]` paths, missing attributes, `{{ }}` states, and filter alerts' extra conditions (the pop-up ignored them).
+- One matching engine for the card, the overlay and the editor. The overlay now follows the card where they differed: an empty `state`, no state on an "off" entity, `attribute[n]` paths, missing attributes, `{{ }}` states, and filter alerts' extra conditions (the overlay ignored them).
 - Faster matching: ~37% less work per card update and ~82% per overlay tick (2,000-entity benchmark); results are shared by the card, the overlay and the editor.
 - `label_filter`- and `area_filter`-only alerts now show the matched entity's name under the message, like `entity_filter` / `device_class` alerts.
-- The editor replaces `priority` with the list order (same order on the card) and `overlay_min_priority` with the per-alert pop-up switch. YAML with `priority` still sorts by it. Pop-ups follow the card's order.
+- The editor replaces `priority` with the list order (same order on the card) and `overlay_min_priority` with the per-alert **Show in overlay** switch. YAML with `priority` still sorts by it. The overlay follows the card's order.
 
 ### Fixed
 
