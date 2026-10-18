@@ -522,7 +522,7 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 
 `trigger_delay`, `on_change`, `visible_to` and all display and action options stay on the alert. The sections below that describe the old fields still apply to YAML.
 
-**Priority → order.** The editor also replaces the 1–4 `priority` with the list order: alerts are listed in the order they showed on the card, and `overlay_min_priority` becomes the per-alert pop-up switch (`overlay: false`) on the alerts it used to filter out. The card shows the same order as before; pop-ups now follow the same order as the card.
+**Priority → order.** The editor also replaces the 1–4 `priority` with the list order: alerts are listed in the order they showed on the card, and `overlay_min_priority` becomes the per-alert **Show in overlay** switch (`overlay: false`) on the alerts it used to filter out. The card shows the same order as before; the overlay now follows the same order as the card.
 
 ---
 
@@ -1297,7 +1297,7 @@ Create **entity** and **notification** rule sets: name, include / exclude groups
 
 Add an alert with **Single Entity**, **Entity Rule Set**, **Notification Rule Set** or **Add from template**. An alert's type is fixed when it's added.
 
-Each alert row: drag handle and ▲▼ to reorder (the order decides which alert shows first), the pop-up switch (💬 — greyed until the overlay is on), on/off (👁), duplicate and delete. Click a row to open its settings in the same panel. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its pop-up switch.
+Each alert row: drag handle and ▲▼ to reorder (the order decides which alert shows first), **Show in overlay** (greyed until the card's overlay is on), on/off (👁), duplicate and delete. Click a row to open its settings in the same panel. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its **Show in overlay** switch.
 
 #### 📚 Alert templates *(new in 1.3.9.9.7)*
 
@@ -1504,7 +1504,7 @@ The tab shows an **ON** badge when overlay mode is active.
 | `secondary_text` | `string` | ❌ | Static second line below the message — supports `{state}`, `{name}`, `{entity}` |
 | `theme` | `string` | ❌ | Visual theme (default: `emergency`) |
 | `priority` | `number` | ❌ | *Legacy:* 1–4. Still sorts YAML that has it; the editor replaces it with the list order |
-| `enabled` | `boolean` | `true` | `false` switches the alert off — nothing on the card, no pop-up, TTS or push (test mode still previews it) |
+| `enabled` | `boolean` | `true` | `false` switches the alert off — nothing on the card, in the overlay, TTS or push (test mode still previews it) |
 | `icon` | `string` | ❌ | Emoji or `mdi:` icon override |
 | `use_ha_icon` | `boolean` | ❌ | Use HA native icon (auto-read from entity, or pick via icon picker) |
 | `use_entity_picture` | `boolean` | ❌ | Use the entity's `entity_picture` attribute as the alert icon |

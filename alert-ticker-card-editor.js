@@ -1687,13 +1687,13 @@ const ET = {
     alert_duplicate: "Duplicate alert",
     ruleset_duplicate: "Duplicate rule set",
     copy_suffix: "(copy)",
-    alert_overlay_on: "Pops up in the overlay — click to stop",
-    alert_overlay_off: "No overlay pop-up — click to pop up",
+    alert_overlay_on: "Shown in the overlay — click to hide it there",
+    alert_overlay_off: "Not shown in the overlay — click to show it there",
     alert_overlay_each_match: "once for each match",
     alert_overlay_needs_mode: "Turn on the overlay first (Overlay section)",
-    overlay_alerts_title: "Alerts that pop up",
+    overlay_alerts_title: "Alerts shown in the overlay",
     overlay_alerts_help: "Same order as the Alerts list — reorder there.",
-    priority_migration_notice: "Priority numbers were replaced by the list order: the alerts are now listed in the order they showed on the card. Drag to reorder. Alerts below the old minimum overlay priority have their pop-up switched off. Save to keep it.",
+    priority_migration_notice: "Priority numbers were replaced by the list order: the alerts are now listed in the order they showed on the card. Drag to reorder. Alerts below the old minimum overlay priority are no longer shown in the overlay. Save to keep it.",
     ruleset_field_visibility: "Visibility in Home Assistant",
     ruleset_field_sun: "Sun",
     ruleset_val_shown: "shown",
@@ -7316,7 +7316,7 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
-  /** Overlay tab: every alert, in list order, with its pop-up switch. */
+  /** Overlay tab: every alert, in list order, with its Show in overlay switch. */
   _renderOverlayAlertList() {
     const alerts = this._config.alerts || [];
     if (!alerts.length) return "";
@@ -8544,7 +8544,7 @@ class AlertTickerCardEditor extends LitElement {
       @click="${(e) => { e.stopPropagation(); if (!disabled) onClick(); }}"><ha-icon icon="${icon}"></ha-icon></button>`;
   }
 
-  /** Pop-up banner on/off for an alert. Greyed while the card's overlay mode is off. */
+  /** Show in overlay on/off for an alert. Greyed while the card's overlay mode is off. */
   _overlayButton(alert, index) {
     const mode = this._config.overlay_mode;
     const on = alert.overlay !== false;
@@ -11173,7 +11173,7 @@ class AlertTickerCardEditor extends LitElement {
       }
       .alert-form .section-divider--toggle::after {
         content: "";
-        margin-left: auto;
+        margin-left: auto;   /* right-aligned; the "changed" marker sits just left of it */
         flex: none;
         width: 9px;
         height: 9px;
@@ -11183,6 +11183,10 @@ class AlertTickerCardEditor extends LitElement {
         transition: transform 0.2s ease;
         margin-right: 6px;
       }
+      /* with a marker: it takes the right-alignment, the chevron follows it */
+      .alert-form .section-divider--toggle:has(.sec-changed)::after {
+        margin-left: 8px;
+      }
       .alert-form .section-divider--toggle.section-divider--open::after {
         transform: rotate(45deg);
       }
@@ -11190,6 +11194,7 @@ class AlertTickerCardEditor extends LitElement {
         color: var(--primary-text-color, #212121);
       }
       .sec-changed {
+        margin-left: auto;
         --mdc-icon-size: 18px;
         color: var(--accent-color, var(--primary-color, #03a9f4));
         flex: none;
