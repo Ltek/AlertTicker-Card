@@ -129,7 +129,7 @@ A big thank you to **[SmartHomeJunkie](https://www.youtube.com/@SmartHomeJunkie)
 | **Animations** | **12** selectable transition animations between alerts |
 | **Per-alert theme** | Each alert has its own independent theme |
 | **Multiple entities** | Unlimited alerts per card |
-| **Priority system** | 4 levels — Critical, Warning, Info, Low |
+| **Order** | The list order decides which active alert shows first — drag to reorder (replaces the old 4-level priority) |
 | **tap / hold / double-tap** | Standard Lovelace card interactions per alert |
 | **Attribute triggers** | Trigger on any entity attribute (e.g. `battery_level`) |
 | **AND / OR conditions** | Multiple entities must match (all or at least one) |
@@ -457,6 +457,8 @@ An entity matches when **every include group** matches and **no exclude group** 
 | `other_entity` | **Another** entity's state or attribute (`entity:`, optional `attribute:`) — e.g. *only while the alarm is armed*. `{entity}` means the matched entity |
 | `time` | Time of day, `"HH:MM"` — `between` crosses midnight |
 | `weekday` | `mon` … `sun` (or 1–7) |
+| `visibility` | `shown` / `hidden` — whether the entity is hidden in Settings → Entities |
+| `sun` | `above_horizon` / `below_horizon` (from `sun.sun`) |
 
 Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`, `lt`, `ge`, `le`, `between`, `older` / `newer` (age of a timestamp, in seconds). Text compares ignore upper/lower case unless the rule has `case_sensitive: true` (*Match upper / lower case* in the editor). Values may be `{{ templates }}`, e.g. `value: "{{ states('input_number.battery_threshold') }}"`.
 
@@ -519,6 +521,8 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 - single-entity alerts → their extra conditions and time range become inline rules
 
 `trigger_delay`, `on_change`, `visible_to` and all display and action options stay on the alert. The sections below that describe the old fields still apply to YAML.
+
+**Priority → order.** The editor also replaces the 1–4 `priority` with the list order: alerts are listed in the order they showed on the card, and `overlay_min_priority` becomes the per-alert pop-up switch (`overlay: false`) on the alerts it used to filter out. The card shows the same order as before; pop-ups now follow the same order as the card.
 
 ---
 
@@ -1087,7 +1091,7 @@ Supported operators: `=` (default), `!=`, `>`, `<`, `>=`, `<=`, `contains`, `not
 ```
 
 - `and` — all conditions must match (default)
-- `or` — at least one condition must match
+- `or` — at least one must match: the alert's own condition **or** any extra condition (an alert without its own condition shows when any extra condition matches)
 
 ### HA icons (mdi:)
 
@@ -1291,7 +1295,9 @@ Create **entity** and **notification** rule sets: name, include / exclude groups
 
 ### 🔔 Alerts tab
 
-Add an alert with **+ Single entity**, **+ Entity rule set**, **+ Notification rule set** or **Add from template**. An alert's type is fixed when it's added. Each section of the alert editor collapses (*Expand all / Collapse all* at the top).
+Add an alert with **Single Entity**, **Entity Rule Set**, **Notification Rule Set** or **Add from template**. An alert's type is fixed when it's added.
+
+Each alert row: drag handle and ▲▼ to reorder (the order decides which alert shows first), the pop-up switch (💬 — greyed until the overlay is on), on/off (👁), duplicate and delete. Click a row to open its settings in the same panel. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its pop-up switch.
 
 #### 📚 Alert templates *(new in 1.3.9.9.7)*
 
@@ -1497,7 +1503,8 @@ The tab shows an **ON** badge when overlay mode is active.
 | `message` | `string` | ✅ | Text shown when active — supports `{name}`, `{entity}`, `{state}`, `{timer}`, `{device}` |
 | `secondary_text` | `string` | ❌ | Static second line below the message — supports `{state}`, `{name}`, `{entity}` |
 | `theme` | `string` | ❌ | Visual theme (default: `emergency`) |
-| `priority` | `number` | ❌ | 1–4 (default: `1`) |
+| `priority` | `number` | ❌ | *Legacy:* 1–4. Still sorts YAML that has it; the editor replaces it with the list order |
+| `enabled` | `boolean` | `true` | `false` switches the alert off — nothing on the card, no pop-up, TTS or push (test mode still previews it) |
 | `icon` | `string` | ❌ | Emoji or `mdi:` icon override |
 | `use_ha_icon` | `boolean` | ❌ | Use HA native icon (auto-read from entity, or pick via icon picker) |
 | `use_entity_picture` | `boolean` | ❌ | Use the entity's `entity_picture` attribute as the alert icon |
