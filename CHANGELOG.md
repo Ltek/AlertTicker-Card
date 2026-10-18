@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rule Sets** — named, reusable filters (`rule_sets:`, `rule_set:` on alerts) with include / exclude groups and the fields `entity_id`, `name`, `domain`, `device_class`, `area`, `floor`, `label`, `integration`, `state`, `attribute`, `last_changed_ago`, `other_entity`, `time` and `weekday`; operators `eq` `ne` `in` `not_in` `contains` `not_contains` `regex` `gt` `lt` `ge` `le` `between` `older` `newer`; `{{ template }}` values. Editor: a 🧩 Rule Sets section with HA pickers, a live match list (click to exclude), "used by" links and *Create alert from this rule set*.
 - **Notification alerts** — `watch: notifications` rule sets raise alerts from Home Assistant notifications, by Notification Source (automation / script, via context ids), Notification Destination (phones, notify groups and entities, the bell) and text; placeholders `{title}` `{message}` `{sent_by}` `{sent_to}`; tap dismisses. Editor: a scan for automations that send notifications and a *Recent notifications* list. `notifications_retention` card option.
 - **Inline rules on single-entity alerts** — extra conditions with other entities, time of day, weekday and "unchanged for".
-- Editor: **+ Add** buttons per alert type, collapsible alert-editor sections, summary chips on alerts and rule sets.
+- Editor: Add buttons per alert type, one panel per alert / rule set (settings open inside the row), collapsible sections with a "changed" marker on non-default ones, summary chips.
+- **Duplicate** an alert or a rule set (#233); **switch an alert off** with `enabled: false` (#232).
+- **Order instead of priority:** drag-and-drop or ▲▼ reorder; a pop-up switch on each alert row and an "Alerts that pop up" list in the Overlay tab.
+- Rule fields `visibility` (hidden in HA) and `sun`.
 
 ### Changed
 
@@ -21,9 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - One matching engine for the card, the overlay pop-up and the editor. The pop-up now follows the card where they differed: an empty `state`, no state on an "off" entity, `attribute[n]` paths, missing attributes, `{{ }}` states, and filter alerts' extra conditions (the pop-up ignored them).
 - Faster matching: ~37% less work per card update and ~82% per overlay tick (2,000-entity benchmark); results are shared by the card, the overlay and the editor.
 - `label_filter`- and `area_filter`-only alerts now show the matched entity's name under the message, like `entity_filter` / `device_class` alerts.
+- The editor replaces `priority` with the list order (same order on the card) and `overlay_min_priority` with the per-alert pop-up switch. YAML with `priority` still sorts by it. Pop-ups follow the card's order.
 
 ### Fixed
 
+- `conditions_logic: or` required the alert's own condition and applied OR only among the extra conditions; it now means own condition OR any extra condition (#231).
 - `navigate` tap actions with `{{ }}` in the path threw a ReferenceError.
 
 ---

@@ -1678,7 +1678,28 @@ const ET = {
     alert_quick_filter_left: "This alert still uses quick-filter fields that couldn't be converted automatically. Convert them to a rule set, or edit them in YAML.",
     migration_notice: "{n} alert(s) were converted to rule sets: their filters, conditions and time ranges are now rules. Nothing changes on the card; save to keep it.",
     sections_expand_all: "Expand all",
+    section_changed: "Changed from the defaults",
+    alert_options_section: "Options",
     add_btn_entity: "Single Entity",
+    drag_to_reorder: "Drag to reorder — the order decides which alert shows first",
+    alert_enable: "Switched off — click to switch on",
+    alert_disable: "Switch this alert off",
+    alert_duplicate: "Duplicate alert",
+    ruleset_duplicate: "Duplicate rule set",
+    copy_suffix: "(copy)",
+    alert_overlay_on: "Pops up in the overlay — click to stop",
+    alert_overlay_off: "No overlay pop-up — click to pop up",
+    alert_overlay_each_match: "once for each match",
+    alert_overlay_needs_mode: "Turn on the overlay first (Overlay section)",
+    overlay_alerts_title: "Alerts that pop up",
+    overlay_alerts_help: "Same order as the Alerts list — reorder there.",
+    priority_migration_notice: "Priority numbers were replaced by the list order: the alerts are now listed in the order they showed on the card. Drag to reorder. Alerts below the old minimum overlay priority have their pop-up switched off. Save to keep it.",
+    ruleset_field_visibility: "Visibility in Home Assistant",
+    ruleset_field_sun: "Sun",
+    ruleset_val_shown: "shown",
+    ruleset_val_hidden: "hidden",
+    ruleset_val_above_horizon: "above the horizon",
+    ruleset_val_below_horizon: "below the horizon",
     add_btn_rs_entity: "Entity Rule Set",
     add_btn_rs_notify: "Notification Rule Set",
     sections_collapse_all: "Collapse all",
@@ -5973,6 +5994,8 @@ const RS_FIELD_OPS = {
   other_entity:     ["eq", "ne", "in", "not_in", "contains", "not_contains", "gt", "lt", "ge", "le", "between", "older", "newer", "regex"],
   time:             ["between", "ge", "lt"],
   weekday:          ["in", "not_in"],
+  visibility:       ["eq"],
+  sun:              ["eq"],
   notification_text:    ["contains", "not_contains", "eq", "ne", "regex"],
   notification_title:   ["contains", "not_contains", "eq", "ne", "regex"],
   notification_message: ["contains", "not_contains", "eq", "ne", "regex"],
@@ -5981,11 +6004,11 @@ const RS_FIELD_OPS = {
 };
 // notification_sent_to stays valid in YAML; the UI covers it with Notification Destination.
 const RS_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message", "notification_tag",
-  "other_entity", "time", "weekday"];
+  "other_entity", "time", "weekday", "sun"];
 const RS_LIST_OPS = ["in", "not_in"];
 const RS_NUMERIC_OPS = ["gt", "lt", "ge", "le", "between", "older", "newer"];
 // Inline conditions on a single-entity alert: other entities, time, day, plus the entity's own fields.
-const RS_INLINE_FIELDS = ["other_entity", "time", "weekday", "state", "attribute", "last_changed_ago"];
+const RS_INLINE_FIELDS = ["other_entity", "time", "weekday", "sun", "state", "attribute", "last_changed_ago"];
 const RS_CASE_OPS = ["eq", "ne", "in", "not_in", "regex"];
 
 // ---------------------------------------------------------------------------
@@ -6174,9 +6197,23 @@ class AlertTickerCardEditor extends LitElement {
     }
     const forms = root.querySelectorAll(".alert-form");
     forms.forEach((form) => {
+      const alert = (this._config?.alerts || [])[this._editingIndex];
       form.querySelectorAll(".section-divider").forEach((div) => {
-        const key = div.textContent.replace(/\s+/g, " ").trim();
+        // the "changed" marker lives in its own span, so it's not part of the key
+        let mark = div.querySelector(":scope > .sec-changed");
+        // open/closed state is kept per section id (data-sec), else per title text
+        const key = div.dataset.sec || [...div.childNodes].filter((n) => n !== mark).map((n) => n.textContent).join("").replace(/\s+/g, " ").trim();
         div.dataset.atcSection = key;
+        const changed = !!(alert && div.dataset.sec && this._sectionIsModified(alert, div.dataset.sec, this._editingIndex));
+        if (changed && !mark) {
+          mark = document.createElement("ha-icon");
+          mark.className = "sec-changed";
+          mark.setAttribute("icon", "mdi:pencil-circle");
+          mark.setAttribute("title", this._t("section_changed"));
+          div.appendChild(mark);
+        } else if (!changed && mark) {
+          mark.remove();
+        }
         const open = this._openSections?.has(key);
         div.classList.add("section-divider--toggle");
         div.classList.toggle("section-divider--open", !!open);
@@ -6185,6 +6222,48 @@ class AlertTickerCardEditor extends LitElement {
         }
       });
     });
+  }
+
+  /**
+   * True when a section of the alert editor holds a non-default setting — drives the
+   * "changed" marker on its header. Defaults: unset, false, "", plus the listed ones.
+   */
+  _sectionIsModified(alert, sec, index) {
+    const DEFAULTS = { overlay: true, show_badge: true, music_show_art: true, music_show_title: true,
+      music_show_artist: true, music_show_controls: true, operator: "=", show_filter_name: true };
+    const set = (k) => {
+      const v = alert[k];
+      if (v === undefined || v === null || v === "" || v === false) return k in DEFAULTS && DEFAULTS[k] !== false && v === false;
+      if (k in DEFAULTS) return v !== DEFAULTS[k];
+      if (Array.isArray(v)) return v.length > 0;
+      return true;
+    };
+    const any = (keys) => keys.some(set);
+    if (sec.startsWith("action:")) return any([sec.slice(7)]);
+    const mode = this._getAlertMode(index, alert);
+    switch (sec) {
+      case "music": return any(["show_player_controls", "music_player_color"]);
+      case "music_compact": return any(["music_compact_layout", "music_compact_show_badge"]);
+      case "music_controls": return any(["music_show_art", "music_show_title", "music_show_artist", "music_show_controls", "music_show_power", "music_show_player_picker"]);
+      case "group": return any(["group", "group_min", "group_message", "group_secondary_text", "group_expanded_message", "group_tap_action", "group_hold_action", "group_double_tap_action"]);
+      case "conditions": return any(["on_change", "attribute"]) || (mode === "entity" && ((alert.operator || "=") !== "=" || (alert.state != null && String(alert.state) !== "on") || !!(alert.rule_set && typeof alert.rule_set === "object" && (alert.rule_set.groups || []).some((g) => (g.rules || []).length))));
+      case "timing": return any(["trigger_delay", "auto_dismiss_after"]);
+      case "message": {
+        const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
+        const msgChanged = !!alert.message && alert.message !== dflt && !(mode === "rs_notify" && alert.message === "{title}");
+        return msgChanged || any(["icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "badge_label", "color", "history_message", "show_badge"]);
+      }
+      case "secondary": return any(["secondary_entity", "secondary_attribute", "secondary_text", "show_secondary_name", "secondary_value_align"]);
+      case "options": return any(["persistent", "overlay", "disable_animation", "snooze_duration"]);
+      case "sound": return any(["sound", "sound_url"]);
+      case "tts": return any(["tts", "tts_entity", "tts_engine", "tts_notify_service", "tts_notify_type", "tts_message"]);
+      case "push": return any(["push_notify", "push_notify_service", "push_notify_title", "push_notify_message", "push_notify_data", "notify_push", "notify_push_service"]);
+      case "camera": return any(["camera_entity", "camera_live", "camera_in_card"]);
+      case "visibility": return any(["visible_to"]);
+      case "automation": return any(["active_state_entity"]);
+      case "card_override": return any(["card"]);
+      default: return false;
+    }
   }
 
   _toggleSection(key) {
@@ -6197,7 +6276,7 @@ class AlertTickerCardEditor extends LitElement {
   /** Opens or closes every section of the alert form. */
   _setAllSections(open) {
     const keys = [...(this.shadowRoot?.querySelectorAll?.(".alert-form .section-divider") || [])]
-      .map((d) => d.textContent.replace(/\s+/g, " ").trim());
+      .map((d) => d.dataset.atcSection || d.textContent.replace(/\s+/g, " ").trim());
     this._openSections = open ? new Set(keys) : new Set();
     this._applySectionCollapse();
   }
@@ -6230,8 +6309,9 @@ class AlertTickerCardEditor extends LitElement {
     const migrate = globalThis.__alertTickerShared?.migrateConfig;
     if (migrate && config) {
       const res = migrate(config);
-      if (res.migrated.length) {
+      if (res.migrated.length || res.priorityMoved) {
         this._migratedCount = (this._migratedCount || 0) + res.migrated.length;
+        if (res.priorityMoved) this._priorityMigrated = true;
         config = res.config;
         queueMicrotask(() => this._fireConfig({ ...this._config }));
       }
@@ -7191,17 +7271,8 @@ class AlertTickerCardEditor extends LitElement {
               </select>
             </div>
             <div class="helper-text">${this._t("overlay_scale_help")}</div>
-            <ha-input
-              type="number"
-              .label="${this._t("overlay_min_priority")}"
-              .value="${cfg.overlay_min_priority != null ? String(cfg.overlay_min_priority) : ""}"
-              min="1" max="4" placeholder="—"
-              @change="${(e) => {
-                const v = parseInt(e.target.value);
-                this._fireConfig({ ...this._config, overlay_min_priority: (v >= 1 && v <= 4) ? v : undefined });
-              }}"
-            ></ha-input>
-            <div class="helper-text">${this._t("overlay_min_priority_help")}</div>
+
+            ${this._renderOverlayAlertList()}
 
             <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
               <div style="flex:1;min-width:0">
@@ -7245,6 +7316,23 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
+  /** Overlay tab: every alert, in list order, with its pop-up switch. */
+  _renderOverlayAlertList() {
+    const alerts = this._config.alerts || [];
+    if (!alerts.length) return "";
+    return html`
+      <div class="rs-section-title" style="margin-top:12px">${this._t("overlay_alerts_title")}</div>
+      <div class="helper-text">${this._t("overlay_alerts_help")}</div>
+      <div class="atc-ov-list">
+        ${alerts.map((a, i) => html`
+          <div class="form-row-inline atc-ov-row ${a.enabled === false ? "atc-row--off" : ""}">
+            <span>${this._modeIcon(this._getAlertMode(i, a))} ${a.name || `${this._t("alert_num")} ${i + 1}`}</span>
+            <ha-switch .checked="${a.overlay !== false}"
+              @change="${(e) => this._updateAlert(i, { overlay: e.target.checked ? undefined : false })}"></ha-switch>
+          </div>`)}
+      </div>`;
+  }
+
   _renderAlertsTab() {
     const alerts = this._config.alerts || [];
 
@@ -7270,6 +7358,8 @@ class AlertTickerCardEditor extends LitElement {
       </div>
       ${this._migratedCount ? html`<div class="rs-notice">🧩 ${this._t("migration_notice").replace("{n}", this._migratedCount)}
         <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._migratedCount = 0; this.requestUpdate(); }}">${this._t("notify_close")}</a></div>` : ""}
+      ${this._priorityMigrated ? html`<div class="rs-notice">↕ ${this._t("priority_migration_notice")}
+        <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._priorityMigrated = false; this.requestUpdate(); }}">${this._t("notify_close")}</a></div>` : ""}
       <div class="alerts-header">
         <span>${this._t("alerts_list")}</span>
         <span class="alerts-count">${alerts.length} ${alerts.length === 1 ? "item" : "items"}</span>
@@ -7300,7 +7390,6 @@ class AlertTickerCardEditor extends LitElement {
 
   _renderAlertItem(alert, index) {
     const isEditing = this._editingIndex === index;
-    const prio = alert.priority || 1;
     const rawIcon = alert.icon || (THEME_META[alert.theme] || {}).icon || "🔔";
     const icon = (rawIcon && /^[\w-]+:/.test(rawIcon))
       ? html`<ha-icon icon="${rawIcon}" style="--mdc-icon-size:1.2em;vertical-align:middle;"></ha-icon>`
@@ -7321,22 +7410,21 @@ class AlertTickerCardEditor extends LitElement {
 
     const total = (this._config.alerts || []).length;
     return html`
-      <div class="atc-row ${isEditing ? "is-open" : ""}">
+      <div class="atc-row ${isEditing ? "is-open" : ""} ${alert.enabled === false ? "atc-row--off" : ""} ${this._dragOver === index ? "atc-row--drop" : ""}"
+           @dragover="${(e) => { if (this._dragFrom == null) return; e.preventDefault(); if (this._dragOver !== index) { this._dragOver = index; this.requestUpdate(); } }}"
+           @dragleave="${() => { if (this._dragOver === index) { this._dragOver = null; this.requestUpdate(); } }}"
+           @drop="${(e) => { e.preventDefault(); const from = this._dragFrom; this._dragFrom = null; this._dragOver = null; if (from != null) this._moveAlert(from, index); }}">
       <div class="${`alert-item${isEditing ? " is-editing" : ""}`}"
            @click="${() => this._editAlert(index)}">
         <div class="alert-move-col">
-          <button
-            class="btn-move-inline"
-            title="${this._t("move_up")}"
-            ?disabled="${index === 0}"
-            @click="${(e) => { e.stopPropagation(); this._moveAlertUp(index); }}"
-          >▲</button>
-          <button
-            class="btn-move-inline"
-            title="${this._t("move_down")}"
-            ?disabled="${index === total - 1}"
-            @click="${(e) => { e.stopPropagation(); this._moveAlertDown(index); }}"
-          >▼</button>
+          <span class="atc-drag" draggable="true" title="${this._t("drag_to_reorder")}"
+            @click="${(e) => e.stopPropagation()}"
+            @dragstart="${(e) => { this._dragFrom = index; try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); } catch (_) {} }}"
+            @dragend="${() => { this._dragFrom = null; this._dragOver = null; this.requestUpdate(); }}"><ha-icon icon="mdi:drag-vertical"></ha-icon></span>
+          <div class="atc-move-arrows">
+            ${this._iconButton("mdi:chevron-up", this._t("move_up"), () => this._moveAlert(index, index - 1), index === 0)}
+            ${this._iconButton("mdi:chevron-down", this._t("move_down"), () => this._moveAlert(index, index + 1), index === total - 1)}
+          </div>
         </div>
         <span class="alert-icon-badge">${icon}</span>
         <div class="alert-summary-text">
@@ -7344,8 +7432,15 @@ class AlertTickerCardEditor extends LitElement {
           ${alert.name ? html`<div class="alert-msg-label">${entityLabel}</div>` : (msgSnippet ? html`<div class="alert-msg-label">${msgSnippet}</div>` : "")}
           ${this._alertChips(alert)}
         </div>
-        <span class="alert-prio-badge prio-${prio}">P${prio}</span>
-        <div class="alert-actions">${this._deleteButton(() => this._deleteAlert(index))}</div>
+        <div class="alert-actions">
+          ${this._overlayButton(alert, index)}
+          ${this._iconButton(alert.enabled === false ? "mdi:eye-off-outline" : "mdi:eye-outline",
+            this._t(alert.enabled === false ? "alert_enable" : "alert_disable"),
+            () => this._updateAlert(index, { enabled: alert.enabled === false ? undefined : false }), false,
+            alert.enabled === false ? "atc-icon--off" : "")}
+          ${this._iconButton("mdi:content-copy", this._t("alert_duplicate"), () => this._duplicateAlert(index))}
+          ${this._deleteButton(() => this._deleteAlert(index))}
+        </div>
       </div>
       ${isEditing ? this._renderAlertEditPanel() : ""}
       </div>
@@ -7377,26 +7472,6 @@ class AlertTickerCardEditor extends LitElement {
                       false,
                       this._isTimerLike(alert.entity) || (alert.entity_filter || "").startsWith("timer.")
                     )}
-                  </div>
-                  <div class="theme-priority-priority">
-                    <ha-select
-                      .label="${this._t("alert_priority")}"
-                      .value="${String(alert.priority || 1)}"
-                      fixedMenuPosition
-                      naturalMenuWidth
-                      @closed="${(e) => e.stopPropagation()}"
-                    >
-                      ${[1, 2, 3, 4].map((p) => html`
-                        <mwc-list-item
-                          value="${String(p)}"
-                          ?selected="${(alert.priority || 1) === p}"
-                          @request-selected="${(e) => {
-                            if (e.detail.source !== "interaction") return;
-                            this._alertPriorityChanged(e.target.getAttribute("value"), index);
-                          }}"
-                        >${this._t("priority_" + p)}</mwc-list-item>
-                      `)}
-                    </ha-select>
                   </div>
                 </div>
                 ${this._isTimerLike(alert.entity) ? html`
@@ -7474,7 +7549,7 @@ class AlertTickerCardEditor extends LitElement {
 
                 <!-- ── MUSIC PLAYER OPTIONS ──────────────────────────────── -->
                 ${alert.theme === 'music' ? html`
-                  <div class="section-divider">🎵 ${this._t("music_player_controls")}</div>
+                  <div class="section-divider" data-sec="music">🎵 ${this._t("music_player_controls")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_player_controls")}">
                       <ha-switch
@@ -7510,7 +7585,7 @@ class AlertTickerCardEditor extends LitElement {
                     placeholder="NOW PLAYING"
                     @change="${(e) => this._updateAlert(index, { badge_label: e.target.value.trim() || undefined })}"
                   ></ha-input>
-                  <div class="section-divider">${this._t("music_compact_layout")}</div>
+                  <div class="section-divider" data-sec="music_compact">${this._t("music_compact_layout")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_compact_layout")}">
                       <ha-switch
@@ -7526,7 +7601,7 @@ class AlertTickerCardEditor extends LitElement {
                       ></ha-switch>
                     </ha-formfield>` : ""}
                   </div>
-                  <div class="section-divider">${this._t("music_player_controls")}</div>
+                  <div class="section-divider" data-sec="music_controls">${this._t("music_player_controls")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_art")}">
                       <ha-switch
@@ -7579,7 +7654,7 @@ class AlertTickerCardEditor extends LitElement {
 
                 <!-- Group settings — visible for every multi-entity mode -->
                 ${this._getAlertMode(index, alert) !== "entity" ? html`
-                <div class="section-divider">🗂️ ${this._t("group_section")}</div>
+                <div class="section-divider" data-sec="group">🗂️ ${this._t("group_section")}</div>
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("group")}</span>
@@ -7635,7 +7710,7 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
                 <!-- ── 2. CONDIZIONE ──────────────────────────────────────── -->
-                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`<div class="section-divider">⚡ ${this._t(this._getAlertMode(index, alert) === "entity" ? "conditions_section" : "rs_trigger_section")}</div>` : ""}
+                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`<div class="section-divider" data-sec="conditions">⚡ ${this._t(this._getAlertMode(index, alert) === "entity" ? "conditions_section" : "rs_trigger_section")}</div>` : ""}
 
                 ${this._getAlertMode(index, alert) === "rs_entity" ? html`<div class="helper-text">${this._t("rs_entity_conditions_help")}</div>` : ""}
                 ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
@@ -7710,7 +7785,7 @@ class AlertTickerCardEditor extends LitElement {
                 <!-- Extra conditions: inline rules on single-entity alerts (rule-set alerts keep theirs in the set) -->
                 ${this._getAlertMode(index, alert) === "entity" ? this._renderInlineRules(alert, index) : ""}
                 <!-- ── TRIGGER DELAY + AUTO-DISMISS ─────────────────────── -->
-                <div class="section-divider">⏱ ${this._t("auto_dismiss_section")}</div>
+                <div class="section-divider" data-sec="timing">⏱ ${this._t("auto_dismiss_section")}</div>
 
                 ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
                 <div>
@@ -7746,7 +7821,7 @@ class AlertTickerCardEditor extends LitElement {
                 ${!(alert.theme === 'music' && alert.show_player_controls) ? html`
 
                 <!-- ── 4. MESSAGGIO ──────────────────────────────────────── -->
-                <div class="section-divider">💬 ${this._t("alert_message")}</div>
+                <div class="section-divider" data-sec="message">💬 ${this._t("alert_message")}</div>
 
                 <ha-input
                   .label="${this._t("alert_message")}"
@@ -7876,7 +7951,7 @@ class AlertTickerCardEditor extends LitElement {
                 </div>
 
                 <!-- ── 4. VALORI SECONDARI ────────────────────────────────── -->
-                <div class="section-divider">📊 ${this._t("secondary_entity")}</div>
+                <div class="section-divider" data-sec="secondary">📊 ${this._t("secondary_entity")}</div>
 
                 <!-- Secondary entity — live value shown on card below message -->
                 <div>
@@ -7933,7 +8008,7 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
                 <!-- ── 5. OPZIONI ─────────────────────────────────────────── -->
-                <div class="section-divider">⚙️ ${this._t("snooze_duration")}</div>
+                <div class="section-divider" data-sec="options">⚙️ ${this._t("alert_options_section")}</div>
 
                 <!-- Persistent alarm toggle -->
                 <div class="form-row">
@@ -7995,7 +8070,7 @@ class AlertTickerCardEditor extends LitElement {
                 `}
 
                 <!-- Sound per alert -->
-                <div class="section-divider">🔊 ${this._t("alert_sound")}</div>
+                <div class="section-divider" data-sec="sound">🔊 ${this._t("alert_sound")}</div>
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_sound")}</span>
@@ -8019,7 +8094,7 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
                 <!-- TTS per alert -->
-                <div class="section-divider">${this._t("section_tts")}</div>
+                <div class="section-divider" data-sec="tts">${this._t("section_tts")}</div>
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_tts")}</span>
@@ -8091,7 +8166,7 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
                 <!-- Push notify per alert -->
-                <div class="section-divider">${this._t("section_push_notify")}</div>
+                <div class="section-divider" data-sec="push">${this._t("section_push_notify")}</div>
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_push_notify")}</span>
@@ -8152,7 +8227,7 @@ class AlertTickerCardEditor extends LitElement {
 
                 <!-- Camera in overlay — hidden for music player theme -->
                 ${alert.theme !== 'music' ? html`
-                <div class="section-divider">${alert.camera_live ? "📹" : "📷"} ${this._t("alert_camera_entity")}</div>
+                <div class="section-divider" data-sec="camera">${alert.camera_live ? "📹" : "📷"} ${this._t("alert_camera_entity")}</div>
                 <div class="form-row">
                   <ha-entity-picker
                     .hass="${this._hass}"
@@ -8199,7 +8274,7 @@ class AlertTickerCardEditor extends LitElement {
                     ? (Array.isArray(vt) ? vt : (vt ? [vt] : []))
                     : [];
                   return html`
-                    <div class="section-divider">${this._t("visible_to_section")}</div>
+                    <div class="section-divider" data-sec="visibility">${this._t("visible_to_section")}</div>
                     <div class="form-row">
                       <ha-select
                         .label="${this._t("visible_to_label")}"
@@ -8266,7 +8341,7 @@ class AlertTickerCardEditor extends LitElement {
                 ${this._renderActionConfig(alert, index, "snooze_action", this._t("snooze_action_section"))}
 
                 <!-- ── AUTOMATION ───────────────────────────────────────── -->
-                <div class="section-divider">🔗 ${this._t("section_automation")}</div>
+                <div class="section-divider" data-sec="automation">🔗 ${this._t("section_automation")}</div>
                 <div class="form-row">
                   <ha-entity-picker
                     .hass="${this._hass}"
@@ -8281,7 +8356,7 @@ class AlertTickerCardEditor extends LitElement {
                 </div>
 
                 <!-- ── CARD OVERRIDE ────────────────────────────────────── -->
-                <div class="section-divider">🃏 ${this._t("card_override_section")}</div>
+                <div class="section-divider" data-sec="card_override">🃏 ${this._t("card_override_section")}</div>
                 <div class="helper-text">${this._t("card_override_help")}</div>
                 <ha-yaml-editor
                   .label="${this._t("card_override_section")}"
@@ -8418,7 +8493,7 @@ class AlertTickerCardEditor extends LitElement {
     const notify = this._isNotificationSet(rs);
     const theme = notify ? "notification" : "warning";
     const alerts = [...(this._config.alerts || []), {
-      rule_set: rs.id, message: notify ? "{title}" : "{name}", priority: notify ? 2 : 1, theme, icon: "",
+      rule_set: rs.id, message: notify ? "{title}" : "{name}", theme, icon: "",
       name: rs.name || undefined,
     }];
     this._editingIndex = alerts.length - 1;
@@ -8461,6 +8536,67 @@ class AlertTickerCardEditor extends LitElement {
   _modeIcon(mode) {
     const icon = { entity: "mdi:tag-outline", filter: "mdi:filter-outline", rs_entity: "mdi:puzzle-outline", rs_notify: "mdi:forum-outline" }[mode] || "mdi:tag-outline";
     return html`<ha-icon class="rs-kind-icon" icon="${icon}"></ha-icon>`;
+  }
+
+  /** A row action icon: neutral, brighter on hover (design system). */
+  _iconButton(icon, title, onClick, disabled = false, extraClass = "") {
+    return html`<button class="btn-icon atc-act ${extraClass}" title="${title}" ?disabled="${disabled}"
+      @click="${(e) => { e.stopPropagation(); if (!disabled) onClick(); }}"><ha-icon icon="${icon}"></ha-icon></button>`;
+  }
+
+  /** Pop-up banner on/off for an alert. Greyed while the card's overlay mode is off. */
+  _overlayButton(alert, index) {
+    const mode = this._config.overlay_mode;
+    const on = alert.overlay !== false;
+    const multi = this._getAlertMode(index, alert) !== "entity";
+    const title = !mode ? this._t("alert_overlay_needs_mode")
+      : `${this._t(on ? "alert_overlay_on" : "alert_overlay_off")}${multi && on ? ` — ${this._t("alert_overlay_each_match")}` : ""}`;
+    return this._iconButton(on ? "mdi:message-alert-outline" : "mdi:message-off-outline", title,
+      () => this._updateAlert(index, { overlay: on ? false : undefined }), !mode,
+      !mode ? "atc-icon--unavailable" : on ? "atc-icon--on" : "atc-icon--off");
+  }
+
+  /** Moves an alert from one position to another (arrows and drag-and-drop). */
+  _moveAlert(from, to) {
+    const alerts = [...(this._config.alerts || [])];
+    if (from === to || from < 0 || to < 0 || from >= alerts.length || to >= alerts.length) return;
+    const [moved] = alerts.splice(from, 1);
+    alerts.splice(to, 0, moved);
+    const pos = (i) => (i === from ? to : from < to ? (i > from && i <= to ? i - 1 : i) : (i >= to && i < from ? i + 1 : i));
+    this._remapAlertModes(pos);
+    if (this._editingIndex >= 0) this._editingIndex = pos(this._editingIndex);
+    this._fireConfig({ ...this._config, alerts });
+  }
+
+  /** Inserts a copy of an alert right after it and opens the copy (#233). */
+  _duplicateAlert(index) {
+    const alerts = [...(this._config.alerts || [])];
+    const src = alerts[index];
+    if (!src) return;
+    const copy = JSON.parse(JSON.stringify(src));
+    if (copy.name) copy.name = `${copy.name} ${this._t("copy_suffix")}`;
+    alerts.splice(index + 1, 0, copy);
+    const mode = this._getAlertMode(index, src);
+    this._remapAlertModes((i) => (i > index ? i + 1 : i));
+    const m = new Map(this._alertModeChoice); m.set(index + 1, mode); this._alertModeChoice = m;
+    this._editingIndex = index + 1;
+    this._fireConfig({ ...this._config, alerts });
+  }
+
+  /** Inserts a copy of a rule set (new id) right after it and opens the copy. Alerts keep the original. */
+  _duplicateRuleSet(si) {
+    const list = [...this._ruleSets()];
+    const src = list[si];
+    if (!src) return;
+    const copy = JSON.parse(JSON.stringify(src));
+    const taken = new Set(list.map((rs) => String(rs.id)));
+    let id = `${src.id}_copy`, n = 2;
+    while (taken.has(id)) id = `${src.id}_copy_${n++}`;
+    copy.id = id;
+    copy.name = `${src.name || src.id} ${this._t("copy_suffix")}`;
+    list.splice(si + 1, 0, copy);
+    this._rsEditing = si + 1;
+    this._setRuleSets(list);
   }
 
   /** Delete button: trash icon only, neutral, red on hover (design system). */
@@ -8604,6 +8740,8 @@ class AlertTickerCardEditor extends LitElement {
 
   _newRule(field) {
     field = field || "label";
+    if (field === "visibility") return { field, op: "eq", value: "shown" };
+    if (field === "sun") return { field, op: "eq", value: "below_horizon" };
     if (field === "other_entity") return { field, op: "eq", value: "on" };
     return { field, op: (RS_FIELD_OPS[field] || ["eq"])[0], ...(RS_LIST_OPS.includes((RS_FIELD_OPS[field] || [])[0]) ? { values: [] } : {}) };
   }
@@ -8759,7 +8897,10 @@ class AlertTickerCardEditor extends LitElement {
           <div class="alert-entity-label" title="${this._t(this._isNotificationSet(rs) ? "ruleset_watch_notifications" : "ruleset_watch_entities")}">${this._kindIcon(this._isNotificationSet(rs))} ${rs.name || rs.id}</div>
           <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
         </div>
-        <div class="alert-actions">${this._deleteButton(() => this._deleteRuleSet(si))}</div>
+        <div class="alert-actions">
+          ${this._iconButton("mdi:content-copy", this._t("ruleset_duplicate"), () => this._duplicateRuleSet(si))}
+          ${this._deleteButton(() => this._deleteRuleSet(si))}
+        </div>
       </div>
       ${open ? this._renderRuleSetForm(rs, si) : ""}
       </div>
@@ -9129,7 +9270,7 @@ class AlertTickerCardEditor extends LitElement {
             @change="${(e) => this._rsRuleChanged(si, gi, ri, { attribute: e.target.value.trim() || undefined })}"
           ></ha-input>` : ""}
         ${this._renderRsValue(si, gi, ri, r)}
-        ${RS_CASE_OPS.includes(r.op) && !["time", "weekday", "label", "area", "floor"].includes(r.field) ? html`
+        ${RS_CASE_OPS.includes(r.op) && !["time", "weekday", "label", "area", "floor", "visibility", "sun"].includes(r.field) ? html`
           <ha-formfield .label="${this._t("ruleset_match_case")}">
             <ha-checkbox .checked="${!!r.case_sensitive}"
               @change="${(e) => this._rsRuleChanged(si, gi, ri, { case_sensitive: e.target.checked || undefined, exact: e.target.checked ? r.exact : undefined })}"></ha-checkbox>
@@ -9166,6 +9307,13 @@ class AlertTickerCardEditor extends LitElement {
           .label="${this._t("ruleset_value")}"
           @value-changed="${(e) => { const v = e.detail.value; set({ values: Array.isArray(v) ? v : [], value: undefined }); }}"
         ></ha-selector>`;
+    }
+    if (r.field === "visibility" || r.field === "sun") {
+      const opts = r.field === "sun" ? ["above_horizon", "below_horizon"] : ["shown", "hidden"];
+      return html`
+        <select class="native-select rs-select" @change="${(e) => set({ value: e.target.value, values: undefined })}">
+          ${opts.map((o) => html`<option value="${o}" ?selected="${String(r.value) === o}">${this._t("ruleset_val_" + o)}</option>`)}
+        </select>`;
     }
     if (r.field === "time") {
       const t = (key, labelKey) => html`
@@ -9378,7 +9526,7 @@ class AlertTickerCardEditor extends LitElement {
     const notify = mode === "rs_notify";
     const defaultTheme = notify ? "notification" : "emergency";
     const defaultMsg = notify ? "{title}" : ((DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[defaultTheme] || "");
-    const base = { message: defaultMsg, priority: notify ? 2 : 1, theme: defaultTheme, icon: "" };
+    const base = { message: defaultMsg, theme: defaultTheme, icon: "" };
     if (mode === "entity") alerts.push({ entity: "", operator: "=", state: "on", ...base });
     else if (mode === "filter") alerts.push({ operator: "=", state: "on", ...base });
     else {
@@ -9418,7 +9566,8 @@ class AlertTickerCardEditor extends LitElement {
 
     const currentAlerts = [...(this._config.alerts || [])];
     const firstNewIndex = currentAlerts.length;
-    const newAlerts = template.alerts.map((tplAlert) => ({ ...tplAlert }));
+    // Order is the priority now: template alerts are appended (drag them into place).
+    const newAlerts = template.alerts.map(({ priority, ...tplAlert }) => ({ ...tplAlert }));
 
     // Merge cardConfig defaults, but never overwrite what the user already set
     let mergedCardCfg = {};
@@ -9627,10 +9776,6 @@ class AlertTickerCardEditor extends LitElement {
     this._updateAlert(index, { message: value });
   }
 
-  _alertPriorityChanged(value, index) {
-    if (!value) return;
-    this._updateAlert(index, { priority: parseInt(value, 10) });
-  }
 
   _alertIconChanged(value, index) {
     this._updateAlert(index, { icon: value });
@@ -9759,7 +9904,7 @@ class AlertTickerCardEditor extends LitElement {
     const cfg = alert[key] || { action: "none" };
     const type = cfg.action || "none";
     return html`
-      <div class="section-divider">${sectionLabel}</div>
+      <div class="section-divider" data-sec="action:${key}">${sectionLabel}</div>
       <div class="native-select-wrap">
         <label class="native-select-label">${this._t("action_type")}</label>
         <select class="native-select"
@@ -10030,26 +10175,11 @@ class AlertTickerCardEditor extends LitElement {
   // Event handlers — reorder
   // -------------------------------------------------------------------------
   _moveAlertUp(index) {
-    if (index === 0) return;
-    const alerts = [...(this._config.alerts || [])];
-    [alerts[index - 1], alerts[index]] = [alerts[index], alerts[index - 1]];
-    this._remapAlertModes((i) => (i === index ? index - 1 : i === index - 1 ? index : i));
-    // Follow the moved alert in the edit panel
-    if (this._editingIndex === index) this._editingIndex = index - 1;
-    else if (this._editingIndex === index - 1) this._editingIndex = index;
-    this._fireConfig({ ...this._config, alerts });
+    this._moveAlert(index, index - 1);
   }
 
   _moveAlertDown(index) {
-    const alerts = this._config.alerts || [];
-    if (index >= alerts.length - 1) return;
-    const copy = [...alerts];
-    [copy[index], copy[index + 1]] = [copy[index + 1], copy[index]];
-    this._remapAlertModes((i) => (i === index ? index + 1 : i === index + 1 ? index : i));
-    // Follow the moved alert in the edit panel
-    if (this._editingIndex === index) this._editingIndex = index + 1;
-    else if (this._editingIndex === index + 1) this._editingIndex = index;
-    this._fireConfig({ ...this._config, alerts: copy });
+    this._moveAlert(index, index + 1);
   }
 
   // -------------------------------------------------------------------------
@@ -10508,18 +10638,6 @@ class AlertTickerCardEditor extends LitElement {
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .alert-prio-badge {
-        font-size: 0.75rem;
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 20px;
-        flex-shrink: 0;
-        white-space: nowrap;
-      }
-      .prio-1 { background: #ffebee; color: #e53935; }
-      .prio-2 { background: #fff3e0; color: #e65100; }
-      .prio-3 { background: #e3f2fd; color: #1565c0; }
-      .prio-4 { background: #f5f5f5; color: #757575; }
 
       .alert-actions {
         display: flex;
@@ -11036,18 +11154,45 @@ class AlertTickerCardEditor extends LitElement {
         gap: 12px;
         font-size: 0.85rem;
       }
-      .section-divider--toggle {
+      /* Collapsible sub-section headings in the alert editor (design system: flat
+         sub-panel — accent, UPPERCASE, thin top divider, right-aligned rotating chevron) */
+      .alert-form .section-divider--toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: -6px 0 0;
+        padding: 9px 2px;
+        border-bottom: none;
+        border-top: 1px solid var(--divider-color, #e0e0e0);
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--primary-color, #03a9f4);
         cursor: pointer;
         user-select: none;
       }
-      .section-divider--toggle::before {
-        content: "▸ ";
+      .alert-form .section-divider--toggle::after {
+        content: "";
+        margin-left: auto;
+        flex: none;
+        width: 9px;
+        height: 9px;
+        border-right: 2px solid var(--primary-color, #03a9f4);
+        border-bottom: 2px solid var(--primary-color, #03a9f4);
+        transform: rotate(-45deg);
+        transition: transform 0.2s ease;
+        margin-right: 6px;
       }
-      .section-divider--toggle.section-divider--open::before {
-        content: "▾ ";
+      .alert-form .section-divider--toggle.section-divider--open::after {
+        transform: rotate(45deg);
       }
-      .section-divider--toggle:hover {
+      .alert-form .section-divider--toggle:hover {
         color: var(--primary-text-color, #212121);
+      }
+      .sec-changed {
+        --mdc-icon-size: 18px;
+        color: var(--accent-color, var(--primary-color, #03a9f4));
+        flex: none;
       }
       .atc-sec-hidden {
         display: none !important;
@@ -11310,6 +11455,69 @@ class AlertTickerCardEditor extends LitElement {
         --mdc-icon-size: 18px;
         color: var(--primary-color, #03a9f4);
         margin-right: 2px;
+      }
+      .alert-move-col {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .atc-move-arrows {
+        display: flex;
+        flex-direction: column;
+      }
+      .atc-move-arrows .atc-act {
+        padding: 0;
+      }
+      .atc-move-arrows .atc-act ha-icon {
+        --mdc-icon-size: 20px;
+      }
+      .atc-drag {
+        cursor: grab;
+        color: var(--secondary-text-color, #aaa);
+        line-height: 0;
+      }
+      .atc-drag ha-icon {
+        --mdc-icon-size: 22px;
+      }
+      .atc-row--drop {
+        border-color: var(--primary-color, #03a9f4);
+        box-shadow: 0 -3px 0 var(--primary-color, #03a9f4);
+      }
+      .atc-row--off > .alert-item {
+        opacity: 0.5;
+      }
+      .atc-act {
+        padding: 4px;
+        line-height: 0;
+        color: var(--secondary-text-color, #aaa);
+      }
+      .atc-act ha-icon {
+        --mdc-icon-size: 22px;
+      }
+      .atc-act:hover:not([disabled]) {
+        color: var(--primary-text-color, #fff);
+      }
+      .atc-act[disabled] {
+        opacity: 0.3;
+        cursor: default;
+      }
+      .atc-icon--on {
+        color: var(--primary-color, #03a9f4);
+      }
+      .atc-icon--off {
+        color: var(--secondary-text-color, #aaa);
+        opacity: 0.6;
+      }
+      .atc-icon--unavailable[disabled] {
+        opacity: 0.25;
+      }
+      .atc-ov-list {
+        display: flex;
+        flex-direction: column;
+      }
+      .atc-ov-row {
+        padding: 4px 0;
+        border-top: 1px solid var(--divider-color, #e0e0e0);
       }
       .atc-del {
         padding: 4px;

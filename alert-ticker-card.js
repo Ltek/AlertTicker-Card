@@ -825,7 +825,7 @@ function _atcIsFilterAlert(a) {
 // (ne / not_in / not_contains) hold when NO value matches.
 // ---------------------------------------------------------------------------
 const ATC_RULE_FIELDS = ["entity_id", "name", "domain", "device_class", "area", "floor", "label",
-  "integration", "state", "attribute", "last_changed_ago", "other_entity", "time", "weekday"];
+  "integration", "state", "attribute", "last_changed_ago", "other_entity", "time", "weekday", "visibility", "sun"];
 /** Condition fields of a `watch: notifications` rule set. */
 const ATC_NOTIFICATION_FIELDS = ["notification_text", "notification_title", "notification_message",
   "notification_tag", "notification_sent_to"];
@@ -884,6 +884,7 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
     case "domain":       return [eid.slice(0, eid.indexOf("."))];
     case "name":         return [es.attributes?.friendly_name || ""];
     case "label":        { const l = hass.entities?.[eid]?.labels; return Array.isArray(l) ? l : []; }
+    case "visibility":   return [hass.entities?.[eid]?.hidden ? "hidden" : "shown"]; // hidden in Settings → Entities
   }
   if (rule.field === "other_entity") {
     // Another entity's state or attribute; "{entity}" / "this.entity_id" = the matched entity.
@@ -895,6 +896,11 @@ function _atcRuleFieldValues(hass, eid, es, rule) {
   if (rule.field === "time") {
     const d = new Date();
     return [String(d.getHours() * 60 + d.getMinutes())];
+  }
+  if (rule.field === "sun") {
+    // the sun's position: above_horizon / below_horizon (sun.sun)
+    const sun = hass.states?.["sun.sun"];
+    return sun ? [sun.state] : null;
   }
   if (rule.field === "weekday") {
     const day = new Date().getDay();
@@ -1781,10 +1787,16 @@ function _atcPrimaryPass(alert, es, ctx) {
  * AND → own && all; OR → own && any.
  */
 function _atcConditionsPass(hass, alert, es, ctx) {
-  const primary = _atcPrimaryPass(alert, es, ctx) && _atcEntityRulesPass(hass, alert, es, ctx);
+  if (!_atcEntityRulesPass(hass, alert, es, ctx)) return false;
   const extra = _atcExtraConditionResults(hass, alert, ctx);
-  if (!extra.length) return primary;
-  return alert.conditions_logic === "or" ? primary && extra.some(Boolean) : primary && extra.every(Boolean);
+  if (!extra.length) return _atcPrimaryPass(alert, es, ctx);
+  if (alert.conditions_logic === "or") {
+    // OR: the alert's own condition OR any extra condition (#231). With no own
+    // condition (no state), any extra condition decides.
+    const hasOwn = alert.state != null && alert.state !== "";
+    return (hasOwn && _atcPrimaryPass(alert, es, ctx)) || extra.some(Boolean);
+  }
+  return _atcPrimaryPass(alert, es, ctx) && extra.every(Boolean);
 }
 
 /**
@@ -1792,6 +1804,7 @@ function _atcConditionsPass(hass, alert, es, ctx) {
  * lifecycle (snooze, dismiss, persistent, trigger_delay, auto-dismiss, on_change).
  */
 function _atcAlertMatches(hass, alert, ctx) {
+  if (alert.enabled === false) return []; // switched off in the editor (#232)
   if (!_evalVisibleTo(hass, alert) || !_evalTimeRange(alert)) return [];
   if (_atcIsFilterAlert(alert)) {
     return _atcFilterEntities(hass, alert, { ctx })
@@ -1832,14 +1845,20 @@ function _atcConditionRule(c, { other = false, missingStateIsOn = true } = {}) {
   return { ...base, op, value: String(trigger), case_sensitive: true };
 }
 
-/** Rule groups for an alert's own condition, extra conditions and time_range; null if one can't be converted. */
-function _atcConditionGroups(a, { includePrimary }) {
+/**
+ * Rule groups for an alert's own condition, extra conditions and time_range; null if
+ * one can't be converted. With OR, the own condition joins the extra conditions' "any"
+ * group (own OR any extra, #231); `ownRule` overrides how the own condition is written.
+ */
+function _atcConditionGroups(a, { includePrimary, ownRule = null }) {
   const groups = [];
   const all = [];
-  if (includePrimary) {
-    const r = _atcConditionRule(a, { missingStateIsOn: false });
-    if (r === undefined) return null;
-    if (r) all.push(r);
+  const or = a.conditions_logic === "or" && _atcNormConditions(a.conditions).length > 0;
+  let own = null;
+  if (includePrimary || ownRule) {
+    own = ownRule || _atcConditionRule(a, { missingStateIsOn: false });
+    if (own === undefined) return null;
+    if (own && !or) all.push(own);
   }
   const tr = a.time_range;
   if (tr && tr.from && tr.to) all.push({ field: "time", op: "between", value: tr.from, value2: tr.to });
@@ -1848,7 +1867,8 @@ function _atcConditionGroups(a, { includePrimary }) {
   if (conds.length) {
     const rules = conds.map((c) => (c.entity ? _atcConditionRule(c, { other: true }) : { field: "other_entity", op: "eq", value: "on" }));
     if (rules.some((r) => r === undefined)) return null;
-    groups.push({ mode: "include", match: a.conditions_logic === "or" ? "any" : "all", rules });
+    if (or && own) rules.unshift(own);
+    groups.push({ mode: "include", match: or ? "any" : "all", rules });
   }
   return groups;
 }
@@ -1862,7 +1882,25 @@ function _atcRuleSetSlug(v) {
  * (the input is not changed); `migrated` lists the alert indices that changed.
  */
 function _atcMigrateConfig(config) {
-  const alerts = Array.isArray(config?.alerts) ? config.alerts : [];
+  // Priority → list order: sort by priority the way the card does (none = last, ties
+  // keep their order), drop `priority`; overlay_min_priority → `overlay: false` on the
+  // alerts it filtered out (a missing priority counted as 3 there).
+  let alerts = Array.isArray(config?.alerts) ? config.alerts : [];
+  let priorityMoved = false;
+  const minP = config?.overlay_min_priority;
+  if (alerts.some((a) => a && a.priority != null) || minP != null) {
+    priorityMoved = true;
+    alerts = alerts.map((a, i) => ({ a, i }))
+      .sort((x, y) => ((x.a?.priority ?? 99) - (y.a?.priority ?? 99)) || (x.i - y.i))
+      .map(({ a }) => {
+        if (!a || typeof a !== "object") return a;
+        const { priority, ...rest } = a;
+        if (minP != null && (priority ?? 3) > minP) rest.overlay = false;
+        return rest;
+      });
+    config = { ...config, alerts };
+    delete config.overlay_min_priority;
+  }
   const sets = Array.isArray(config?.rule_sets) ? config.rule_sets.map((x) => x) : [];
   const migrated = [];
   const notifyKey = (rs) => (_atcIsNotificationSet(rs) ? JSON.stringify([rs.watch || rs.source, rs.notification_source, rs.notification_destination]) : null);
@@ -1878,11 +1916,16 @@ function _atcMigrateConfig(config) {
       // single entity: extra conditions + time_range → inline rules; own condition stays
       if (!hasConds && !hasTime) return a;
       if (a.rule_set && typeof a.rule_set !== "object") return a; // shared ref on an entity alert: leave it
-      const groups = _atcConditionGroups(a, { includePrimary: false });
+      const orOwn = a.conditions_logic === "or" && hasConds && !a.on_change && a.state != null && a.state !== "";
+      // OR with an own condition: it becomes a rule on the alert's entity, in the same "any" group
+      const ownRule = orOwn ? _atcConditionRule(a, { missingStateIsOn: false }) : null;
+      if (ownRule === undefined) return a;
+      if (a.conditions_logic === "or" && a.on_change) return a; // on_change keeps its own logic
+      const groups = _atcConditionGroups(a, { includePrimary: false, ownRule });
       if (!groups) return a;
       const inline = a.rule_set && typeof a.rule_set === "object" ? a.rule_set : { groups: [] };
       migrated.push(i);
-      const res = strip(a, ["conditions", "conditions_logic", "time_range"]);
+      const res = strip(a, ["conditions", "conditions_logic", "time_range", ...(orOwn ? ["state", "operator"] : [])]);
       if (groups.length || (inline.groups || []).length) res.rule_set = { ...inline, groups: [...(inline.groups || []), ...groups] };
       return res;
     }
@@ -1917,8 +1960,8 @@ function _atcMigrateConfig(config) {
     const keys = [..._ATC_MIGRATED_KEYS, ...(notify || hasPrimary ? ["state", "operator"] : [])];
     return { ...strip(a, keys), rule_set: id };
   });
-  if (!migrated.length) return { config, migrated };
-  return { config: { ...config, rule_sets: sets.length ? sets : undefined, alerts: out }, migrated };
+  if (!migrated.length) return { config, migrated, priorityMoved };
+  return { config: { ...config, rule_sets: sets.length ? sets : undefined, alerts: out }, migrated, priorityMoved };
 }
 
 // The editor is a separate module (loaded on demand by getConfigElement), so it
@@ -2385,7 +2428,7 @@ const _ATC_OVERLAY = (() => {
   function _evalAlert(hass, a, prevMap) {
     if (!a.entity && !_atcIsFilterAlert(a)) return false;
     if (a.on_change && a.entity) {
-      if (!_evalVisibleTo(hass, a) || !_evalTimeRange(a)) return false;
+      if (a.enabled === false || !_evalVisibleTo(hass, a) || !_evalTimeRange(a)) return false;
       const key = a.entity + (a.attribute || "");
       const cur  = _getVal(hass, a.entity, a.attribute);
       const prev = prevMap.get(key);
@@ -3233,6 +3276,8 @@ class AlertTickerCard extends LitElement {
     const expandedAlerts = [];
     for (let idx = 0; idx < this._config.alerts.length; idx++) {
       const alert = this._config.alerts[idx];
+      // Switched-off alerts (#232) are skipped — except in test mode, which previews everything.
+      if (alert?.enabled === false && !this._config.test_mode) continue;
       if (_atcIsFilterAlert(alert)) {
         let matched = _atcFilterEntities(this._hass, alert);
         if (!matched.length && samples?.has(idx)) matched = [samples.get(idx)];
@@ -3286,30 +3331,7 @@ class AlertTickerCard extends LitElement {
           }
         } else {
           // Normal condition check — shared with the overlay (_atcConditionsPass)
-          const primaryOk = _atcPrimaryPass(alert, entityState, condCtx) && _atcEntityRulesPass(this._hass, alert, entityState, condCtx);
-          const results = _atcExtraConditionResults(this._hass, alert, condCtx);
-          if (results.length > 0) {
-            const logic = alert.conditions_logic || "and";
-            const passes = logic === "or"
-              ? primaryOk && results.some(Boolean)
-              : primaryOk && results.every(Boolean);
-            if (!passes) {
-              // persistent: keep showing even though condition cleared
-              if (alert.persistent && this._persistentLatched.has(this._snoozeKey(alert))) return true;
-              // Condition went false — reset timers so next activation starts fresh
-              if (alert.auto_dismiss_after) {
-                this._autoDismissedKeys.delete(key);
-                clearTimeout(this._autoDismissTimers[key]);
-                delete this._autoDismissTimers[key];
-              }
-              if (alert.trigger_delay) {
-                clearTimeout(this._triggerDelayTimers[key]);
-                delete this._triggerDelayTimers[key];
-                this._triggerDelayActive.delete(key);
-              }
-              return false;
-            }
-          } else if (!primaryOk) {
+          if (!_atcConditionsPass(this._hass, alert, entityState, condCtx)) {
             // persistent: keep showing even though condition cleared
             if (alert.persistent && this._persistentLatched.has(this._snoozeKey(alert))) return true;
             if (alert.auto_dismiss_after) {
