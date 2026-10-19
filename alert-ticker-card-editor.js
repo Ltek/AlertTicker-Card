@@ -2029,6 +2029,7 @@ const ET = {
     persistent: "Persistent alarm 🔒",
     persistent_help: "Stays visible even after the sensor returns to normal. Press ✕ to dismiss.",
     group_section: "Group alerts",
+    group_section_help: "When this alert matches several entities, show them as one summary slide instead of one slide each — e.g. \"5 batteries low\" — once at least the minimum number are active. Tap the summary to expand the list. Its message, secondary text, item message and tap / hold actions are set below.",
     group: "Enable grouping",
     group_min: "Minimum to group",
     group_min_help: "Minimum number of active entities before showing the group summary (default: 3).",
@@ -6212,6 +6213,11 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _applySectionCollapse() {
+    this._applySectionCollapseInner();
+    try { this._positionSectionFrames(); } catch (_) {}
+  }
+
+  _applySectionCollapseInner() {
     const root = this.shadowRoot;
     if (!root?.querySelectorAll) return;
     if (!this._sectionClickBound) {
@@ -6245,7 +6251,9 @@ class AlertTickerCardEditor extends LitElement {
         div.classList.add("section-divider--toggle");
         div.classList.toggle("section-divider--open", !!open);
         for (let el = div.nextElementSibling; el && !el.classList.contains("section-divider"); el = el.nextElementSibling) {
+          if (el.classList.contains("atc-sec-frame")) continue;
           el.classList.toggle("atc-sec-hidden", !open);
+          el.classList.toggle("atc-sec-body", !!open);
         }
       });
     });
@@ -6255,6 +6263,11 @@ class AlertTickerCardEditor extends LitElement {
    * True when a section of the alert editor holds a non-default setting — drives the
    * "changed" marker on its header. Defaults: unset, false, "", plus the listed ones.
    */
+  /** True for an action config that does something (not unset / "none"). */
+  _actionSet(cfg) {
+    return !!cfg && typeof cfg === "object" && !!cfg.action && cfg.action !== "none";
+  }
+
   _sectionIsModified(alert, sec, index) {
     const DEFAULTS = { overlay: true, show_badge: true, music_show_art: true, music_show_title: true,
       music_show_artist: true, music_show_controls: true, operator: "=", show_filter_name: true };
@@ -6266,13 +6279,14 @@ class AlertTickerCardEditor extends LitElement {
       return true;
     };
     const any = (keys) => keys.some(set);
-    if (sec.startsWith("action:")) return any([sec.slice(7)]);
+    if (sec.startsWith("action:")) return this._actionSet(alert[sec.slice(7)]);
     const mode = this._getAlertMode(index, alert);
     switch (sec) {
       case "music": return any(["show_player_controls", "music_player_color"]);
       case "music_compact": return any(["music_compact_layout", "music_compact_show_badge"]);
       case "music_controls": return any(["music_show_art", "music_show_title", "music_show_artist", "music_show_controls", "music_show_power", "music_show_player_picker"]);
-      case "group": return any(["group", "group_min", "group_message", "group_secondary_text", "group_expanded_message", "group_tap_action", "group_hold_action", "group_double_tap_action"]);
+      // sections with an on/off switch count only while switched on (hidden settings don't count)
+      case "group": return !!alert.group;
       case "conditions": return any(["on_change", "attribute"]) || (mode === "entity" && ((alert.operator || "=") !== "=" || (alert.state != null && String(alert.state) !== "on") || !!(alert.rule_set && typeof alert.rule_set === "object" && (alert.rule_set.groups || []).some((g) => (g.rules || []).length))));
       case "timing": return any(["trigger_delay", "auto_dismiss_after"]);
       case "message": {
@@ -6282,15 +6296,49 @@ class AlertTickerCardEditor extends LitElement {
       }
       case "secondary": return any(["secondary_entity", "secondary_attribute", "secondary_text", "show_secondary_name", "secondary_value_align"]);
       case "options": return any(["persistent", "overlay", "disable_animation", "snooze_duration"]);
-      case "sound": return any(["sound", "sound_url"]);
-      case "tts": return any(["tts", "tts_entity", "tts_engine", "tts_notify_service", "tts_notify_type", "tts_message"]);
-      case "push": return any(["push_notify", "push_notify_service", "push_notify_title", "push_notify_message", "push_notify_data", "notify_push", "notify_push_service"]);
+      case "sound": return !!alert.sound;
+      case "tts": return !!alert.tts;
+      case "push": return !!(alert.push_notify || alert.notify_push);
       case "camera": return any(["camera_entity", "camera_live", "camera_in_card"]);
       case "visibility": return any(["visible_to"]);
       case "automation": return any(["active_state_entity"]);
       case "card_override": return any(["card"]);
       default: return false;
     }
+  }
+
+  /**
+   * Draws the accent border around each open section: the sections are flat siblings
+   * in the form (no wrapper), so the border is an overlay sized to the header and its
+   * content, kept in place on resize.
+   */
+  _positionSectionFrames() {
+    const root = this.shadowRoot;
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll(".alert-form").forEach((form) => {
+      form.querySelectorAll(":scope > .atc-sec-frame").forEach((f) => f.remove());
+      const box = form.getBoundingClientRect?.();
+      if (!box) return;
+      form.querySelectorAll(".section-divider--open").forEach((div) => {
+        let last = div;
+        for (let el = div.nextElementSibling; el && !el.classList.contains("section-divider"); el = el.nextElementSibling) {
+          if (!el.classList.contains("atc-sec-hidden") && !el.classList.contains("atc-sec-frame") && el.getClientRects?.().length) last = el;
+        }
+        const top = div.getBoundingClientRect(), bottom = last.getBoundingClientRect();
+        const frame = document.createElement("div");
+        frame.className = "atc-sec-frame";
+        frame.style.top = `${top.top - box.top - 2}px`;
+        frame.style.height = `${bottom.bottom - top.top + 10}px`;
+        frame.style.left = `${top.left - box.left - 6}px`;
+        frame.style.width = `${top.width + 12}px`;
+        form.appendChild(frame);
+      });
+      if (!this._frameObservers) this._frameObservers = new WeakSet();
+      if (!this._frameObservers.has(form) && typeof ResizeObserver !== "undefined") {
+        this._frameObservers.add(form);
+        new ResizeObserver(() => this._positionSectionFrames()).observe(form);
+      }
+    });
   }
 
   _toggleSection(key) {
@@ -7634,6 +7682,68 @@ class AlertTickerCardEditor extends LitElement {
                   ` : ""}
                 ` : ""}
 
+                <!-- ── 5. OPZIONI ─────────────────────────────────────────── -->
+                <div class="section-divider" data-sec="options">⚙️ ${this._t("alert_options_section")}</div>
+
+                <!-- Persistent alarm toggle -->
+                <div class="form-row">
+                  <div class="form-row-inline">
+                    <span>${this._t("persistent")}</span>
+                    <ha-switch
+                      .checked="${!!alert.persistent}"
+                      @change="${(e) => this._updateAlert(index, { persistent: e.target.checked || undefined })}"
+                    ></ha-switch>
+                  </div>
+                </div>
+
+                <!-- Overlay toggle — visible only when overlay_mode is enabled globally -->
+                ${this._config?.overlay_mode ? html`
+                <div class="form-row">
+                  <div class="form-row-inline">
+                    <span>${this._t("alert_overlay")}</span>
+                    <ha-switch
+                      .checked="${alert.overlay !== false}"
+                      @change="${(e) => this._updateAlert(index, { overlay: e.target.checked ? undefined : false })}"
+                    ></ha-switch>
+                  </div>
+                  <div class="helper-text">${this._t("alert_overlay_help")}</div>
+                </div>
+                ` : ""}
+                <!-- Per-alert disable_animation toggle -->
+                <div class="form-row">
+                  <div class="form-row-inline">
+                    <span>${this._t("disable_animation")}</span>
+                    <ha-switch
+                      .checked="${!!alert.disable_animation}"
+                      @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"
+                    ></ha-switch>
+                  </div>
+                  <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
+                </div>
+                <div class="helper-text">${this._t("persistent_help")}</div>
+
+                <!-- Per-alert snooze duration override (hidden when persistent) -->
+                ${alert.persistent ? "" : html`
+                <div class="native-select-wrap">
+                  <select class="native-select"
+                    @change="${(e) => {
+                      const v = e.target.value;
+                      this._updateAlert(index, { snooze_duration: v === "__global__" ? undefined : v === "__menu__" ? null : Number(v) });
+                    }}"
+                  >
+                    <option value="__global__" ?selected="${alert.snooze_duration === undefined}">${this._t("snooze_duration_global")}</option>
+                    <option value="__menu__"   ?selected="${alert.snooze_duration === null}">${this._t("snooze_duration_menu")}</option>
+                    <option value="1"   ?selected="${alert.snooze_duration === 1}">1h</option>
+                    <option value="4"   ?selected="${alert.snooze_duration === 4}">4h</option>
+                    <option value="8"   ?selected="${alert.snooze_duration === 8}">8h</option>
+                    <option value="24"  ?selected="${alert.snooze_duration === 24}">24h</option>
+                    <option value="168" ?selected="${alert.snooze_duration === 168}">1w</option>
+                    <option value="720" ?selected="${alert.snooze_duration === 720}">1m</option>
+                  </select>
+                </div>
+                <div class="helper-text">${this._t("snooze_duration_help")}</div>
+                `}
+
                 <!-- ── MUSIC PLAYER OPTIONS ──────────────────────────────── -->
                 ${alert.theme === 'music' ? html`
                   <div class="section-divider" data-sec="music">🎵 ${this._t("music_player_controls")}</div>
@@ -7742,6 +7852,7 @@ class AlertTickerCardEditor extends LitElement {
                 <!-- Group settings — visible for every multi-entity mode -->
                 ${this._getAlertMode(index, alert) !== "entity" ? html`
                 <div class="section-divider" data-sec="group">🗂️ ${this._t("group_section")}</div>
+                <div class="helper-text">${this._t("group_section_help")}</div>
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("group")}</span>
@@ -7791,8 +7902,8 @@ class AlertTickerCardEditor extends LitElement {
                     ></ha-input>
                     <div class="helper-text">${this._t("group_expanded_message_help")}</div>
                   </div>
-                  ${this._renderActionConfig(alert, index, "group_tap_action",  this._t("group_tap_action_section"))}
-                  ${this._renderActionConfig(alert, index, "group_hold_action", this._t("group_hold_action_section"))}
+                  ${this._renderActionConfig(alert, index, "group_tap_action",  this._t("group_tap_action_section"), { nested: true })}
+                  ${this._renderActionConfig(alert, index, "group_hold_action", this._t("group_hold_action_section"), { nested: true })}
                 ` : ""}
                 ` : ""}
 
@@ -8095,68 +8206,6 @@ class AlertTickerCardEditor extends LitElement {
                   </ha-select>
                 </div>
                 ` : ""}
-
-                <!-- ── 5. OPZIONI ─────────────────────────────────────────── -->
-                <div class="section-divider" data-sec="options">⚙️ ${this._t("alert_options_section")}</div>
-
-                <!-- Persistent alarm toggle -->
-                <div class="form-row">
-                  <div class="form-row-inline">
-                    <span>${this._t("persistent")}</span>
-                    <ha-switch
-                      .checked="${!!alert.persistent}"
-                      @change="${(e) => this._updateAlert(index, { persistent: e.target.checked || undefined })}"
-                    ></ha-switch>
-                  </div>
-                </div>
-
-                <!-- Overlay toggle — visible only when overlay_mode is enabled globally -->
-                ${this._config?.overlay_mode ? html`
-                <div class="form-row">
-                  <div class="form-row-inline">
-                    <span>${this._t("alert_overlay")}</span>
-                    <ha-switch
-                      .checked="${alert.overlay !== false}"
-                      @change="${(e) => this._updateAlert(index, { overlay: e.target.checked ? undefined : false })}"
-                    ></ha-switch>
-                  </div>
-                  <div class="helper-text">${this._t("alert_overlay_help")}</div>
-                </div>
-                ` : ""}
-                <!-- Per-alert disable_animation toggle -->
-                <div class="form-row">
-                  <div class="form-row-inline">
-                    <span>${this._t("disable_animation")}</span>
-                    <ha-switch
-                      .checked="${!!alert.disable_animation}"
-                      @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"
-                    ></ha-switch>
-                  </div>
-                  <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
-                </div>
-                <div class="helper-text">${this._t("persistent_help")}</div>
-
-                <!-- Per-alert snooze duration override (hidden when persistent) -->
-                ${alert.persistent ? "" : html`
-                <div class="native-select-wrap">
-                  <select class="native-select"
-                    @change="${(e) => {
-                      const v = e.target.value;
-                      this._updateAlert(index, { snooze_duration: v === "__global__" ? undefined : v === "__menu__" ? null : Number(v) });
-                    }}"
-                  >
-                    <option value="__global__" ?selected="${alert.snooze_duration === undefined}">${this._t("snooze_duration_global")}</option>
-                    <option value="__menu__"   ?selected="${alert.snooze_duration === null}">${this._t("snooze_duration_menu")}</option>
-                    <option value="1"   ?selected="${alert.snooze_duration === 1}">1h</option>
-                    <option value="4"   ?selected="${alert.snooze_duration === 4}">4h</option>
-                    <option value="8"   ?selected="${alert.snooze_duration === 8}">8h</option>
-                    <option value="24"  ?selected="${alert.snooze_duration === 24}">24h</option>
-                    <option value="168" ?selected="${alert.snooze_duration === 168}">1w</option>
-                    <option value="720" ?selected="${alert.snooze_duration === 720}">1m</option>
-                  </select>
-                </div>
-                <div class="helper-text">${this._t("snooze_duration_help")}</div>
-                `}
 
                 <!-- Sound per alert -->
                 <div class="section-divider" data-sec="sound">🔊 ${this._t("alert_sound")}</div>
@@ -10095,11 +10144,21 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /** Renders the action config form for tap_action or hold_action */
-  _renderActionConfig(alert, index, key, sectionLabel) {
+  _renderActionConfig(alert, index, key, sectionLabel, { nested = false } = {}) {
+    if (nested) {
+      // a subpanel inside a section (e.g. Group alerts → Group tap action)
+      const changed = this._actionSet(alert[key]);
+      return html`
+        <details class="atc-subpanel" ?open="${!!this._openSections?.has("action:" + key)}"
+          @toggle="${(e) => { const n = new Set(this._openSections || []); if (e.target.open) n.add("action:" + key); else n.delete("action:" + key); this._openSections = n; }}">
+          <summary>${sectionLabel}${changed ? html`<ha-icon class="sec-changed" icon="mdi:pencil-circle" title="${this._t("section_changed")}"></ha-icon>` : ""}</summary>
+          <div class="atc-subpanel-body">${this._renderActionConfig(alert, index, key, null)}</div>
+        </details>`;
+    }
     const cfg = alert[key] || { action: "none" };
     const type = cfg.action || "none";
     return html`
-      <div class="section-divider" data-sec="action:${key}">${sectionLabel}</div>
+      ${sectionLabel != null ? html`<div class="section-divider" data-sec="action:${key}">${sectionLabel}</div>` : ""}
       <div class="native-select-wrap">
         <label class="native-select-label">${this._t("action_type")}</label>
         <select class="native-select"
@@ -11404,6 +11463,70 @@ class AlertTickerCardEditor extends LitElement {
       }
       .alert-form .section-divider--toggle:hover {
         color: var(--primary-text-color, #212121);
+      }
+      .alert-form {
+        position: relative;
+      }
+      .atc-sec-frame {
+        position: absolute;
+        border: 1px solid var(--accent-color, var(--primary-color, #03a9f4));
+        border-radius: 8px;
+        pointer-events: none;
+      }
+      .alert-form .section-divider--open {
+        border-top-color: transparent;
+        padding-left: 8px;
+        padding-right: 2px;
+      }
+      .alert-form .atc-sec-body {
+        margin-left: 8px;
+        margin-right: 8px;
+      }
+      .atc-subpanel {
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: 6px;
+      }
+      .atc-subpanel[open] {
+        border-color: var(--accent-color, var(--primary-color, #03a9f4));
+      }
+      .atc-subpanel > summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--primary-color, #03a9f4);
+      }
+      .atc-subpanel > summary::-webkit-details-marker {
+        display: none;
+      }
+      .atc-subpanel > summary::after {
+        content: "";
+        margin-left: auto;
+        width: 8px;
+        height: 8px;
+        border-right: 2px solid var(--primary-color, #03a9f4);
+        border-bottom: 2px solid var(--primary-color, #03a9f4);
+        transform: rotate(-45deg);
+        transition: transform 0.2s ease;
+        margin-right: 4px;
+      }
+      .atc-subpanel:has(.sec-changed) > summary::after {
+        margin-left: 6px;
+      }
+      .atc-subpanel[open] > summary::after {
+        transform: rotate(45deg);
+      }
+      .atc-subpanel-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 4px 10px 10px;
       }
       .sec-changed {
         margin-left: auto;
