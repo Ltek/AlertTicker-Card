@@ -473,7 +473,7 @@ Any rule can be switched off with `enabled: false` (the eye icon in the editor) 
 
 Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`, `lt`, `ge`, `le`, `between`, `older` / `newer` (age of a timestamp, in seconds). Text compares ignore upper/lower case unless the rule has `case_sensitive: true` (*Match upper / lower case* in the editor). Values may be `{{ templates }}`, e.g. `value: "{{ states('input_number.battery_threshold') }}"`.
 
-In the editor, **Can match N entities · M active now** sits under every set's ID: every entity the set can cover, whatever its state right now (● = matching now). **Exclude** leaves an entity out, **Include** brings it back. **Export** (on the set's row) gives the set as JSON with how many entities each rule matches on its own — handy for troubleshooting. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
+In the editor, **Can match N entities · M active now** sits under every set's ID: every entity the set can cover, whatever its state right now (a green state = matching now). **Exclude** leaves an entity out, **Include** brings it back. **Export** (on the set's row) gives the set as JSON with how many entities each rule matches on its own — handy for troubleshooting. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
 
 **Single-entity alerts** have a **Condition** section: *When this entity…* (an operator + value, or *changes (any value)*), *…and also* optional rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week*, *Sun* and *Unchanged for*:
 
@@ -1308,7 +1308,7 @@ Create **entity** and **notification** rule sets: name, include and exclude rule
 
 Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, or from **Alert Templates**: each template shows how many entities it can match on your system and how many are active now (click the count for the list), with **Create** (stays on the list) and **Create & edit** (opens the new alert). Template alerts are inserted by importance — critical ones near the top. An alert's type is fixed when it's added.
 
-Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; ● marks the ones alerting now.
+Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; a green state marks the ones alerting now.
 
 Each alert row: the theme icon, the name, then **Show in overlay**, on/off, duplicate, delete, and on the far right ▲▼ and the drag handle to reorder (the order decides which alert shows first). **Show in overlay** is greyed until the card's overlay is on. Click a row to open its settings in the same panel. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its **Show in overlay** switch.
 
