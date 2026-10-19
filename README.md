@@ -428,7 +428,7 @@ rule_sets:
     name: Entry open at night
     groups:
       - mode: include          # include = must match · exclude = drops what matches
-        match: all             # all | any — how this group's rules combine
+        match: all             # all | any — how these rules combine
         rules:
           - { field: label, op: in, values: [security] }
           - { field: area,  op: eq, value: entry }
@@ -444,7 +444,7 @@ alerts:
     message: "{name} open"
 ```
 
-An entity matches when **every include group** matches and **no exclude group** does. A set with no include rule matches nothing — never "every entity in Home Assistant".
+An entity matches when **all its include rules** hold and **no exclude rule** does. Each `groups:` entry is a list of rules that are either included or excluded, matching **all** or **any** of them. A set with no include rule matches nothing — never "every entity in Home Assistant".
 
 | Field | Matches |
 |---|---|
@@ -462,7 +462,7 @@ An entity matches when **every include group** matches and **no exclude group** 
 
 Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`, `lt`, `ge`, `le`, `between`, `older` / `newer` (age of a timestamp, in seconds). Text compares ignore upper/lower case unless the rule has `case_sensitive: true` (*Match upper / lower case* in the editor). Values may be `{{ templates }}`, e.g. `value: "{{ states('input_number.battery_threshold') }}"`.
 
-In the editor, a live **"N entities match"** list sits under every set — click an entity to exclude it (✗) or bring it back (✓). **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
+In the editor, a live **"N entities match"** list sits under every set's ID — **Exclude** leaves an entity out, **Include** brings it back. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
 
 **Single-entity alerts** keep their own condition (operator + state) and take **extra conditions** as rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week* and *Unchanged for*:
 
@@ -1291,7 +1291,7 @@ No YAML knowledge required. The editor uses a **hub-and-spoke** layout: the main
 
 ### 🧩 Rule Sets tab
 
-Create **entity** and **notification** rule sets: name, include / exclude groups, rules as field + operator + value with Home Assistant's own pickers (labels, areas, floors, entities) and lists of your device classes, domains and integrations, and a live match list. See [Rule Sets](#-rule-sets) and [Notification alerts](#-notification-alerts).
+Create **entity** and **notification** rule sets: name, include and exclude rules (field + operator + value) with Home Assistant's own pickers (labels, areas, floors, entities) and lists of your device classes, domains and integrations, and a live match list right under the ID, with **Exclude** / **Include** buttons per entity, and the alerts using the set at the top. See [Rule Sets](#-rule-sets) and [Notification alerts](#-notification-alerts).
 
 ### 🔔 Alerts tab
 

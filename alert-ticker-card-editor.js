@@ -1552,8 +1552,11 @@ const ET = {
     ruleset_match_all: "all of these rules",
     ruleset_match_any: "any of these rules",
     ruleset_add_rule: "Add rule",
-    ruleset_add_include: "Include group",
-    ruleset_add_exclude: "Exclude group",
+    ruleset_add_include: "Include Rule",
+    ruleset_add_exclude: "Exclude Rule",
+    ruleset_exclude_entity: "Exclude",
+    ruleset_include_entity: "Include",
+    ruleset_exclude_tip: "Exclude an entity to leave it out of this rule set; Include brings it back.",
     ruleset_no_include: "Add at least one include rule — a set without one matches nothing.",
     ruleset_field_entity_id: "Entity ID",
     ruleset_field_name: "Name",
@@ -8995,6 +8998,7 @@ class AlertTickerCardEditor extends LitElement {
     return html`
       <div class="atc-row-body">
         <div class="alert-form">
+          ${this._renderRsUsage(rs, si)}
           <ha-input
             .label="${this._t("ruleset_name")}"
             .value="${rs.name || ""}"
@@ -9008,6 +9012,7 @@ class AlertTickerCardEditor extends LitElement {
             ></ha-input>
             <div class="helper-text">${this._t("ruleset_id_help")}</div>
           </div>
+          ${this._renderRsPreview(rs, `rs_${si}`, si)}
           ${isN ? this._renderNotificationOptions(rs, si) : ""}
           ${isN ? html`<div class="rs-section-title">🔎 ${this._t("notify_conditions")}</div>
             <div class="helper-text">${this._t("notify_conditions_help")}</div>` : ""}
@@ -9017,8 +9022,6 @@ class AlertTickerCardEditor extends LitElement {
             <button class="rs-btn" @click="${() => addGroup("include")}">+ ${this._t("ruleset_add_include")}</button>
             <button class="rs-btn" @click="${() => addGroup("exclude")}">+ ${this._t("ruleset_add_exclude")}</button>
           </div>
-          ${this._renderRsPreview(rs, `rs_${si}`, si)}
-          ${this._renderRsUsage(rs, si)}
         </div>
       </div>
     `;
@@ -9537,19 +9540,20 @@ class AlertTickerCardEditor extends LitElement {
         </button>
         ${open ? html`
           <div class="filter-entity-list">
-            ${t != null && !isN ? html`<div class="filter-entity-tip">${this._t("entity_filter_exclude_tip")}</div>` : ""}
+            ${t != null && !isN ? html`<div class="filter-entity-tip">${this._t("ruleset_exclude_tip")}</div>` : ""}
             ${matched.map(([id, s]) => isN ? html`
               <div class="filter-entity-row">
                 <span class="filter-entity-name">${s.attributes.title || s.attributes.message}</span>
                 <span class="filter-entity-id">${s.attributes.title ? s.attributes.message : ""}</span>
                 <span class="filter-entity-state">${(s.attributes.sent_by_names || []).join(", ") || this._t("notify_no_sender")} → ${(s.attributes.sent_to_names || s.attributes.sent_to || []).join(", ")}</span>
               </div>` : html`
-              <div class="filter-entity-row ${excluded.has(id) ? "filter-entity-excluded" : ""}"
-                @click="${t != null ? () => this._rsToggleExclude(t, id) : null}">
-                ${t != null ? html`<span class="filter-entity-toggle">${excluded.has(id) ? "✗" : "✓"}</span>` : ""}
+              <div class="filter-entity-row rs-match-row ${excluded.has(id) ? "filter-entity-excluded" : ""}">
                 <span class="filter-entity-name">${s.attributes.friendly_name || id}</span>
                 <span class="filter-entity-id">${id}</span>
                 <span class="filter-entity-state">${s.state}</span>
+                ${t != null ? (excluded.has(id)
+                  ? html`<button class="rs-btn rs-btn--small rs-ex-btn" @click="${(e) => { e.stopPropagation(); this._rsToggleExclude(t, id); }}"><ha-icon icon="mdi:plus-circle-outline"></ha-icon>${this._t("ruleset_include_entity")}</button>`
+                  : html`<button class="rs-btn rs-btn--small rs-ex-btn" @click="${(e) => { e.stopPropagation(); this._rsToggleExclude(t, id); }}"><ha-icon icon="mdi:minus-circle-outline"></ha-icon>${this._t("ruleset_exclude_entity")}</button>`) : ""}
               </div>`)}
           </div>` : ""}
       </div>
@@ -11374,6 +11378,20 @@ class AlertTickerCardEditor extends LitElement {
         border-radius: 8px;
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 10%, transparent);
         font-size: 0.9rem;
+      }
+      .rs-match-row {
+        align-items: center;
+        cursor: default;
+      }
+      .rs-ex-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: auto;
+        flex: none;
+      }
+      .rs-ex-btn ha-icon {
+        --mdc-icon-size: 16px;
       }
       .rs-chips--summary {
         margin-top: 4px;
