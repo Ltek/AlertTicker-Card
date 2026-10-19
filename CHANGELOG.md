@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `auto_dismiss_after` never fired when the dashboard was reloaded, the view changed or the card re-rendered before it ran out: the timer lived in the browser and restarted each time. It now counts from when the condition became true (the entity's last change, like `trigger_delay`), so it also holds after a reload (#234).
 - `conditions_logic: or` required the alert's own condition and applied OR only among the extra conditions; it now means own condition OR any extra condition (#231).
 - `navigate` tap actions with `{{ }}` in the path threw a ReferenceError.
 

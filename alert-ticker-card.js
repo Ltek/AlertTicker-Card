@@ -3490,15 +3490,22 @@ class AlertTickerCard extends LitElement {
               if (!this._triggerDelayActive.has(key)) return false;
             }
           }
-          // auto_dismiss_after for normal condition alerts
+          // auto_dismiss_after for condition alerts (#234): counted from when the
+          // condition became true — the latest last_changed of the alert's entity and
+          // its condition entities (like trigger_delay), plus any trigger_delay — not
+          // from when this card instance first saw it. A browser timer was lost on every
+          // view change, reload or re-render, so a long auto-dismiss never fired.
           if (alert.auto_dismiss_after) {
             if (this._autoDismissedKeys.has(key)) return false;
-            if (!this._autoDismissTimers[key]) {
-              this._autoDismissTimers[key] = setTimeout(() => {
-                this._autoDismissedKeys.add(key);
-                delete this._autoDismissTimers[key];
-                this._computeActiveAlerts();
-              }, alert.auto_dismiss_after * 1000);
+            let since = entityState?.last_changed ? new Date(entityState.last_changed).getTime() : 0;
+            for (const ceid of _atcConditionEntities(alert)) {
+              const lc = this._hass.states[ceid]?.last_changed;
+              if (lc) since = Math.max(since, new Date(lc).getTime());
+            }
+            if (since) {
+              const hideAt = since + ((alert.trigger_delay || 0) + Number(alert.auto_dismiss_after)) * 1000;
+              if (Date.now() >= hideAt) return false;
+              _atcWakeNote(hideAt + 50); // re-check when it's due (see _scheduleRuleWake)
             }
           }
         }
