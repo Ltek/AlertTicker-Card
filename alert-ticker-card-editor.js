@@ -1697,7 +1697,9 @@ const ET = {
     possible_count: "Can match {n} entities",
     possible_active: "{n} active now",
     possible_none: "Matches no entity on this system.",
-    possible_help: "Every entity this alert can cover, whatever its state right now. ● = alerting now.",
+    possible_help: "Every entity this alert can cover, whatever its state right now. A green state = alerting now.",
+    entity_row_active: "Matching now",
+    entity_row_inactive: "Not matching now",
     templates_title: "Alert Templates",
     templates_sub: "Ready-made alerts for batteries, doors, leaks, smoke, motion…",
     templates_create: "Create",
@@ -7422,13 +7424,7 @@ class AlertTickerCardEditor extends LitElement {
                   </div>
                 </div>
                 ${listOpen ? html`<div class="filter-entity-list">
-                  ${m.parts.map((p) => p.possible.map(([id, st]) => html`
-                    <div class="filter-entity-row">
-                      <span class="filter-entity-toggle" style="color:${p.active.has(id) ? "var(--success-color,#43a047)" : "var(--secondary-text-color,#888)"}">${p.active.has(id) ? "●" : "○"}</span>
-                      <span class="filter-entity-name">${st.attributes?.friendly_name || id}</span>
-                      <span class="filter-entity-id">${id}</span>
-                      <span class="filter-entity-state">${st.state}</span>
-                    </div>`))}
+                  ${m.parts.map((p) => p.possible.map(([id, st]) => this._entityRow(id, st, { active: p.active.has(id) })))}
                 </div>` : ""}
               </div>`;
           })}
@@ -9523,14 +9519,22 @@ class AlertTickerCardEditor extends LitElement {
         ${open ? html`
           <div class="filter-entity-tip">${this._t("possible_help")}</div>
           <div class="filter-entity-list">
-            ${possible.map(([id, st]) => html`
-              <div class="filter-entity-row">
-                <span class="filter-entity-toggle" style="color:${active.has(id) ? "var(--success-color,#43a047)" : "var(--secondary-text-color,#888)"}">${active.has(id) ? "●" : "○"}</span>
-                <span class="filter-entity-name">${st.attributes?.friendly_name || id}</span>
-                <span class="filter-entity-id">${id}</span>
-                <span class="filter-entity-state">${st.state}</span>
-              </div>`)}
+            ${possible.map(([id, st]) => this._entityRow(id, st, { active: active.has(id) }))}
           </div>` : ""}
+      </div>`;
+  }
+
+  /**
+   * One row of a small entity status list: name · entity id · current state · action icon.
+   * `active` shows the state as matching now; `action` is an optional icon button.
+   */
+  _entityRow(id, st, { active = false, excluded = false, action = "" } = {}) {
+    return html`
+      <div class="filter-entity-row ${excluded ? "filter-entity-excluded" : ""}">
+        <span class="filter-entity-name" title="${st?.attributes?.friendly_name || id}">${st?.attributes?.friendly_name || id}</span>
+        <span class="filter-entity-id" title="${id}">${id}</span>
+        <span class="filter-entity-state ${active ? "filter-entity-state--active" : ""}" title="${this._t(active ? "entity_row_active" : "entity_row_inactive")}">${st?.state ?? ""}</span>
+        <span class="filter-entity-action">${action}</span>
       </div>`;
   }
 
@@ -9597,15 +9601,12 @@ class AlertTickerCardEditor extends LitElement {
                 <span class="filter-entity-id">${s.attributes.title ? s.attributes.message : ""}</span>
                 <span class="filter-entity-state">${(s.attributes.sent_by_names || []).join(", ") || this._t("notify_no_sender")} → ${(s.attributes.sent_to_names || s.attributes.sent_to || []).join(", ")}</span>
               </div>` : html`
-              <div class="filter-entity-row rs-match-row ${excluded.has(id) ? "filter-entity-excluded" : ""}">
-                <span class="filter-entity-toggle" style="color:${activeIds.has(id) ? "var(--success-color,#43a047)" : "var(--secondary-text-color,#888)"}">${activeIds.has(id) ? "●" : "○"}</span>
-                <span class="filter-entity-name">${s.attributes.friendly_name || id}</span>
-                <span class="filter-entity-id">${id}</span>
-                <span class="filter-entity-state">${s.state}</span>
-                ${t != null ? (excluded.has(id)
-                  ? html`<button class="rs-btn rs-btn--small rs-ex-btn" @click="${(e) => { e.stopPropagation(); this._rsToggleExclude(t, id); }}"><ha-icon icon="mdi:plus-circle-outline"></ha-icon>${this._t("ruleset_include_entity")}</button>`
-                  : html`<button class="rs-btn rs-btn--small rs-ex-btn" @click="${(e) => { e.stopPropagation(); this._rsToggleExclude(t, id); }}"><ha-icon icon="mdi:minus-circle-outline"></ha-icon>${this._t("ruleset_exclude_entity")}</button>`) : ""}
-              </div>`)}
+              ${this._entityRow(id, s, {
+                active: activeIds.has(id), excluded: excluded.has(id),
+                action: t != null ? this._iconButton(excluded.has(id) ? "mdi:plus-circle-outline" : "mdi:minus-circle-outline",
+                  this._t(excluded.has(id) ? "ruleset_include_entity" : "ruleset_exclude_entity"), () => this._rsToggleExclude(t, id), false,
+                  `rs-ex-icon ${excluded.has(id) ? "rs-ex-icon--include" : ""}`) : "",
+              })}`)}
           </div>` : ""}
       </div>
     `;
@@ -10969,11 +10970,13 @@ class AlertTickerCardEditor extends LitElement {
         border-bottom: 1px solid var(--divider-color, #e0e0e0);
         font-style: italic;
       }
+      /* small status lists: name · entity id · state · action icon */
       .filter-entity-row {
         display: grid;
-        grid-template-columns: auto 1fr 1.4fr auto;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto 26px;
+        align-items: center;
         gap: 8px;
-        padding: 5px 10px;
+        padding: 3px 6px 3px 10px;
         font-size: 0.8rem;
         border-bottom: 1px solid var(--divider-color, #e0e0e0);
         align-items: center;
@@ -10982,18 +10985,10 @@ class AlertTickerCardEditor extends LitElement {
       }
       .filter-entity-row:last-child { border-bottom: none; }
       .filter-entity-row:hover { background: var(--secondary-background-color, #f5f5f5); }
-      .filter-entity-excluded {
+      .filter-entity-excluded > :not(.filter-entity-action) {
         opacity: 0.4;
         text-decoration: line-through;
       }
-      .filter-entity-toggle {
-        font-size: 0.85rem;
-        font-weight: 700;
-        width: 16px;
-        text-align: center;
-      }
-      .filter-entity-row:not(.filter-entity-excluded) .filter-entity-toggle { color: var(--success-color, #43a047); }
-      .filter-entity-excluded .filter-entity-toggle { color: var(--error-color, #db4437); }
       .filter-entity-name {
         font-weight: 500;
         color: var(--primary-text-color, #212121);
@@ -11010,9 +11005,32 @@ class AlertTickerCardEditor extends LitElement {
         text-overflow: ellipsis;
       }
       .filter-entity-state {
-        color: var(--primary-color, #03a9f4);
+        color: var(--secondary-text-color, #888);
         font-weight: 600;
         white-space: nowrap;
+        max-width: 9em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .filter-entity-state--active {
+        color: var(--success-color, #43a047);
+      }
+      .filter-entity-action {
+        display: flex;
+        justify-content: center;
+        line-height: 0;
+      }
+      .filter-entity-action .atc-act {
+        padding: 2px;
+      }
+      .filter-entity-action .atc-act ha-icon {
+        --mdc-icon-size: 18px;
+      }
+      .rs-ex-icon:hover:not([disabled]) {
+        color: var(--error-color, #f44336);
+      }
+      .rs-ex-icon--include:hover:not([disabled]) {
+        color: var(--success-color, #43a047);
       }
       .form-row-2col {
         display: grid;
@@ -11451,16 +11469,6 @@ class AlertTickerCardEditor extends LitElement {
       .rs-match-row {
         align-items: center;
         cursor: default;
-      }
-      .rs-ex-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        margin-left: auto;
-        flex: none;
-      }
-      .rs-ex-btn ha-icon {
-        --mdc-icon-size: 16px;
       }
       .rs-chips--summary {
         margin-top: 4px;
