@@ -1935,8 +1935,9 @@ function _atcMigrateConfig(config) {
     if (!a || typeof a !== "object") return a;
     const hasConds = _atcNormConditions(a.conditions).length > 0;
     const hasTime = !!(a.time_range && (a.time_range.from || a.time_range.to));
-    if (a.entity) {
-      // single entity: extra conditions + time_range → inline rules; own condition stays
+    if (a.entity || typeof a.entity === "string") {
+      // single entity (also while its entity is still empty in the editor): extra
+      // conditions + time_range → inline rules; own condition stays
       if (!hasConds && !hasTime) return a;
       if (a.rule_set && typeof a.rule_set !== "object") return a; // shared ref on an entity alert: leave it
       const orOwn = a.conditions_logic === "or" && hasConds && !a.on_change && a.state != null && a.state !== "";
