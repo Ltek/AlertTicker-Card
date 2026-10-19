@@ -1964,6 +1964,57 @@ function _atcMigrateConfig(config) {
   return { config: { ...config, rule_sets: sets.length ? sets : undefined, alerts: out }, migrated, priorityMoved };
 }
 
+// ---------------------------------------------------------------------------
+// Possible matches — every entity an alert CAN match, whatever their state now.
+// Rules on things that change (state, attributes, other entities, time, weekday,
+// sun, "unchanged for") are treated as "could be true": dropped from include
+// groups that need all of them, and an include group that needs any of them is
+// then always satisfiable. Exclusions are kept only when they always apply.
+// What's left — entity id, name, domain, device class, area, floor, label,
+// integration, visibility — decides which entities the alert can cover.
+// ---------------------------------------------------------------------------
+const _ATC_DYNAMIC_FIELDS = new Set(["state", "attribute", "last_changed_ago", "other_entity", "time", "weekday", "sun"]);
+
+/** The scope of a rule set: its rules on fixed entity properties only (see above). */
+function _atcScopeDef(def) {
+  if (!def || typeof def !== "object" || _atcIsNotificationSet(def)) return def;
+  const dyn = (r) => _ATC_DYNAMIC_FIELDS.has(r?.field) || JSON.stringify(r?.value ?? "").includes("{{");
+  const groups = [];
+  for (const g of def.groups || []) {
+    const rules = g?.rules || [];
+    if (!rules.length) continue;
+    const fixed = rules.filter((r) => !dyn(r));
+    const anyDyn = fixed.length !== rules.length;
+    const any = g.match === "any";
+    if (g.mode === "exclude") {
+      // any-group: its fixed rules always exclude; all-group with a changing rule may not
+      if (any) { if (fixed.length) groups.push({ ...g, rules: fixed }); }
+      else if (!anyDyn) groups.push(g);
+    } else if (any) {
+      if (!anyDyn) groups.push(g); // one changing rule can make the group true
+    } else if (fixed.length) {
+      groups.push({ ...g, rules: fixed });
+    } else {
+      groups.push({ mode: "include", match: "all", rules: [{ field: "entity_id", op: "regex", value: "." }], _anyEntity: true });
+    }
+  }
+  return { ...def, groups };
+}
+
+/**
+ * Entities an alert can match — [[entityId, stateObj]]. A single-entity alert can
+ * match only its entity; a notification alert's possible matches can't be listed
+ * ahead of time (returns null).
+ */
+function _atcPossibleEntities(hass, alert) {
+  if (!hass?.states || !alert) return [];
+  if (alert.entity) return hass.states[alert.entity] ? [[alert.entity, hass.states[alert.entity]]] : [];
+  const def = alert._rule_set_def || (typeof alert.rule_set === "object" ? alert.rule_set : null);
+  if (def && _atcIsNotificationSet(def)) return null;
+  const scope = def ? _atcScopeDef(def) : null;
+  return _atcFilterEntities(hass, { ...alert, rule_set: scope || undefined, _rule_set_def: undefined });
+}
+
 // The editor is a separate module (loaded on demand by getConfigElement), so it
 // reaches the same matcher through this namespace instead of keeping its own copy —
 // the editor's entity preview then always agrees with what the card shows.
@@ -1971,6 +2022,9 @@ globalThis.__alertTickerShared = Object.freeze({
   notifications: _ATC_NOTIFY,
   legacyFilterDef: _atcLegacyFilterDef,
   migrateConfig: _atcMigrateConfig,
+  possibleEntities: _atcPossibleEntities,
+  scopeDef: _atcScopeDef,
+  alertMatches: _atcAlertMatches,
   usesNotifications: _atcUsesNotifications,
   hassFor: _atcHassFor,
   isFilterAlert: _atcIsFilterAlert,
