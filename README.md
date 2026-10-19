@@ -475,7 +475,7 @@ Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`
 
 In the editor, **Can match N entities · M active now** sits under every set's ID: every entity the set can cover, whatever its state right now (● = matching now). **Exclude** leaves an entity out, **Include** brings it back. **Export** (on the set's row) gives the set as JSON with how many entities each rule matches on its own — handy for troubleshooting. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
 
-**Single-entity alerts** keep their own condition (operator + state) and take **extra conditions** as rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week* and *Unchanged for*:
+**Single-entity alerts** have a **Condition** section: *When this entity…* (an operator + value, or *changes (any value)*), *…and also* optional rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week*, *Sun* and *Unchanged for*:
 
 ```yaml
 - entity: binary_sensor.front_door
