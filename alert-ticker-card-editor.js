@@ -1443,7 +1443,7 @@ const ET = {
     card_override_help: "Sostituisce il tema con qualsiasi card HA nativa (tile, entity, button…). Usa 'this.entity_id' come placeholder per l'entità dell'alert. Lascia vuoto per usare il tema normale.",
     persistent: "Allarme persistente 🔒",
     persistent_help: "Rimane visibile anche quando il sensore torna alla normalità. Premi ✕ per rimuoverlo.",
-    group_section: "Raggruppa alert 🗂️",
+    group_section: "Raggruppa alert",
     group: "Abilita raggruppamento",
     group_min: "Minimo per raggruppare",
     group_min_help: "Numero minimo di entità attive prima di mostrare il riepilogo di gruppo (default: 3).",
@@ -2013,7 +2013,7 @@ const ET = {
     card_override_help: "Replaces the theme with any native HA card (tile, entity, button…). Use 'this.entity_id' as a placeholder for the alert entity. Leave empty to use the normal theme.",
     persistent: "Persistent alarm 🔒",
     persistent_help: "Stays visible even after the sensor returns to normal. Press ✕ to dismiss.",
-    group_section: "Group alerts 🗂️",
+    group_section: "Group alerts",
     group: "Enable grouping",
     group_min: "Minimum to group",
     group_min_help: "Minimum number of active entities before showing the group summary (default: 3).",
@@ -2386,7 +2386,7 @@ const ET = {
     card_override_help: "Remplace le thème par n'importe quelle carte HA native (tile, entity, button…). Utilisez 'this.entity_id' comme placeholder pour l'entité de l'alerte. Laisser vide pour utiliser le thème normal.",
     persistent: "Alarme persistante 🔒",
     persistent_help: "Reste visible même après le retour à la normale du capteur. Appuyer sur ✕ pour fermer.",
-    group_section: "Grouper les alertes 🗂️",
+    group_section: "Grouper les alertes",
     group: "Activer le regroupement",
     group_min: "Minimum pour grouper",
     group_min_help: "Nombre minimal d'entités actives avant d'afficher le résumé de groupe (défaut : 3).",
@@ -2759,7 +2759,7 @@ const ET = {
     card_override_help: "Ersetzt das Thema durch eine beliebige native HA-Karte (tile, entity, button…). Verwende 'this.entity_id' als Platzhalter für die Alert-Entität. Leer lassen für das normale Thema.",
     persistent: "Dauerhafter Alarm 🔒",
     persistent_help: "Bleibt sichtbar, auch wenn der Sensor wieder normal ist. ✕ drücken zum Schließen.",
-    group_section: "Alarme gruppieren 🗂️",
+    group_section: "Alarme gruppieren",
     group: "Gruppierung aktivieren",
     group_min: "Minimum zum Gruppieren",
     group_min_help: "Mindestanzahl aktiver Entitäten, bevor die Gruppenübersicht angezeigt wird (Standard: 3).",
@@ -3132,7 +3132,7 @@ const ET = {
     card_override_help: "Vervangt het thema door een willekeurige native HA-kaart (tile, entity, button…). Gebruik 'this.entity_id' als plaatshouder voor de alert-entiteit. Leeg laten voor het normale thema.",
     persistent: "Aanhoudend alarm 🔒",
     persistent_help: "Blijft zichtbaar zelfs na herstel van de sensor. Druk op ✕ om te verwijderen.",
-    group_section: "Meldingen groeperen 🗂️",
+    group_section: "Meldingen groeperen",
     group: "Groepering inschakelen",
     group_min: "Minimum om te groeperen",
     group_min_help: "Minimaal aantal actieve entiteiten voordat de groepsamenvatting wordt weergegeven (standaard: 3).",
@@ -3505,7 +3505,7 @@ const ET = {
     card_override_help: "Thay thế giao diện bằng bất kỳ thẻ HA gốc nào (tile, entity, button…). Dùng 'this.entity_id' làm giá trị thay thế cho thực thể cảnh báo. Để trống để dùng giao diện thông thường.",
     persistent: "Báo động liên tục 🔒",
     persistent_help: "Vẫn hiển thị dù cảm biến trở về bình thường. Nhấn ✕ để xóa bỏ.",
-    group_section: "Nhóm cảnh báo 🗂️",
+    group_section: "Nhóm cảnh báo",
     group: "Bật nhóm",
     group_min: "Tối thiểu để nhóm",
     group_min_help: "Số lượng thực thể hoạt động tối thiểu trước khi hiển thị tóm tắt nhóm (mặc định: 3).",
@@ -3878,7 +3878,7 @@ const ET = {
     card_override_help: "Заменяет тему любой нативной карточкой HA (tile, entity, button…). Используйте 'this.entity_id' как заполнитель для сущности оповещения. Оставьте пустым для использования обычной темы.",
     persistent: "Постоянная тревога 🔒",
     persistent_help: "Остаётся видимым даже после нормализации датчика. Нажмите ✕ для сброса.",
-    group_section: "Группировка оповещений 🗂️",
+    group_section: "Группировка оповещений",
     group: "Включить группировку",
     group_min: "Минимум для группировки",
     group_min_help: "Минимальное количество активных объектов для отображения сводки группы (по умолчанию: 3).",
@@ -4247,7 +4247,7 @@ const ET = {
     card_override_help: "Erstatter temaet med et vilkårligt native HA-kort (tile, entity, button…). Brug 'this.entity_id' som pladsholder for alert-enheden. Lad feltet stå tomt for at bruge det normale tema.",
     persistent: "Vedvarende alarm 🔒",
     persistent_help: "Forbliver synlig selvom sensoren returnerer til normal. Tryk ✕ for at afvise.",
-    group_section: "Grupper advarsler 🗂️",
+    group_section: "Grupper advarsler",
     group: "Aktiver gruppering",
     group_min: "Minimum for gruppering",
     group_min_help: "Minimalt antal aktive entiteter, inden gruppeoversigten vises (standard: 3).",
@@ -4624,7 +4624,7 @@ const ET = {
     card_override_help: "Nahradí téma libovolnou nativní kartou HA (tile, entity, button…). Použijte 'this.entity_id' jako zástupný symbol pro entitu upozornění. Nechte prázdné pro použití normálního tématu.",
     persistent: "Trvalý alarm 🔒",
     persistent_help: "Zůstává viditelný i po návratu senzoru do normálu. Stiskněte ✕ pro zavření.",
-    group_section: "Seskupit upozornění 🗂️",
+    group_section: "Seskupit upozornění",
     group: "Povolit seskupení",
     group_min: "Minimum pro seskupení",
     group_min_help: "Minimální počet aktivních entit před zobrazením souhrnu skupiny (výchozí: 3).",
@@ -5001,7 +5001,7 @@ const ET = {
     card_override_help: "Substitui o tema por qualquer cartão nativo HA (tile, entity, button…). Use 'this.entity_id' como marcador para a entidade do alerta. Deixe vazio para usar o tema normal.",
     persistent: "Alarme persistente 🔒",
     persistent_help: "Permanece visível mesmo após o sensor retornar ao normal. Pressione ✕ para descartar.",
-    group_section: "Agrupar alertas 🗂️",
+    group_section: "Agrupar alertas",
     group: "Ativar agrupamento",
     group_min: "Mínimo para agrupar",
     group_min_help: "Número mínimo de entidades ativas antes de exibir o resumo do grupo (padrão: 3).",
@@ -5374,7 +5374,7 @@ const ET = {
     card_override_help: "Reemplaza el tema con cualquier tarjeta HA nativa (tile, entity, button…). Usa 'this.entity_id' como marcador para la entidad de la alerta. Déjalo vacío para usar el tema normal.",
     persistent: "Alarma persistente 🔒",
     persistent_help: "Permanece visible incluso después de que el sensor vuelva a la normalidad. Pulse ✕ para descartar.",
-    group_section: "Agrupar alertas 🗂️",
+    group_section: "Agrupar alertas",
     group: "Activar agrupación",
     group_min: "Mínimo para agrupar",
     group_min_help: "Número mínimo de entidades activas antes de mostrar el resumen de grupo (por defecto: 3).",
@@ -5747,7 +5747,7 @@ const ET = {
     card_override_help: "Temayı herhangi bir yerel HA kartıyla (tile, entity, button…) değiştirir. Uyarı varlığı için yer tutucu olarak 'this.entity_id' kullanın. Normal temayı kullanmak için boş bırakın.",
     persistent: "Kalıcı alarm 🔒",
     persistent_help: "Sensör normale döndükten sonra bile görünür kalır. Kapatmak için ✕ düğmesine basın.",
-    group_section: "Uyarıları grupla 🗂️",
+    group_section: "Uyarıları grupla",
     group: "Gruplamayı etkinleştir",
     group_min: "Gruplamak için minimum",
     group_min_help: "Grup özetini göstermeden önce gerekli minimum aktif varlık sayısı (varsayılan: 3).",
@@ -7493,13 +7493,13 @@ class AlertTickerCardEditor extends LitElement {
            @drop="${(e) => { e.preventDefault(); const from = this._dragFrom; this._dragFrom = null; this._dragOver = null; if (from != null) this._moveAlert(from, index); }}">
       <div class="${`alert-item${isEditing ? " is-editing" : ""}`}"
            @click="${() => this._editAlert(index)}">
-        <span class="alert-icon-badge">${icon}</span>        <span class="alert-icon-badge">${icon}</span>
         <div class="alert-summary-text">
           <div class="alert-entity-label">${this._modeIcon(mode)} ${alert.name || html`${this._t("alert_num")} ${index + 1}: ${entityLabel}`}</div>
           ${alert.name ? html`<div class="alert-msg-label">${entityLabel}</div>` : (msgSnippet ? html`<div class="alert-msg-label">${msgSnippet}</div>` : "")}
           ${this._alertChips(alert)}
         </div>
         <div class="alert-actions">
+          <span class="alert-icon-badge atc-theme-icon" title="${this._t("alert_theme")}">${icon}</span>
           ${this._overlayButton(alert, index)}
           ${this._iconButton(alert.enabled === false ? "mdi:eye-off-outline" : "mdi:eye-outline",
             this._t(alert.enabled === false ? "alert_enable" : "alert_disable"),
@@ -11603,12 +11603,15 @@ class AlertTickerCardEditor extends LitElement {
       }
       .alert-move-col {
         display: flex;
+        flex-direction: row;   /* arrows and drag handle inline, not stacked */
         align-items: center;
-        gap: 2px;
+        gap: 0;
+        margin-right: 0;
+        margin-left: 2px;
       }
       .atc-move-arrows {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
       }
       .atc-move-arrows .atc-act {
         padding: 0;
@@ -11618,6 +11621,18 @@ class AlertTickerCardEditor extends LitElement {
       }
       .atc-row .alert-actions {
         gap: 2px;
+        align-items: center;
+      }
+      .atc-theme-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        font-size: 1.25rem;
+        line-height: 1;
+      }
+      .atc-theme-icon ha-icon {
+        --mdc-icon-size: 22px;
       }
       .atc-tpl-panel {
         margin-bottom: 12px;
