@@ -1682,9 +1682,11 @@ const ET = {
     rs_trigger_section: "Trigger",
     rs_entity_conditions_where: "Conditions (other entities, time of day, weekday…) are rules in the rule set — use Edit.",
     rs_notify_conditions_where: "Conditions (text, other entities, time of day, weekday) are rules in the rule set — use Edit.",
-    inline_rules_help: "Show this alert only when these rules also hold: another entity's state, the time of day, the day of week, or how long this entity has been unchanged.",
-    inline_rules_add_all: "Rules that must all match",
-    inline_rules_add_any: "Rules where any one matches",
+    inline_rules_help: "Optional. The alert then needs its condition above AND these rules: another entity's state, the time of day, the day of week, the sun, or how long this entity has been unchanged.",
+    inline_rules_add_all: "And all of these rules",
+    inline_rules_add_any: "And any one of these rules",
+    own_condition_title: "When this entity…",
+    inline_rules_title: "…and also (optional)",
     alert_quick_filter_left: "This alert still uses quick-filter fields that couldn't be converted automatically. Convert them to a rule set, or edit them in YAML.",
     migration_notice: "{n} alert(s) were converted to rule sets: their filters, conditions and time ranges are now rules. Nothing changes on the card; save to keep it.",
     sections_expand_all: "Expand all",
@@ -7813,6 +7815,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">${this._t("on_change_help")}</div>
                 </div>
                 ${!alert.on_change && this._getAlertMode(index, alert) === "entity" ? html`
+                <div class="rs-section-title">${this._t("own_condition_title")}</div>
                 <!-- Primary condition: operator + value (hidden when on_change is active) -->
                 <div class="form-row-2col">
                   <div class="native-select-wrap">
@@ -8493,6 +8496,8 @@ class AlertTickerCardEditor extends LitElement {
 
   /** entity | filter (quick filter) | rs_entity | rs_notify */
   _getAlertMode(index, alert) {
+    // single entity (entity picked, or still empty with its inline rules)
+    if (alert.entity || (typeof alert.entity === "string" && alert.rule_set && typeof alert.rule_set === "object")) return "entity";
     if (alert.rule_set && !alert.entity) {
       const def = this._alertRuleSetDef(alert);
       if (def) return this._isNotificationSet(def) ? "rs_notify" : "rs_entity";
@@ -8760,6 +8765,7 @@ class AlertTickerCardEditor extends LitElement {
     const groups = Array.isArray(def.groups) ? def.groups : [];
     const add = (match) => this._updateRsGroups(t, (gs) => gs.push({ mode: "include", match, rules: [this._newRule("other_entity")] }));
     return html`
+      <div class="rs-section-title">${this._t("inline_rules_title")}</div>
       <div class="helper-text">${this._t("inline_rules_help")}</div>
       ${groups.map((g, gi) => this._renderRsGroup(t, g || {}, gi))}
       <div class="rs-add-row">
