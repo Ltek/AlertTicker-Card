@@ -3333,7 +3333,11 @@ class AlertTickerCard extends LitElement {
       // Switched-off alerts (#232) are skipped — except in test mode, which previews everything.
       if (alert?.enabled === false && !this._config.test_mode) continue;
       if (_atcIsFilterAlert(alert)) {
-        let matched = _atcFilterEntities(this._hass, alert);
+        // Test mode previews every entity the alert CAN match (its conditions — now
+        // rules in the set — are ignored, as test mode always did); a sample when none exist.
+        let matched = this._config.test_mode && !_atcIsNotificationSet(alert._rule_set_def || alert.rule_set)
+          ? (_atcPossibleEntities(this._hass, alert) || [])
+          : _atcFilterEntities(this._hass, alert);
         if (!matched.length && samples?.has(idx)) matched = [samples.get(idx)];
         for (const [entityId, state] of matched) {
           const friendlyName = state.attributes.friendly_name || entityId;
@@ -4730,7 +4734,17 @@ class AlertTickerCard extends LitElement {
     const extra = {};
     (this._config.alerts || []).forEach((a, idx) => {
       const def = a && !a.entity ? (a._rule_set_def || (typeof a.rule_set === "object" ? a.rule_set : null)) : null;
-      if (!_atcIsNotificationSet(def)) return;
+      if (!_atcIsNotificationSet(def)) {
+        // entity rule set / filter alert that can't match anything on this system: a sample entity
+        if (!a || a.entity || !_atcIsFilterAlert(a) || (_atcPossibleEntities(base, a) || []).length) return;
+        const sid = `sensor.atc_sample_${idx}`;
+        const at = new Date().toISOString();
+        const ses = { entity_id: sid, state: "on", last_changed: at, last_updated: at,
+          attributes: { friendly_name: a.name ? `${a.name} (sample)` : "Sample entity", _sample: true } };
+        extra[sid] = ses;
+        out.set(idx, [sid, ses]);
+        return;
+      }
       const id = `notification.sample_${idx}`;
       const by = (def.notification_source || []).slice(0, 1);
       const to = (def.notification_destination || []).slice(0, 1);

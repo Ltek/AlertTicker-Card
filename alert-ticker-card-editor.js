@@ -11636,6 +11636,7 @@ class AlertTickerCardEditor extends LitElement {
       }
       .atc-tpl-panel {
         margin-bottom: 12px;
+        border: 1px solid var(--primary-color, #03a9f4);   /* same accent border as the old template dropdown */
       }
       .atc-tpl-toast {
         margin: 0 8px 8px;
