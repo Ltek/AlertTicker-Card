@@ -446,6 +446,17 @@ alerts:
 
 An entity matches when **all its include rules** hold and **no exclude rule** does. Each `groups:` entry is a list of rules that are either included or excluded, matching **all** or **any** of them. A set with no include rule matches nothing — never "every entity in Home Assistant".
 
+`rules:` works as an alias for `groups:`, and a plain list of rules means "all of these":
+
+```yaml
+- id: open_locks
+  rules:
+    - { field: domain, op: eq, value: lock }
+    - { field: state,  op: eq, value: unlocked }
+```
+
+Any rule can be switched off with `enabled: false` (the eye icon in the editor) — it's ignored without deleting it.
+
 | Field | Matches |
 |---|---|
 | `entity_id`, `name`, `domain` | The entity's id, friendly name, domain |
@@ -462,7 +473,7 @@ An entity matches when **all its include rules** hold and **no exclude rule** do
 
 Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`, `lt`, `ge`, `le`, `between`, `older` / `newer` (age of a timestamp, in seconds). Text compares ignore upper/lower case unless the rule has `case_sensitive: true` (*Match upper / lower case* in the editor). Values may be `{{ templates }}`, e.g. `value: "{{ states('input_number.battery_threshold') }}"`.
 
-In the editor, a live **"N entities match"** list sits under every set's ID — **Exclude** leaves an entity out, **Include** brings it back. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
+In the editor, **Can match N entities · M active now** sits under every set's ID: every entity the set can cover, whatever its state right now (● = matching now). **Exclude** leaves an entity out, **Include** brings it back. **Export** (on the set's row) gives the set as JSON with how many entities each rule matches on its own — handy for troubleshooting. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
 
 **Single-entity alerts** keep their own condition (operator + state) and take **extra conditions** as rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week* and *Unchanged for*:
 
