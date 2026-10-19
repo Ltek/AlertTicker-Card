@@ -1425,7 +1425,7 @@ const ET = {
     battery_trim_name: "Rimuovi suffisso «Battery» dal nome",
     secondary_attribute: "Attributo valore secondario",
     show_secondary_name: "Mostra nome entità affianco al valore",
-    conditions_section: "Condizioni aggiuntive",
+    conditions_section: "Condizione",
     conditions_logic: "Logica",
     logic_and: "AND — tutte vere",
     logic_or: "OR — almeno una vera",
@@ -1686,6 +1686,7 @@ const ET = {
     inline_rules_add_all: "And all of these rules",
     inline_rules_add_any: "And any one of these rules",
     own_condition_title: "When this entity…",
+    op_changes: "changes (any value)",
     inline_rules_title: "…and also (optional)",
     alert_quick_filter_left: "This alert still uses quick-filter fields that couldn't be converted automatically. Convert them to a rule set, or edit them in YAML.",
     migration_notice: "{n} alert(s) were converted to rule sets: their filters, conditions and time ranges are now rules. Nothing changes on the card; save to keep it.",
@@ -2007,7 +2008,7 @@ const ET = {
     battery_trim_name: "Strip «Battery» suffix from entity name",
     secondary_attribute: "Secondary value attribute",
     show_secondary_name: "Show entity name next to value",
-    conditions_section: "Extra conditions",
+    conditions_section: "Condition",
     conditions_logic: "Logic",
     logic_and: "AND — all must match",
     logic_or: "OR — at least one must match",
@@ -2380,7 +2381,7 @@ const ET = {
     battery_trim_name: "Supprimer le suffixe «Battery» du nom",
     secondary_attribute: "Attribut valeur secondaire",
     show_secondary_name: "Afficher le nom de l'entité à côté de la valeur",
-    conditions_section: "Conditions supplémentaires",
+    conditions_section: "Condition",
     conditions_logic: "Logique",
     logic_and: "AND — toutes vraies",
     logic_or: "OR — au moins une vraie",
@@ -2753,7 +2754,7 @@ const ET = {
     battery_trim_name: "«Battery»-Suffix aus dem Namen entfernen",
     secondary_attribute: "Sekundärwert-Attribut",
     show_secondary_name: "Entity-Name neben dem Wert anzeigen",
-    conditions_section: "Zusätzliche Bedingungen",
+    conditions_section: "Bedingung",
     conditions_logic: "Logik",
     logic_and: "AND — alle erfüllt",
     logic_or: "OR — mindestens eine erfüllt",
@@ -3126,7 +3127,7 @@ const ET = {
     battery_trim_name: "«Battery»-achtervoegsel uit naam verwijderen",
     secondary_attribute: "Secundaire waarde-attribuut",
     show_secondary_name: "Entiteitsnaam naast waarde weergeven",
-    conditions_section: "Extra voorwaarden",
+    conditions_section: "Voorwaarde",
     conditions_logic: "Logica",
     logic_and: "AND — alle moeten kloppen",
     logic_or: "OR — minimaal één moet kloppen",
@@ -3499,7 +3500,7 @@ const ET = {
     battery_trim_name: "Xóa hậu tố «Battery» khỏi tên",
     secondary_attribute: "Thuộc tính giá trị phụ",
     show_secondary_name: "Hiển thị tên thực thể bên cạnh giá trị",
-    conditions_section: "Điều kiện bổ sung",
+    conditions_section: "Điều kiện",
     conditions_logic: "Logic",
     logic_and: "AND — tất cả phải khớp",
     logic_or: "OR — ít nhất một khớp",
@@ -3872,7 +3873,7 @@ const ET = {
     battery_trim_name: "Убрать суффикс «Battery» из имени",
     secondary_attribute: "Атрибут вторичного значения",
     show_secondary_name: "Показывать имя объекта рядом со значением",
-    conditions_section: "Дополнительные условия",
+    conditions_section: "Условие",
     conditions_logic: "Логика",
     logic_and: "AND — должны совпасть все",
     logic_or: "OR — достаточно одного совпадения",
@@ -4241,7 +4242,7 @@ const ET = {
     battery_trim_name: "Fjern «Battery»-suffiks fra navn",
     secondary_attribute: "Sekundær værdi‑attribut",
     show_secondary_name: "Vis enheds‑navn ved siden af værdien",
-    conditions_section: "Ekstra betingelser",
+    conditions_section: "Betingelse",
     conditions_logic: "Logik",
     logic_and: "OG — alle skal matche",
     logic_or: "ELLER — mindst én skal matche",
@@ -4618,7 +4619,7 @@ const ET = {
     battery_trim_name: "Odebrat příponu «Battery» z názvu",
     secondary_attribute: "Hodnota sekundárního atributu",
     show_secondary_name: "Zobraz název entity vedle stavu",
-    conditions_section: "Extra podmínky",
+    conditions_section: "Podmínka",
     conditions_logic: "Logika",
     logic_and: "AND — vše musí být splněno",
     logic_or: "OR — alespoň jedna musí být splněna",
@@ -4995,7 +4996,7 @@ const ET = {
     battery_trim_name: "Remover sufixo «Battery» do nome",
     secondary_attribute: "Atributo de valor secundário",
     show_secondary_name: "Mostrar nome da entidade ao lado do valor",
-    conditions_section: "Condições extras",
+    conditions_section: "Condição",
     conditions_logic: "Lógica",
     logic_and: "AND — todas devem corresponder",
     logic_or: "OR — pelo menos uma deve corresponder",
@@ -5368,7 +5369,7 @@ const ET = {
     battery_trim_name: "Eliminar sufijo «Battery» del nombre",
     secondary_attribute: "Atributo de valor secundario",
     show_secondary_name: "Mostrar nombre de la entidad junto al valor",
-    conditions_section: "Condiciones adicionales",
+    conditions_section: "Condición",
     conditions_logic: "Lógica",
     logic_and: "AND — todas deben coincidir",
     logic_or: "OR — al menos una debe coincidir",
@@ -5741,7 +5742,7 @@ const ET = {
     battery_trim_name: "«Battery» ekini addan kaldır",
     secondary_attribute: "İkincil değer niteliği",
     show_secondary_name: "Değerin yanında varlık adını göster",
-    conditions_section: "Ekstra koşullar",
+    conditions_section: "Koşul",
     conditions_logic: "Mantık",
     logic_and: "VE — tümü eşleşmeli",
     logic_or: "VEYA — en az biri eşleşmeli",
@@ -7803,8 +7804,8 @@ class AlertTickerCardEditor extends LitElement {
                 ${this._getAlertMode(index, alert) !== "rs_notify" ? html`<div class="section-divider" data-sec="conditions">⚡ ${this._t(this._getAlertMode(index, alert) === "entity" ? "conditions_section" : "rs_trigger_section")}</div>` : ""}
 
                 ${this._getAlertMode(index, alert) === "rs_entity" ? html`<div class="helper-text">${this._t("rs_entity_conditions_help")}</div>` : ""}
-                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
-                <!-- on_change toggle — when active hides only the primary operator/state fields -->
+                ${this._getAlertMode(index, alert) === "rs_entity" ? html`
+                <!-- on_change toggle (rule-set alerts; single-entity alerts pick "changes" in the condition) -->
                 <div>
                   <ha-formfield .label="${this._t("on_change")}">
                     <ha-switch
@@ -7814,16 +7815,17 @@ class AlertTickerCardEditor extends LitElement {
                   </ha-formfield>
                   <div class="helper-text">${this._t("on_change_help")}</div>
                 </div>
-                ${!alert.on_change && this._getAlertMode(index, alert) === "entity" ? html`
+                ` : ""}
+                ${this._getAlertMode(index, alert) === "entity" ? html`
                 <div class="rs-section-title">${this._t("own_condition_title")}</div>
-                <!-- Primary condition: operator + value (hidden when on_change is active) -->
+                <!-- Own condition: operator + value; "changes (any value)" = on_change -->
                 <div class="form-row-2col">
                   <div class="native-select-wrap">
-                    <label class="native-select-label">${this._t("alert_operator")}</label>
                     <select
                       class="native-select"
                       @change="${(e) => this._alertOperatorChanged(e.target.value, index)}"
                     >
+                      <option value="__change" ?selected="${!!alert.on_change}">${this._t("op_changes")}</option>
                       ${[
                         ["=",           "op_eq"],
                         ["!=",          "op_ne"],
@@ -7836,12 +7838,13 @@ class AlertTickerCardEditor extends LitElement {
                         ["older",        "op_older"],
                         ["newer",        "op_newer"],
                       ].map(([op, key]) => html`
-                        <option value="${op}" ?selected="${(alert.operator || "=") === op}">
+                        <option value="${op}" ?selected="${!alert.on_change && (alert.operator || "=") === op}">
                           ${this._t(key)}
                         </option>
                       `)}
                     </select>
                   </div>
+                  ${alert.on_change ? html`<div class="helper-text">${this._t("on_change_help")}</div>` : html`
                   <div>
                     <ha-input
                       .label="${this._t("alert_state")}"
@@ -7867,13 +7870,12 @@ class AlertTickerCardEditor extends LitElement {
                               </div>`;
                         })()
                       : ""}
-                  </div>
+                  </div>`}
                 </div>
 
-                ` : ""} <!-- end !alert.on_change primary condition -->
-                ` : ""} <!-- end on_change + primary condition (not for notification rule sets) -->
+                ` : ""} <!-- end own condition (single entity) -->
 
-                <!-- Extra conditions: inline rules on single-entity alerts (rule-set alerts keep theirs in the set) -->
+                <!-- Condition: inline rules on single-entity alerts (rule-set alerts keep theirs in the set) -->
                 ${this._getAlertMode(index, alert) === "entity" ? this._renderInlineRules(alert, index) : ""}
                 <!-- ── TRIGGER DELAY + AUTO-DISMISS ─────────────────────── -->
                 <div class="section-divider" data-sec="timing">⏱ ${this._t("auto_dismiss_section")}</div>
@@ -9956,7 +9958,8 @@ class AlertTickerCardEditor extends LitElement {
 
   _alertOperatorChanged(value, index) {
     if (!value) return;
-    this._updateAlert(index, { operator: value });
+    if (value === "__change") { this._updateAlert(index, { on_change: true }); return; }
+    this._updateAlert(index, { operator: value, on_change: undefined });
   }
 
   _alertStateChanged(value, index) {
