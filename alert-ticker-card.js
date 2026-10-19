@@ -790,7 +790,10 @@ function _evalTimeRange(a) {
 
 /** True when the alert targets a set of entities via filters rather than one `entity`. */
 function _atcIsFilterAlert(a) {
-  return !!a && !a.entity && !!(a.entity_filter || a.device_class || a.label_filter || a.area_filter || a.rule_set);
+  // An `entity` key — even still empty in the editor — makes it a single-entity alert;
+  // its rule_set then holds its inline conditions, not a set of entities to cover.
+  if (!a || a.entity || (typeof a.entity === "string" && a.rule_set && typeof a.rule_set === "object")) return false;
+  return !!(a.entity_filter || a.device_class || a.label_filter || a.area_filter || a.rule_set);
 }
 
 // ---------------------------------------------------------------------------
