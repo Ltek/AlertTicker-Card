@@ -1295,13 +1295,15 @@ Create **entity** and **notification** rule sets: name, include / exclude groups
 
 ### 🔔 Alerts tab
 
-Add an alert with **Single Entity**, **Entity Rule Set**, **Notification Rule Set** or **Add from template**. An alert's type is fixed when it's added.
+Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, or from **Alert Templates**: each template shows how many entities it can match on your system and how many are active now (click the count for the list), with **Create** (stays on the list) and **Create & edit** (opens the new alert). Template alerts are inserted by importance — critical ones near the top. An alert's type is fixed when it's added.
 
-Each alert row: drag handle and ▲▼ to reorder (the order decides which alert shows first), **Show in overlay** (greyed until the card's overlay is on), on/off (👁), duplicate and delete. Click a row to open its settings in the same panel. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its **Show in overlay** switch.
+Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; ● marks the ones alerting now.
+
+Each alert row: the theme icon, the name, then **Show in overlay**, on/off, duplicate, delete, and on the far right ▲▼ and the drag handle to reorder (the order decides which alert shows first). **Show in overlay** is greyed until the card's overlay is on. Click a row to open its settings in the same panel. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its **Show in overlay** switch.
 
 #### 📚 Alert templates *(new in 1.3.9.9.7)*
 
-Next to the classic **+ Add alert** button, a **+ Add from template...** dropdown gives you one-click access to **eleven curated preset bundles**. Each template uses HA `device_class` filters so it auto-matches every pertinent entity on your instance — no per-entity picking required.
+The **Alert Templates** panel (under the Add buttons) gives you one-click access to **eleven curated preset bundles**, each showing how many of your entities it can match. Each template uses HA `device_class` filters so it auto-matches every pertinent entity on your instance — no per-entity picking required.
 
 **Basic bundles** (one feature per template):
 

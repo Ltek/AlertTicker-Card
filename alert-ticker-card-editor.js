@@ -1680,7 +1680,19 @@ const ET = {
     sections_expand_all: "Expand all",
     section_changed: "Changed from the defaults",
     alert_options_section: "Options",
-    add_btn_entity: "Single Entity",
+    add_btn_entity: "Entity",
+    possible_count: "Can match {n} entities",
+    possible_active: "{n} active now",
+    possible_none: "Matches no entity on this system.",
+    possible_help: "Every entity this alert can cover, whatever its state right now. ● = alerting now.",
+    templates_title: "Alert Templates",
+    templates_sub: "Ready-made alerts for batteries, doors, leaks, smoke, motion…",
+    templates_create: "Create",
+    templates_create_edit: "Create & edit",
+    templates_added: "Added {name}.",
+    templates_added_chip: "Added",
+    templates_no_match: "No matching entities",
+    templates_needs_setup: "Needs setup — use Create & edit",
     drag_to_reorder: "Drag to reorder — the order decides which alert shows first",
     alert_enable: "Switched off — click to switch on",
     alert_disable: "Switch this alert off",
@@ -7333,6 +7345,84 @@ class AlertTickerCardEditor extends LitElement {
       </div>`;
   }
 
+  /** What a template would cover here: possible + active entities per template alert. */
+  _templateMatches(key) {
+    const shared = globalThis.__alertTickerShared;
+    const t = ALERT_TEMPLATES[key];
+    if (!this._hass || !shared?.migrateConfig || !t) return null;
+    const alerts = t.alerts.map(({ priority, ...a }) => a);
+    const needs = alerts.some((a) => a.camera_entity === "" || (!a.entity && !shared.isFilterAlert(a)));
+    const m = shared.migrateConfig({ alerts, rule_sets: this._ruleSets() }).config;
+    const resolved = shared.attachRuleSets(m.alerts, m.rule_sets);
+    const h = this._previewHass();
+    const parts = resolved.map((a) => ({
+      alert: a,
+      possible: shared.possibleEntities(h, a) || [],
+      active: new Set((shared.alertMatches(h, a) || []).map(([e]) => e)),
+    }));
+    const possible = new Set(parts.flatMap((p) => p.possible.map(([e]) => e)));
+    const active = new Set(parts.flatMap((p) => [...p.active]));
+    // "Added": an existing alert already uses the same rule set
+    const ids = new Set(m.alerts.map((a) => a.rule_set).filter((x) => typeof x === "string"));
+    const added = (this._config.alerts || []).findIndex((a) => typeof a?.rule_set === "string" && ids.has(a.rule_set)
+      && !this._ruleSets().every((rs) => rs.id !== a.rule_set));
+    return { parts, possible: possible.size, active: active.size, needs, added };
+  }
+
+  _renderTemplatesPanel() {
+    const open = !!this._templatesOpen;
+    const lang = this._lang || "en";
+    const toast = this._templateToast && Date.now() - this._templateToast.at < 6000 ? this._templateToast : null;
+    return html`
+      <div class="atc-row ${open ? "is-open" : ""} atc-tpl-panel">
+        <div class="alert-item" @click="${() => { this._templatesOpen = !open; this._markTemplateHintSeen(); this.requestUpdate(); }}">
+          <div class="alert-summary-text">
+            <div class="alert-entity-label"><ha-icon class="rs-kind-icon" icon="mdi:shape-plus-outline"></ha-icon> ${this._t("templates_title")}</div>
+            <div class="alert-msg-label">${this._t("templates_sub")}</div>
+          </div>
+          <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
+        </div>
+        ${toast ? html`<div class="rs-notice atc-tpl-toast">✓ ${this._t("templates_added").replace("{name}", toast.name)}</div>` : ""}
+        ${open ? html`<div class="atc-tpl-list">
+          ${Object.entries(ALERT_TEMPLATES).map(([key, t]) => {
+            const m = this._templateMatches(key) || { parts: [], possible: 0, active: 0, needs: false, added: -1 };
+            const listKey = `tpl_${key}`;
+            const listOpen = this._filterPreviewOpen.has(listKey);
+            return html`
+              <div class="atc-tpl-row ${m.possible === 0 && !m.needs ? "atc-tpl-row--none" : ""}">
+                <div class="atc-tpl-main">
+                  <span class="alert-icon-badge">${t.icon}</span>
+                  <div class="alert-summary-text">
+                    <div class="alert-entity-label">${t.nameByLang[lang] || t.nameByLang.en}</div>
+                    <div class="alert-msg-label">${t.descByLang[lang] || t.descByLang.en}</div>
+                    <div class="rs-chips rs-chips--summary">
+                      ${m.needs ? html`<span class="rs-chip rs-chip--static">${this._t("templates_needs_setup")}</span>` : html`
+                        <a href="#" class="rs-chip rs-chip--static rs-chip--link" @click="${(e) => { e.preventDefault(); const n = new Set(this._filterPreviewOpen); if (n.has(listKey)) n.delete(listKey); else n.add(listKey); this._filterPreviewOpen = n; }}">
+                          ${m.possible ? this._t("possible_count").replace("{n}", m.possible) : this._t("templates_no_match")} ${m.possible ? (listOpen ? "▲" : "▼") : ""}</a>
+                        <span class="rs-chip rs-chip--static">${this._t("possible_active").replace("{n}", m.active)}</span>`}
+                      ${m.added >= 0 ? html`<a href="#" class="rs-chip rs-chip--static rs-chip--link" @click="${(e) => { e.preventDefault(); this._templatesOpen = false; this._editingIndex = m.added; this.requestUpdate(); }}">✓ ${this._t("templates_added_chip")}</a>` : ""}
+                    </div>
+                  </div>
+                  <div class="alert-actions">
+                    ${!m.needs ? this._iconButton("mdi:plus", this._t("templates_create"), () => this._addFromTemplate(key, { edit: false })) : ""}
+                    ${this._iconButton("mdi:pencil-plus-outline", this._t("templates_create_edit"), () => this._addFromTemplate(key, { edit: true }))}
+                  </div>
+                </div>
+                ${listOpen ? html`<div class="filter-entity-list">
+                  ${m.parts.map((p) => p.possible.map(([id, st]) => html`
+                    <div class="filter-entity-row">
+                      <span class="filter-entity-toggle" style="color:${p.active.has(id) ? "var(--success-color,#43a047)" : "var(--secondary-text-color,#888)"}">${p.active.has(id) ? "●" : "○"}</span>
+                      <span class="filter-entity-name">${st.attributes?.friendly_name || id}</span>
+                      <span class="filter-entity-id">${id}</span>
+                      <span class="filter-entity-state">${st.state}</span>
+                    </div>`))}
+                </div>` : ""}
+              </div>`;
+          })}
+        </div>` : ""}
+      </div>`;
+  }
+
   _renderAlertsTab() {
     const alerts = this._config.alerts || [];
 
@@ -7341,21 +7431,8 @@ class AlertTickerCardEditor extends LitElement {
       <div class="add-alert-grid">
         ${[["entity", "add_btn_entity", "mode_entity_help"], ["rs_entity", "add_btn_rs_entity", "mode_rs_entity_help"], ["rs_notify", "add_btn_rs_notify", "mode_rs_notify_help"]].map(([m, k, h]) => html`
           <button class="rs-btn rs-btn--add" title="${this._t(h)}" @click="${() => this._addAlert(m)}">${this._modeIcon(m)}<span>${this._t(k)}</span></button>`)}
-        <div class="native-select-wrap add-alert-template-wrap ${this._templatesHintSeen ? '' : 'tpl-hint-glow'}">
-          <select class="native-select" .value="${''}"
-            @focus="${() => this._markTemplateHintSeen()}"
-            @change="${(e) => { this._addFromTemplate(e.target.value); e.target.value = ''; }}"
-          >
-            <option value="">${this._t("add_from_template")}</option>
-            ${Object.entries(ALERT_TEMPLATES).map(([key, t]) => {
-              const lang = this._lang || 'en';
-              const name = t.nameByLang[lang] || t.nameByLang.en;
-              const desc = t.descByLang[lang] || t.descByLang.en;
-              return html`<option value="${key}">${t.icon} ${name} — ${desc}</option>`;
-            })}
-          </select>
-        </div>
       </div>
+      ${this._renderTemplatesPanel()}
       ${this._migratedCount ? html`<div class="rs-notice">🧩 ${this._t("migration_notice").replace("{n}", this._migratedCount)}
         <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._migratedCount = 0; this.requestUpdate(); }}">${this._t("notify_close")}</a></div>` : ""}
       ${this._priorityMigrated ? html`<div class="rs-notice">↕ ${this._t("priority_migration_notice")}
@@ -7416,17 +7493,7 @@ class AlertTickerCardEditor extends LitElement {
            @drop="${(e) => { e.preventDefault(); const from = this._dragFrom; this._dragFrom = null; this._dragOver = null; if (from != null) this._moveAlert(from, index); }}">
       <div class="${`alert-item${isEditing ? " is-editing" : ""}`}"
            @click="${() => this._editAlert(index)}">
-        <div class="alert-move-col">
-          <span class="atc-drag" draggable="true" title="${this._t("drag_to_reorder")}"
-            @click="${(e) => e.stopPropagation()}"
-            @dragstart="${(e) => { this._dragFrom = index; try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); } catch (_) {} }}"
-            @dragend="${() => { this._dragFrom = null; this._dragOver = null; this.requestUpdate(); }}"><ha-icon icon="mdi:drag-vertical"></ha-icon></span>
-          <div class="atc-move-arrows">
-            ${this._iconButton("mdi:chevron-up", this._t("move_up"), () => this._moveAlert(index, index - 1), index === 0)}
-            ${this._iconButton("mdi:chevron-down", this._t("move_down"), () => this._moveAlert(index, index + 1), index === total - 1)}
-          </div>
-        </div>
-        <span class="alert-icon-badge">${icon}</span>
+        <span class="alert-icon-badge">${icon}</span>        <span class="alert-icon-badge">${icon}</span>
         <div class="alert-summary-text">
           <div class="alert-entity-label">${this._modeIcon(mode)} ${alert.name || html`${this._t("alert_num")} ${index + 1}: ${entityLabel}`}</div>
           ${alert.name ? html`<div class="alert-msg-label">${entityLabel}</div>` : (msgSnippet ? html`<div class="alert-msg-label">${msgSnippet}</div>` : "")}
@@ -7440,6 +7507,16 @@ class AlertTickerCardEditor extends LitElement {
             alert.enabled === false ? "atc-icon--off" : "")}
           ${this._iconButton("mdi:content-copy", this._t("alert_duplicate"), () => this._duplicateAlert(index))}
           ${this._deleteButton(() => this._deleteAlert(index))}
+        </div>
+        <div class="alert-move-col">
+          <div class="atc-move-arrows">
+            ${this._iconButton("mdi:chevron-up", this._t("move_up"), () => this._moveAlert(index, index - 1), index === 0)}
+            ${this._iconButton("mdi:chevron-down", this._t("move_down"), () => this._moveAlert(index, index + 1), index === total - 1)}
+          </div>
+          <span class="atc-drag" draggable="true" title="${this._t("drag_to_reorder")}"
+            @click="${(e) => e.stopPropagation()}"
+            @dragstart="${(e) => { this._dragFrom = index; try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); } catch (_) {} }}"
+            @dragend="${() => { this._dragFrom = null; this._dragOver = null; this.requestUpdate(); }}"><ha-icon icon="mdi:drag-vertical"></ha-icon></span>
         </div>
       </div>
       ${isEditing ? this._renderAlertEditPanel() : ""}
@@ -7518,6 +7595,7 @@ class AlertTickerCardEditor extends LitElement {
                 })()}
 
                 ${this._getAlertMode(index, alert) === "filter" ? html`
+                  ${this._renderPossibleMatches(alert, index)}
                   <div class="rs-warning">⚠ ${this._t("alert_quick_filter_left")}</div>
                   <button class="rs-btn rs-btn--small" @click="${() => this._convertAlertToRuleSet(index)}">🧩 ${this._t("alert_convert_to_rule_set")}</button>
                 ` : ""}
@@ -9372,6 +9450,45 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /** Live "N entities match" count with an expandable list, for a rule-set definition. */
+  /**
+   * "Can match N entities" (every entity the alert covers, whatever its state now)
+   * plus "N active now", with an expandable list; active entities are marked.
+   */
+  _renderPossibleMatches(alert, index) {
+    const shared = globalThis.__alertTickerShared;
+    if (!this._hass || !shared?.possibleEntities) return "";
+    const h = this._previewHass();
+    const [resolved] = shared.attachRuleSets([alert], this._config?.rule_sets);
+    const possible = shared.possibleEntities(h, resolved) || [];
+    const active = new Set((shared.alertMatches(h, resolved) || []).map(([e]) => e));
+    const key = `possible_${index}`;
+    const open = this._filterPreviewOpen.has(key);
+    if (!possible.length) return html`<div class="helper-text"><span style="color:var(--error-color,#db4437)">${this._t("possible_none")}</span></div>`;
+    return html`
+      <div class="helper-text">
+        <button class="filter-count-btn" @click="${() => {
+          const next = new Set(this._filterPreviewOpen);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          this._filterPreviewOpen = next;
+        }}">
+          <span>${this._t("possible_count").replace("{n}", possible.length)}</span>
+          <span style="color:var(--success-color,#43a047);margin-left:6px">· ${this._t("possible_active").replace("{n}", active.size)}</span>
+          <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
+        </button>
+        ${open ? html`
+          <div class="filter-entity-tip">${this._t("possible_help")}</div>
+          <div class="filter-entity-list">
+            ${possible.map(([id, st]) => html`
+              <div class="filter-entity-row">
+                <span class="filter-entity-toggle" style="color:${active.has(id) ? "var(--success-color,#43a047)" : "var(--secondary-text-color,#888)"}">${active.has(id) ? "●" : "○"}</span>
+                <span class="filter-entity-name">${st.attributes?.friendly_name || id}</span>
+                <span class="filter-entity-id">${id}</span>
+                <span class="filter-entity-state">${st.state}</span>
+              </div>`)}
+          </div>` : ""}
+      </div>`;
+  }
+
   /** The exclude group the preview's ✓/✗ toggles write to: one rule, "entity id is any of". */
   _rsPickExcludeIndex(def) {
     return (def.groups || []).findIndex((g) => g?.mode === "exclude" && (g.rules || []).length === 1
@@ -9473,7 +9590,7 @@ class AlertTickerCardEditor extends LitElement {
         ${!ref && !ofKind.length ? html`<div class="helper-text">${this._t(notify ? "alert_no_notify_sets" : "alert_no_entity_sets")}</div>` : ""}
         ${quickLeft.length ? html`<div class="rs-warning">⚠ ${this._t("alert_quick_left").replace("{fields}", quickLeft.join(", "))}
           <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._updateAlert(index, Object.fromEntries(quickLeft.map((k) => [k, undefined]))); }}">${this._t("alert_quick_remove")}</a></div>` : ""}
-        ${def ? this._renderRsPreview(def, `alert_rs_${index}`) : ""}
+        ${def ? (notify ? this._renderRsPreview(def, `alert_rs_${index}`) : this._renderPossibleMatches(alert, index)) : ""}
         <div class="helper-text">${this._t(notify ? "rs_notify_conditions_where" : "rs_entity_conditions_where")}</div>
       </div>
     `;
@@ -9558,16 +9675,29 @@ class AlertTickerCardEditor extends LitElement {
    * The first added alert is opened in the edit panel so the user can tweak
    * entities / thresholds immediately.
    */
-  _addFromTemplate(templateKey) {
+  /** Importance of an alert by its theme's category: critical first, then warning, info, … */
+  _importance(alert) {
+    const rank = { critical: 0, warning: 1, timer: 2, info: 3, style: 4, ok: 5 };
+    return rank[(THEME_META[alert?.theme] || {}).category] ?? 3;
+  }
+
+  /**
+   * Adds a template's alerts. They are inserted by importance: before the first
+   * existing alert of lower importance (so safety templates land near the top).
+   * `edit` opens the first new alert; otherwise the template list stays open.
+   */
+  _addFromTemplate(templateKey, { edit = true } = {}) {
     if (!templateKey) return;
     const template = ALERT_TEMPLATES[templateKey];
     if (!template) return;
     this._markTemplateHintSeen(); // remove first-time glow if still on
 
     const currentAlerts = [...(this._config.alerts || [])];
-    const firstNewIndex = currentAlerts.length;
-    // Order is the priority now: template alerts are appended (drag them into place).
     const newAlerts = template.alerts.map(({ priority, ...tplAlert }) => ({ ...tplAlert }));
+    const rank = Math.min(...newAlerts.map((a) => this._importance(a)));
+    let firstNewIndex = currentAlerts.findIndex((a) => this._importance(a) > rank);
+    if (firstNewIndex < 0) firstNewIndex = currentAlerts.length;
+    this._remapAlertModes((i) => (i >= firstNewIndex ? i + newAlerts.length : i));
 
     // Merge cardConfig defaults, but never overwrite what the user already set
     let mergedCardCfg = {};
@@ -9577,8 +9707,16 @@ class AlertTickerCardEditor extends LitElement {
       }
     }
 
-    this._editingIndex = firstNewIndex;
-    let nextConfig = { ...this._config, ...mergedCardCfg, alerts: [...currentAlerts, ...newAlerts] };
+    if (edit) {
+      this._editingIndex = firstNewIndex;
+      this._templatesOpen = false;
+    } else if (this._editingIndex >= firstNewIndex) {
+      this._editingIndex += newAlerts.length;
+    }
+    const lang = this._lang || "en";
+    this._templateToast = { name: template.nameByLang[lang] || template.nameByLang.en, at: Date.now() };
+    const merged = [...currentAlerts.slice(0, firstNewIndex), ...newAlerts, ...currentAlerts.slice(firstNewIndex)];
+    let nextConfig = { ...this._config, ...mergedCardCfg, alerts: merged };
     // Template alerts use device_class filters: store them as shared rule sets, like every other rule.
     const migrate = globalThis.__alertTickerShared?.migrateConfig;
     if (migrate) nextConfig = migrate(nextConfig).config;
@@ -11419,8 +11557,8 @@ class AlertTickerCardEditor extends LitElement {
         flex: none;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
+        gap: 6px;
+        padding: 7px 10px;
         border-radius: 8px;
         font-size: 0.95rem;
         font-weight: 600;
@@ -11445,6 +11583,8 @@ class AlertTickerCardEditor extends LitElement {
         margin-bottom: 12px;
       }
       .atc-row > .alert-item {
+        padding: 6px 8px;
+        gap: 8px;
         border: none;
         border-radius: 0;
         margin-bottom: 0;
@@ -11472,6 +11612,36 @@ class AlertTickerCardEditor extends LitElement {
       }
       .atc-move-arrows .atc-act {
         padding: 0;
+      }
+      .atc-row .atc-act {
+        padding: 2px;
+      }
+      .atc-row .alert-actions {
+        gap: 2px;
+      }
+      .atc-tpl-panel {
+        margin-bottom: 12px;
+      }
+      .atc-tpl-toast {
+        margin: 0 8px 8px;
+      }
+      .atc-tpl-list {
+        border-top: 1px solid var(--divider-color, #e0e0e0);
+      }
+      .atc-tpl-row {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--divider-color, #e0e0e0);
+      }
+      .atc-tpl-row:last-child {
+        border-bottom: none;
+      }
+      .atc-tpl-row--none .atc-tpl-main {
+        opacity: 0.55;
+      }
+      .atc-tpl-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
       .atc-move-arrows .atc-act ha-icon {
         --mdc-icon-size: 20px;

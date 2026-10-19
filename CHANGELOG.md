@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Duplicate** an alert or a rule set (#233); **switch an alert off** with `enabled: false` (#232).
 - **Order instead of priority:** drag-and-drop or ▲▼ reorder; a **Show in overlay** switch on each alert row and an "Alerts shown in the overlay" list in the Overlay tab.
 - Rule fields `visibility` (hidden in HA) and `sun`.
+- **Alert Templates panel** replaces the template dropdown: each template shows what it can match here and what's active now, with Create / Create & edit; template alerts are inserted by importance.
+- **Can match N entities** inside an alert: every entity it can cover, independent of their current state.
 
 ### Changed
 
