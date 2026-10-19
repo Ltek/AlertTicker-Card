@@ -854,12 +854,29 @@ const _ATC_NEGATED_OP = { ne: "eq", not_in: "in", not_contains: "contains" };
 /** Stand-in for a `rule_set:` id that doesn't exist in `rule_sets:` — matches nothing. */
 const _ATC_MISSING_RULE_SET = Object.freeze({ groups: [], _missing: true });
 
+/**
+ * `rules:` is an alias of `groups:` on a rule set. A flat list of rules
+ * (`rules: [{ field, op, … }]`) means one include block that needs all of them.
+ */
+const _atcNormCache = new WeakMap();
+function _atcNormRuleSet(def) {
+  if (!def || typeof def !== "object" || Array.isArray(def.groups) || !Array.isArray(def.rules)) return def;
+  let n = _atcNormCache.get(def);
+  if (!n) {
+    const blocks = def.rules.every((r) => r && Array.isArray(r.rules));
+    const { rules, ...rest } = def;
+    n = { ...rest, groups: blocks ? rules : [{ mode: "include", match: "all", rules }] };
+    _atcNormCache.set(def, n);
+  }
+  return n;
+}
+
 /** Resolves an alert's rule_set (id string or inline object) against the card's rule_sets list. */
 function _atcLookupRuleSet(ref, ruleSets) {
   if (!ref) return null;
-  if (typeof ref === "object") return ref;
+  if (typeof ref === "object") return _atcNormRuleSet(ref);
   const list = Array.isArray(ruleSets) ? ruleSets : [];
-  return list.find(rs => rs && String(rs.id) === String(ref)) || _ATC_MISSING_RULE_SET;
+  return _atcNormRuleSet(list.find(rs => rs && String(rs.id) === String(ref))) || _ATC_MISSING_RULE_SET;
 }
 
 /**
@@ -1058,12 +1075,14 @@ function _atcMiniTemplate(hass, str) {
  * Compile once per evaluation pass; the result is cheap to call per entity.
  */
 function _atcCompileRuleSet(def) {
+  def = _atcNormRuleSet(def);
   if (!def || def._missing) return () => false;
   const forNotifications = _atcIsNotificationSet(def);
   if (!Array.isArray(def.groups) && !forNotifications) return () => false;
   const allGroups = Array.isArray(def.groups) ? def.groups : [];
   const compileGroup = (g) => {
-    const rules = (Array.isArray(g?.rules) ? g.rules : []).map(r => ({ rule: r, test: _atcCompileRule(r) }));
+    const rules = (Array.isArray(g?.rules) ? g.rules : []).filter(r => r?.enabled !== false)
+      .map(r => ({ rule: r, test: _atcCompileRule(r) }));
     const any = g?.match === "any";
     return (hass, eid, es, ctx) => {
       const c = ctx || (hass._atcCtx || (hass._atcCtx = { hass }));
@@ -1075,7 +1094,8 @@ function _atcCompileRuleSet(def) {
       return !any;
     };
   };
-  const withRules = allGroups.filter(g => Array.isArray(g?.rules) && g.rules.length);
+  // switched-off rules (enabled: false) don't count; a block left without rules is ignored
+  const withRules = allGroups.filter(g => Array.isArray(g?.rules) && g.rules.some(r => r?.enabled !== false));
   const includes = withRules.filter(g => g.mode !== "exclude").map(compileGroup);
   const excludes = withRules.filter(g => g.mode === "exclude").map(compileGroup);
   const rulesPass = (hass, eid, es, ctx) =>
@@ -1901,7 +1921,7 @@ function _atcMigrateConfig(config) {
     config = { ...config, alerts };
     delete config.overlay_min_priority;
   }
-  const sets = Array.isArray(config?.rule_sets) ? config.rule_sets.map((x) => x) : [];
+  const sets = Array.isArray(config?.rule_sets) ? config.rule_sets.map((x) => _atcNormRuleSet(x)) : [];
   const migrated = [];
   const notifyKey = (rs) => (_atcIsNotificationSet(rs) ? JSON.stringify([rs.watch || rs.source, rs.notification_source, rs.notification_destination]) : null);
   const byGroups = new Map(sets.map((rs) => [JSON.stringify({ g: rs.groups || [], w: notifyKey(rs) }), rs.id]));
@@ -1960,7 +1980,9 @@ function _atcMigrateConfig(config) {
     const keys = [..._ATC_MIGRATED_KEYS, ...(notify || hasPrimary ? ["state", "operator"] : [])];
     return { ...strip(a, keys), rule_set: id };
   });
-  if (!migrated.length) return { config, migrated, priorityMoved };
+  const aliasMoved = Array.isArray(config?.rule_sets) && config.rule_sets.some((x, i) => x !== sets[i]);
+  if (!migrated.length && !aliasMoved) return { config, migrated, priorityMoved };
+  if (!migrated.length) return { config: { ...config, rule_sets: sets }, migrated, priorityMoved, aliasMoved };
   return { config: { ...config, rule_sets: sets.length ? sets : undefined, alerts: out }, migrated, priorityMoved };
 }
 
@@ -1977,11 +1999,12 @@ const _ATC_DYNAMIC_FIELDS = new Set(["state", "attribute", "last_changed_ago", "
 
 /** The scope of a rule set: its rules on fixed entity properties only (see above). */
 function _atcScopeDef(def) {
+  def = _atcNormRuleSet(def);
   if (!def || typeof def !== "object" || _atcIsNotificationSet(def)) return def;
   const dyn = (r) => _ATC_DYNAMIC_FIELDS.has(r?.field) || JSON.stringify(r?.value ?? "").includes("{{");
   const groups = [];
   for (const g of def.groups || []) {
-    const rules = g?.rules || [];
+    const rules = (g?.rules || []).filter((r) => r?.enabled !== false);
     if (!rules.length) continue;
     const fixed = rules.filter((r) => !dyn(r));
     const anyDyn = fixed.length !== rules.length;
@@ -2015,6 +2038,32 @@ function _atcPossibleEntities(hass, alert) {
   return _atcFilterEntities(hass, { ...alert, rule_set: scope || undefined, _rule_set_def: undefined });
 }
 
+/**
+ * Troubleshooting export: the rule set as stored, plus how many entities each block
+ * and each rule matches on this system, the set's possible matches and its matches now.
+ */
+function _atcRuleSetDiagnostics(hass, def) {
+  const n = _atcNormRuleSet(def) || {};
+  const count = (d) => _atcFilterEntities(hass, { rule_set: d }, { applyExclude: false }).length;
+  const isN = _atcIsNotificationSet(n);
+  const blocks = (n.groups || []).map((g, gi) => ({
+    block: gi + 1, mode: g.mode || "include", match: g.match || "all",
+    rules: (g.rules || []).map((r, ri) => ({
+      rule: ri + 1, field: r.field, op: r.op, enabled: r.enabled !== false,
+      // alone, as an include rule (exclude rules: what they would remove)
+      matches_alone: r.enabled === false ? null : count({ ...(isN ? n : {}), groups: [{ mode: "include", match: "all", rules: [{ ...r }] }] }),
+    })),
+  }));
+  return {
+    card_version: CARD_VERSION,
+    exported_at: new Date().toISOString(),
+    entities_in_home_assistant: Object.keys(hass?.states || {}).length,
+    can_match: isN ? null : (_atcPossibleEntities(hass, { rule_set: n }) || []).length,
+    matches_now: count(n),
+    blocks,
+  };
+}
+
 // The editor is a separate module (loaded on demand by getConfigElement), so it
 // reaches the same matcher through this namespace instead of keeping its own copy —
 // the editor's entity preview then always agrees with what the card shows.
@@ -2023,6 +2072,8 @@ globalThis.__alertTickerShared = Object.freeze({
   legacyFilterDef: _atcLegacyFilterDef,
   migrateConfig: _atcMigrateConfig,
   possibleEntities: _atcPossibleEntities,
+  normRuleSet: _atcNormRuleSet,
+  ruleSetDiagnostics: _atcRuleSetDiagnostics,
   scopeDef: _atcScopeDef,
   alertMatches: _atcAlertMatches,
   usesNotifications: _atcUsesNotifications,

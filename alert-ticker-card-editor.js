@@ -1555,6 +1555,13 @@ const ET = {
     ruleset_add_include: "Include Rule",
     ruleset_add_exclude: "Exclude Rule",
     ruleset_exclude_entity: "Exclude",
+    rule_disable: "Switch this rule off",
+    rule_enable: "Switched off — click to switch on",
+    rule_off_note: "Switched off: this rule is ignored.",
+    ruleset_export: "Export for troubleshooting",
+    ruleset_export_help: "The rule set as saved, plus how many entities each rule matches on its own here, how many the set can match and how many match now. Copy it into an issue or a message.",
+    ruleset_copy: "Copy",
+    ruleset_copied: "Copied",
     ruleset_include_entity: "Include",
     ruleset_exclude_tip: "Exclude an entity to leave it out of this rule set; Include brings it back.",
     ruleset_no_include: "Add at least one include rule — a set without one matches nothing.",
@@ -6324,7 +6331,7 @@ class AlertTickerCardEditor extends LitElement {
     const migrate = globalThis.__alertTickerShared?.migrateConfig;
     if (migrate && config) {
       const res = migrate(config);
-      if (res.migrated.length || res.priorityMoved) {
+      if (res.migrated.length || res.priorityMoved || res.aliasMoved) {
         this._migratedCount = (this._migratedCount || 0) + res.migrated.length;
         if (res.priorityMoved) this._priorityMigrated = true;
         config = res.config;
@@ -8979,6 +8986,7 @@ class AlertTickerCardEditor extends LitElement {
           <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
         </div>
         <div class="alert-actions">
+          ${this._iconButton("mdi:export-variant", this._t("ruleset_export"), () => { this._rsExport = this._rsExport === si ? -1 : si; this._rsEditing = si; this.requestUpdate(); })}
           ${this._iconButton("mdi:content-copy", this._t("ruleset_duplicate"), () => this._duplicateRuleSet(si))}
           ${this._deleteButton(() => this._deleteRuleSet(si))}
         </div>
@@ -8994,10 +9002,11 @@ class AlertTickerCardEditor extends LitElement {
     const isN = this._isNotificationSet(rs);
     const hasInclude = isN || groups.some((g) => g && g.mode !== "exclude" && Array.isArray(g.rules) && g.rules.length);
     const addGroup = (mode) => this._updateRsGroups(si, (gs) =>
-      gs.push({ mode, match: mode === "exclude" ? "any" : "all", rules: [this._newRule(isN ? "notification_text" : undefined)] }));
+      gs.unshift({ mode, match: mode === "exclude" ? "any" : "all", rules: [this._newRule(isN ? "notification_text" : undefined)] }));
     return html`
       <div class="atc-row-body">
         <div class="alert-form">
+          ${this._rsExport === si ? this._renderRsExport(rs) : ""}
           ${this._renderRsUsage(rs, si)}
           <ha-input
             .label="${this._t("ruleset_name")}"
@@ -9016,15 +9025,35 @@ class AlertTickerCardEditor extends LitElement {
           ${isN ? this._renderNotificationOptions(rs, si) : ""}
           ${isN ? html`<div class="rs-section-title">🔎 ${this._t("notify_conditions")}</div>
             <div class="helper-text">${this._t("notify_conditions_help")}</div>` : ""}
-          ${groups.map((g, gi) => this._renderRsGroup(si, g || {}, gi))}
-          ${!hasInclude ? html`<div class="rs-warning">⚠ ${this._t("ruleset_no_include")}</div>` : ""}
           <div class="rs-add-row">
             <button class="rs-btn" @click="${() => addGroup("include")}">+ ${this._t("ruleset_add_include")}</button>
             <button class="rs-btn" @click="${() => addGroup("exclude")}">+ ${this._t("ruleset_add_exclude")}</button>
           </div>
+          ${!hasInclude ? html`<div class="rs-warning">⚠ ${this._t("ruleset_no_include")}</div>` : ""}
+          ${groups.map((g, gi) => this._renderRsGroup(si, g || {}, gi))}
         </div>
       </div>
     `;
+  }
+
+  /** Troubleshooting export: the rule set + per-rule match counts, as JSON, with Copy. */
+  _renderRsExport(rs) {
+    const shared = globalThis.__alertTickerShared;
+    const text = JSON.stringify({ rule_set: rs, diagnostics: shared?.ruleSetDiagnostics?.(this._previewHass(), rs) }, null, 2);
+    return html`
+      <div class="rs-notify-box">
+        <div class="rs-section-title">${this._t("ruleset_export")}</div>
+        <div class="helper-text">${this._t("ruleset_export_help")}</div>
+        <textarea class="rs-export" readonly rows="12" .value="${text}" @focus="${(e) => e.target.select()}"></textarea>
+        <div class="rs-add-row">
+          <button class="rs-btn rs-btn--small" @click="${async (e) => {
+            const b = e.currentTarget;
+            try { await navigator.clipboard.writeText(text); b.textContent = this._t("ruleset_copied"); }
+            catch (_) { b.closest(".rs-notify-box")?.querySelector("textarea")?.select(); }
+          }}">${this._t("ruleset_copy")}</button>
+          <button class="rs-btn rs-btn--small" @click="${() => { this._rsExport = -1; this.requestUpdate(); }}">${this._t("notify_close")}</button>
+        </div>
+      </div>`;
   }
 
   /** Alerts that use this rule set, each openable, plus "Create alert from this rule set". */
@@ -9325,7 +9354,7 @@ class AlertTickerCardEditor extends LitElement {
     const ops = [...(RS_FIELD_OPS[r.field] || [])];
     if (r.op && !ops.includes(r.op)) ops.push(r.op); // YAML-written op outside the UI list
     return html`
-      <div class="rs-rule">
+      <div class="rs-rule ${r.enabled === false ? "rs-rule--off" : ""}">
         <div class="rs-rule-row">
           <select class="native-select rs-select" @change="${(e) => this._rsFieldChanged(si, gi, ri, e.target.value)}">
             ${fields.map((f) => html`<option value="${f}" ?selected="${r.field === f}">${this._t("ruleset_field_" + f)}</option>`)}
@@ -9333,9 +9362,14 @@ class AlertTickerCardEditor extends LitElement {
           <select class="native-select rs-select" @change="${(e) => this._rsOpChanged(si, gi, ri, e.target.value)}">
             ${ops.map((o) => html`<option value="${o}" ?selected="${r.op === o}">${this._t("ruleset_op_" + o)}</option>`)}
           </select>
+          ${this._iconButton(r.enabled === false ? "mdi:eye-off-outline" : "mdi:eye-outline",
+            this._t(r.enabled === false ? "rule_enable" : "rule_disable"),
+            () => this._rsRuleChanged(si, gi, ri, { enabled: r.enabled === false ? undefined : false }), false,
+            r.enabled === false ? "atc-icon--off" : "")}
           <button class="btn-icon btn-delete" title="${this._t("delete")}"
             @click="${() => this._updateRsGroups(si, (gs) => gs[gi].rules.splice(ri, 1))}">✕</button>
         </div>
+        ${r.enabled === false ? html`<div class="helper-text">${this._t("rule_off_note")}</div>` : ""}
         ${r.field === "other_entity" ? html`
           <ha-entity-picker
             .hass="${this._hass}"
@@ -9522,7 +9556,12 @@ class AlertTickerCardEditor extends LitElement {
     const exIdx = !isN && t != null ? this._rsPickExcludeIndex(def) : -1;
     const excluded = new Set(exIdx >= 0 ? (def.groups[exIdx].rules[0].values || []) : []);
     const shown = exIdx >= 0 ? { ...def, groups: def.groups.filter((_, i) => i !== exIdx) } : def;
-    const matched = shared.filterEntities(this._previewHass(), { rule_set: shown }, { applyExclude: false });
+    const h = this._previewHass();
+    const now = shared.filterEntities(h, { rule_set: shown }, { applyExclude: false });
+    // Entity sets list everything they CAN match (whatever the state now), active ones marked;
+    // notification sets list what has arrived.
+    const matched = isN ? now : (shared.possibleEntities(h, { rule_set: shown }) || []);
+    const activeIds = new Set(now.map(([id]) => id));
     if (!matched.length) {
       return html`<div class="helper-text"><span style="color:${isN ? "var(--secondary-text-color,#888)" : "var(--error-color,#db4437)"}">${this._t(isN ? "notify_preview_zero" : "entity_filter_zero")}</span></div>`;
     }
@@ -9534,7 +9573,10 @@ class AlertTickerCardEditor extends LitElement {
           if (next.has(key)) next.delete(key); else next.add(key);
           this._filterPreviewOpen = next;
         }}">
-          <span style="color:var(--success-color,#43a047)"><b>${matched.length - matched.filter(([id]) => excluded.has(id)).length}</b> ${this._t(isN ? "notify_preview_count" : "entity_filter_count")}</span>
+          ${isN
+            ? html`<span style="color:var(--success-color,#43a047)"><b>${matched.length}</b> ${this._t("notify_preview_count")}</span>`
+            : html`<span>${this._t("possible_count").replace("{n}", matched.length - matched.filter(([id]) => excluded.has(id)).length)}</span>
+              <span style="color:var(--success-color,#43a047);margin-left:6px">· ${this._t("possible_active").replace("{n}", now.filter(([id]) => !excluded.has(id)).length)}</span>`}
           ${excluded.size ? html`<span style="color:var(--error-color,#db4437);margin-left:4px">(${excluded.size} ${this._t("entity_filter_excluded")})</span>` : ""}
           <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
         </button>
@@ -9548,6 +9590,7 @@ class AlertTickerCardEditor extends LitElement {
                 <span class="filter-entity-state">${(s.attributes.sent_by_names || []).join(", ") || this._t("notify_no_sender")} → ${(s.attributes.sent_to_names || s.attributes.sent_to || []).join(", ")}</span>
               </div>` : html`
               <div class="filter-entity-row rs-match-row ${excluded.has(id) ? "filter-entity-excluded" : ""}">
+                <span class="filter-entity-toggle" style="color:${activeIds.has(id) ? "var(--success-color,#43a047)" : "var(--secondary-text-color,#888)"}">${activeIds.has(id) ? "●" : "○"}</span>
                 <span class="filter-entity-name">${s.attributes.friendly_name || id}</span>
                 <span class="filter-entity-id">${id}</span>
                 <span class="filter-entity-state">${s.state}</span>
@@ -11378,6 +11421,23 @@ class AlertTickerCardEditor extends LitElement {
         border-radius: 8px;
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 10%, transparent);
         font-size: 0.9rem;
+      }
+      .rs-rule--off > *:not(.rs-rule-row) {
+        opacity: 0.45;
+      }
+      .rs-rule--off .rs-select {
+        opacity: 0.45;
+      }
+      .rs-export {
+        width: 100%;
+        box-sizing: border-box;
+        font-family: monospace;
+        font-size: 0.8rem;
+        background: var(--secondary-background-color, #1c1c1c);
+        color: var(--primary-text-color, #fff);
+        border: 1px solid var(--divider-color, #444);
+        border-radius: 6px;
+        padding: 6px;
       }
       .rs-match-row {
         align-items: center;
