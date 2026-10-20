@@ -1222,7 +1222,7 @@ const ET = {
     section_cycling: "Ciclo & Animazione",
     section_snooze: "Snooze 💤",
     section_history: "Cronologia",
-    section_automation: "Automazione",
+    section_automation: "Imposta valore entità",
     active_state_entity: "Entità stato attivo",
     active_state_entity_help: "Scrive on/off su un input_boolean quando questo avviso si attiva o si azzera",
     active_state_entity_warning: "⚠️ Funziona solo se la dashboard è sempre aperta nel browser (es. tablet fisso). Se la scheda viene chiusa, il booleano non viene aggiornato.",
@@ -1801,7 +1801,7 @@ const ET = {
     section_cycling: "Cycling & Animation",
     section_snooze: "Snooze 💤",
     section_history: "History",
-    section_automation: "Automation",
+    section_automation: "Set Entity Value",
     active_state_entity: "Active state entity",
     active_state_entity_help: "Writes on/off to an input_boolean when this specific alert becomes active or clears",
     active_state_entity_warning: "⚠️ Only works while the browser tab with this dashboard is open (e.g. a fixed wall tablet). If the tab is closed, the boolean is not updated.",
@@ -2005,8 +2005,12 @@ const ET = {
     secondary_entity_help: "Shows the live value of this entity as an extra line below the message. E.g. a sensor listing open zones or active alerts.",
     secondary_text: "Static secondary text (optional)",
     secondary_text_help: "Fixed text shown below the message. Supports {state}, {name}, {entity}. No sensor entity required.",
-    show_filter_name: "Show entity name (from entity_filter)",
-    show_filter_state: "Show state",
+    show_filter_name: "Show entity name",
+    show_filter_state: "Show its state",
+    show_filter_name_help: "This alert shows once for each matching entity. Show entity name puts that entity's name on a line under the message; Show its state adds its current state next to the name.",
+    show_notification_text_help: "Puts the notification's message on a line under the alert message.",
+    appearance_section: "Appearance",
+    tap_actions_section: "Tap Actions",
     battery_trim_name: "Strip «Battery» suffix from entity name",
     secondary_attribute: "Secondary value attribute",
     show_secondary_name: "Show entity name next to value",
@@ -2024,7 +2028,7 @@ const ET = {
     clear_double_tap_action_section: "Double tap on 'all clear' card",
     clear_hold_action_section: "Hold on 'all clear' card (500ms)",
     snooze_action_section: "Snooze action 💤 — executed when the snooze button is tapped",
-    card_override_section: "Custom card 🃏",
+    card_override_section: "Custom card",
     card_override_help: "Replaces the theme with any native HA card (tile, entity, button…). Use 'this.entity_id' as a placeholder for the alert entity. Leave empty to use the normal theme.",
     persistent: "Persistent alarm 🔒",
     persistent_help: "Stays visible even after the sensor returns to normal. Press ✕ to dismiss.",
@@ -2181,7 +2185,7 @@ const ET = {
     section_cycling: "Cycle & Animation",
     section_snooze: "Snooze 💤",
     section_history: "Historique",
-    section_automation: "Automatisation",
+    section_automation: "Définir la valeur d'une entité",
     active_state_entity: "Entité état actif",
     active_state_entity_help: "Écrit on/off sur un input_boolean quand cette alerte s'active ou s'efface",
     active_state_entity_warning: "⚠️ Fonctionne uniquement si l'onglet du navigateur est toujours ouvert (ex. tablette fixée). Si l'onglet est fermé, le booléen n'est pas mis à jour.",
@@ -2554,7 +2558,7 @@ const ET = {
     section_cycling: "Zyklus & Animation",
     section_snooze: "Schlummern 💤",
     section_history: "Verlauf",
-    section_automation: "Automatisierung",
+    section_automation: "Entitätswert setzen",
     active_state_entity: "Aktiver Status-Entität",
     active_state_entity_help: "Schreibt on/off in einen input_boolean, wenn dieser Alarm aktiv wird oder sich leert",
     active_state_entity_warning: "⚠️ Funktioniert nur, wenn der Browser-Tab mit diesem Dashboard geöffnet ist (z.B. festes Wandtablet). Wenn der Tab geschlossen wird, wird der Boolean nicht aktualisiert.",
@@ -2927,7 +2931,7 @@ const ET = {
     section_cycling: "Cyclus & Animatie",
     section_snooze: "Sluimer 💤",
     section_history: "Geschiedenis",
-    section_automation: "Automatisering",
+    section_automation: "Entiteitswaarde instellen",
     active_state_entity: "Actieve status entiteit",
     active_state_entity_help: "Schrijft on/off naar een input_boolean wanneer deze melding actief wordt of verdwijnt",
     active_state_entity_warning: "⚠️ Werkt alleen als het browsertabblad met dit dashboard open is (bijv. vaste tablet). Als het tabblad gesloten is, wordt de boolean niet bijgewerkt.",
@@ -3300,7 +3304,7 @@ const ET = {
     section_cycling: "Chu kỳ & Hoạt ảnh",
     section_snooze: "Tạm hoãn 💤",
     section_history: "Lịch sử",
-    section_automation: "Tự động hóa",
+    section_automation: "Đặt giá trị thực thể",
     active_state_entity: "Thực thể trạng thái hoạt động",
     active_state_entity_help: "Ghi on/off vào input_boolean khi cảnh báo hoạt động hoặc xóa",
     active_state_entity_warning: "⚠️ Chỉ hoạt động khi tab trình duyệt với dashboard này đang mở (vd. máy tính bảng cố định). Nếu tab bị đóng, boolean sẽ không được cập nhật.",
@@ -3673,7 +3677,7 @@ const ET = {
     section_cycling: "Цикл и анимация",
     section_snooze: "Отложить 💤",
     section_history: "История",
-    section_automation: "Автоматизация",
+    section_automation: "Установить значение объекта",
     active_state_entity: "Объект активного состояния",
     active_state_entity_help: "Записывает on/off в input_boolean при активации или сбросе оповещений",
     active_state_entity_warning: "⚠️ Работает только пока вкладка браузера с этой панелью открыта (напр. настенный планшет). Если вкладка закрыта, булевый объект не обновляется.",
@@ -4046,7 +4050,7 @@ const ET = {
     section_cycling: "Rotation og animation",
     section_snooze: "Slumre 💤",
     section_history: "Historik",
-    section_automation: "Automatisering",
+    section_automation: "Indstil entitetsværdi",
     active_state_entity: "Aktiv tilstandsenhed",
     active_state_entity_help: "Skriver on/off til en input_boolean, når advarsler aktiveres eller ryddes",
     active_state_entity_warning: "⚠️ Virker kun, mens browser-fanen med dette dashboard er åben (f.eks. fast tablet). Hvis fanen lukkes, opdateres boolean ikke.",
@@ -4419,7 +4423,7 @@ const ET = {
     section_cycling: "Rotace & animace",
     section_snooze: "Odložit 💤",
     section_history: "Historie",
-    section_automation: "Automatizace",
+    section_automation: "Nastavit hodnotu entity",
     active_state_entity: "Entita aktivního stavu",
     active_state_entity_help: "Zapíše on/off do input_boolean, když se upozornění aktivují nebo vymažou",
     active_state_entity_warning: "⚠️ Funguje pouze pokud je záložka prohlížeče s tímto dashboardem otevřená (např. pevný tablet). Pokud je záložka zavřená, boolean se neaktualizuje.",
@@ -4796,7 +4800,7 @@ const ET = {
     section_cycling: "Ciclo & Animação",
     section_snooze: "Silenciar 💤",
     section_history: "Histórico",
-    section_automation: "Automação",
+    section_automation: "Definir valor da entidade",
     active_state_entity: "Entidade de estado ativo",
     active_state_entity_help: "Escreve on/off num input_boolean quando os alertas ficam ativos ou se limpam",
     active_state_entity_warning: "⚠️ Funciona apenas enquanto a aba do navegador com este dashboard estiver aberta (ex. tablet fixo). Se a aba for fechada, o boolean não é atualizado.",
@@ -5169,7 +5173,7 @@ const ET = {
     section_cycling: "Ciclo y Animación",
     section_snooze: "Posponer 💤",
     section_history: "Historial",
-    section_automation: "Automatización",
+    section_automation: "Establecer valor de entidad",
     active_state_entity: "Entidad de estado activo",
     active_state_entity_help: "Escribe on/off en un input_boolean cuando las alertas se activan o se borran",
     active_state_entity_warning: "⚠️ Solo funciona mientras la pestaña del navegador con este dashboard esté abierta (p.ej. tablet fija). Si se cierra, el booleano no se actualiza.",
@@ -5542,7 +5546,7 @@ const ET = {
     section_cycling: "Döngü & Animasyon",
     section_snooze: "Erteleme 💤",
     section_history: "Geçmiş",
-    section_automation: "Otomasyon",
+    section_automation: "Varlık değerini ayarla",
     active_state_entity: "Aktif durum varlığı",
     active_state_entity_help: "Uyarılar aktif olduğunda veya temizlendiğinde input_boolean'a on/off yazar",
     active_state_entity_warning: "⚠️ Yalnızca bu dashboard'un bulunduğu tarayıcı sekmesi açıkken çalışır (örn. sabit tablet). Sekme kapatılırsa boolean güncellenmez.",
@@ -6292,8 +6296,10 @@ class AlertTickerCardEditor extends LitElement {
       case "message": {
         const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
         const msgChanged = !!alert.message && alert.message !== dflt && !(mode === "rs_notify" && alert.message === "{title}");
-        return msgChanged || any(["icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "badge_label", "color", "history_message", "show_badge"]);
+        return msgChanged || any(["badge_label", "history_message", "show_badge"]);
       }
+      case "appearance": return any(["icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "color", "show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
+      case "actions": return ["tap_action", "double_tap_action", "hold_action", "snooze_action"].some((k) => this._actionSet(alert[k]));
       case "secondary": return any(["secondary_entity", "secondary_attribute", "secondary_text", "show_secondary_name", "secondary_value_align"]);
       case "options": return any(["persistent", "overlay", "disable_animation", "snooze_duration"]);
       case "sound": return !!alert.sound;
@@ -7596,22 +7602,6 @@ class AlertTickerCardEditor extends LitElement {
             <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._setAllSections(false); }}">${this._t("sections_collapse_all")}</a>
           </div>
 
-                <!-- ── TEMA + PRIORITÀ (in cima per anteprima immediata) ─── -->
-                <div class="theme-priority-row">
-                  <div class="theme-priority-theme">
-                    ${this._renderThemeSelect(
-                      "alert_theme",
-                      alert.theme || this._pickDefaultTheme(alert.entity),
-                      (v) => this._alertThemeChanged(v, index),
-                      false,
-                      this._isTimerLike(alert.entity) || (alert.entity_filter || "").startsWith("timer.")
-                    )}
-                  </div>
-                </div>
-                ${this._isTimerLike(alert.entity) ? html`
-                  <div class="helper-text">${this._t("timer_placeholder_hint")}</div>
-                ` : ""}
-
                 <!-- ── NOME / ETICHETTA (editor only) ───────────────────── -->
                 <ha-input
                   .label="${this._t("alert_name")}"
@@ -7657,31 +7647,6 @@ class AlertTickerCardEditor extends LitElement {
                   <button class="rs-btn rs-btn--small" @click="${() => this._convertAlertToRuleSet(index)}">🧩 ${this._t("alert_convert_to_rule_set")}</button>
                 ` : ""}
 
-                <!-- show_filter_name / show_filter_state toggles -->
-                ${(() => { const m = this._getAlertMode(index, alert); return (m === "rs_entity" || m === "rs_notify" || (m === "filter" && (alert.entity_filter || alert.device_class))); })() ? html`
-                  <ha-formfield .label="${this._t(this._getAlertMode(index, alert) === "rs_notify" ? "show_notification_text" : "show_filter_name")}">
-                    <ha-switch
-                      .checked="${alert.show_filter_name !== false}"
-                      @change="${(e) => this._updateAlert(index, { show_filter_name: e.target.checked ? undefined : false })}"
-                    ></ha-switch>
-                  </ha-formfield>
-                  ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
-                  <ha-formfield .label="${this._t("show_filter_state")}">
-                    <ha-switch
-                      .checked="${!!alert.show_filter_state}"
-                      @change="${(e) => this._updateAlert(index, { show_filter_state: e.target.checked ? true : undefined })}"
-                    ></ha-switch>
-                  </ha-formfield>` : ""}
-                  ${alert.theme === "battery" ? html`
-                    <ha-formfield .label="${this._t("battery_trim_name")}">
-                      <ha-switch
-                        .checked="${!!alert.battery_trim_name}"
-                        @change="${(e) => this._updateAlert(index, { battery_trim_name: e.target.checked ? true : undefined })}"
-                      ></ha-switch>
-                    </ha-formfield>
-                  ` : ""}
-                ` : ""}
-
                 <!-- ── 5. OPZIONI ─────────────────────────────────────────── -->
                 <div class="section-divider" data-sec="options">⚙️ ${this._t("alert_options_section")}</div>
 
@@ -7689,10 +7654,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("persistent")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.persistent}"
                       @change="${(e) => this._updateAlert(index, { persistent: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                 </div>
 
@@ -7701,10 +7666,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_overlay")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${alert.overlay !== false}"
                       @change="${(e) => this._updateAlert(index, { overlay: e.target.checked ? undefined : false })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("alert_overlay_help")}</div>
                 </div>
@@ -7713,10 +7678,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("disable_animation")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.disable_animation}"
                       @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
                 </div>
@@ -7744,15 +7709,178 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="helper-text">${this._t("snooze_duration_help")}</div>
                 `}
 
+                <!-- ── APPEARANCE ───────────────────────────────────────── -->
+                <div class="section-divider" data-sec="appearance">🎨 ${this._t("appearance_section")}</div>
+                <!-- ── TEMA + PRIORITÀ (in cima per anteprima immediata) ─── -->
+                <div class="theme-priority-row">
+                  <div class="theme-priority-theme">
+                    ${this._renderThemeSelect(
+                      "alert_theme",
+                      alert.theme || this._pickDefaultTheme(alert.entity),
+                      (v) => this._alertThemeChanged(v, index),
+                      false,
+                      this._isTimerLike(alert.entity) || (alert.entity_filter || "").startsWith("timer.")
+                    )}
+                  </div>
+                </div>
+                ${this._isTimerLike(alert.entity) ? html`
+                  <div class="helper-text">${this._t("timer_placeholder_hint")}</div>
+                ` : ""}
+
+                <!-- Icon override -->
+                <div>
+                  <ha-formfield .label="${this._t("use_ha_icon")}">
+                    <ha-checkbox
+                      .checked="${!!alert.use_ha_icon}"
+                      @change="${(e) => this._alertHaIconToggled(e.target.checked, index)}"
+                    ></ha-checkbox>
+                  </ha-formfield>
+                  <ha-formfield .label="${this._t("use_entity_picture")}">
+                    <ha-checkbox
+                      .checked="${!!alert.use_entity_picture}"
+                      @change="${(e) => this._updateAlert(index, { use_entity_picture: e.target.checked || undefined })}"
+                    ></ha-checkbox>
+                  </ha-formfield>
+                  <ha-input
+                    .label="${this._t("icon_image")}"
+                    .value="${alert.icon_image || ""}"
+                    placeholder="/local/immagini/icona.png"
+                    @change="${(e) => this._updateAlert(index, { icon_image: e.target.value.trim() || undefined })}"
+                  ></ha-input>
+                  <div class="helper-text">${this._t("icon_image_help")}</div>
+                  ${(alert.icon_image || alert.use_entity_picture) ? html`
+                    <ha-input
+                      .label="${this._t("icon_size")}"
+                      .value="${alert.icon_size || ""}"
+                      placeholder="2rem"
+                      @change="${(e) => {
+                        const v = e.target.value.trim() || undefined;
+                        this._updateAlert(index, { icon_size: v });
+                      }}"
+                    ></ha-input>
+                    <div class="helper-text">${this._t("icon_size_help")}</div>
+                  ` : ""}
+                  ${alert.use_ha_icon ? html`
+                      <ha-icon-picker
+                        .label="${this._t("alert_icon")}"
+                        .value="${alert.icon || ""}"
+                        @value-changed="${(e) => this._alertIconChanged(e.detail.value, index)}"
+                      ></ha-icon-picker>
+                      ${(() => {
+                        if (alert.icon) return "";
+                        const stateObj = this._hass?.states?.[alert.entity];
+                        if (!stateObj) return "";
+                        return html`<div class="auto-icon-preview">
+                          <ha-state-icon .hass="${this._hass}" .stateObj="${stateObj}"></ha-state-icon>
+                          <span>${this._t("auto_icon_preview")}</span>
+                        </div>`;
+                      })()}
+                      <div class="icon-color-row">
+                        <input
+                          type="color"
+                          class="icon-color-swatch"
+                          .value="${this._cssColorToHex(alert.icon_color)}"
+                          @input="${(e) => this._updateAlert(index, { icon_color: e.target.value || undefined })}"
+                          title="${this._t("icon_color")}"
+                        />
+                        <ha-input
+                          .label="${this._t("icon_color")}"
+                          .value="${alert.icon_color || ""}"
+                          placeholder="inherit"
+                          @change="${(e) => {
+                            const v = e.target.value.trim() || undefined;
+                            this._updateAlert(index, { icon_color: v });
+                          }}"
+                        ></ha-input>
+                      </div>
+                      <div class="helper-text">${this._t("icon_color_help")}</div>
+                      <ha-input
+                        .label="${this._t("icon_size")}"
+                        .value="${alert.icon_size || ""}"
+                        placeholder="1.6em"
+                        @change="${(e) => {
+                          const v = e.target.value.trim() || undefined;
+                          this._updateAlert(index, { icon_size: v });
+                        }}"
+                      ></ha-input>
+                      <div class="helper-text">${this._t("icon_size_help")}</div>
+                      <div class="helper-text">${this._t("alert_icon_help")}</div>
+                  ` : ""}
+                  <div class="icon-color-row">
+                    <input
+                      type="color"
+                      class="icon-color-swatch"
+                      .value="${this._cssColorToHex(alert.color)}"
+                      @input="${(e) => this._updateAlert(index, { color: e.target.value || undefined })}"
+                      title="${this._t("accent_color")}"
+                    />
+                    <ha-input
+                      .label="${this._t("accent_color")}"
+                      .value="${alert.color || ""}"
+                      placeholder="inherit"
+                      @change="${(e) => {
+                        const v = e.target.value.trim() || undefined;
+                        this._updateAlert(index, { color: v });
+                      }}"
+                    ></ha-input>
+                  </div>
+                  <div class="helper-text">${this._t("accent_color_help")}</div>
+                </div>
+
+
+                <!-- Line under the message (multi-entity alerts) -->
+                ${this._getAlertMode(index, alert) !== "entity" ? html`
+                  <div class="atc-check-row">
+                    <ha-formfield .label="${this._t(this._getAlertMode(index, alert) === "rs_notify" ? "show_notification_text" : "show_filter_name")}">
+                      <ha-checkbox .checked="${alert.show_filter_name !== false}"
+                        @change="${(e) => this._updateAlert(index, { show_filter_name: e.target.checked ? undefined : false })}"></ha-checkbox>
+                    </ha-formfield>
+                    ${this._getAlertMode(index, alert) !== "rs_notify" ? html`
+                    <ha-formfield .label="${this._t("show_filter_state")}">
+                      <ha-checkbox .checked="${!!alert.show_filter_state}"
+                        @change="${(e) => this._updateAlert(index, { show_filter_state: e.target.checked ? true : undefined })}"></ha-checkbox>
+                    </ha-formfield>` : ""}
+                    ${alert.theme === "battery" ? html`
+                    <ha-formfield .label="${this._t("battery_trim_name")}">
+                      <ha-checkbox .checked="${!!alert.battery_trim_name}"
+                        @change="${(e) => this._updateAlert(index, { battery_trim_name: e.target.checked ? true : undefined })}"></ha-checkbox>
+                    </ha-formfield>` : ""}
+                  </div>
+                  <div class="helper-text">${this._t(this._getAlertMode(index, alert) === "rs_notify" ? "show_notification_text_help" : "show_filter_name_help")}</div>
+                ` : ""}
+
+                <!-- Custom card (replaces the alert's look) -->
+                <ha-formfield .label="${this._t("card_override_section")}">
+                  <ha-checkbox .checked="${!!alert.card || !!this._cardOverrideOn?.has(index)}"
+                    @change="${(e) => {
+                      const n = new Set(this._cardOverrideOn || []);
+                      if (e.target.checked) n.add(index); else n.delete(index);
+                      this._cardOverrideOn = n;
+                      if (!e.target.checked) this._updateAlert(index, { card: undefined }); else this.requestUpdate();
+                    }}"></ha-checkbox>
+                </ha-formfield>
+                <div class="helper-text">${this._t("card_override_help")}</div>
+                ${alert.card || this._cardOverrideOn?.has(index) ? html`
+                <ha-yaml-editor
+                  .label="${this._t("card_override_section")}"
+                  .value="${alert.card || {}}"
+                  @value-changed="${(e) => {
+                    const v = e.detail.value;
+                    this._updateAlert(index, {
+                      card: (v && typeof v === 'object' && Object.keys(v).length) ? v : undefined
+                    });
+                  }}"
+                ></ha-yaml-editor>` : ""}
+
                 <!-- ── MUSIC PLAYER OPTIONS ──────────────────────────────── -->
                 ${alert.theme === 'music' ? html`
                   <div class="section-divider" data-sec="music">🎵 ${this._t("music_player_controls")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_player_controls")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${!!alert.show_player_controls}"
                         @change="${(e) => this._updateAlert(index, { show_player_controls: e.target.checked || undefined })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                     <div class="helper-text">${this._t("music_player_controls_help")}</div>
                   </div>
@@ -7785,66 +7913,66 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="section-divider" data-sec="music_compact">${this._t("music_compact_layout")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_compact_layout")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${!!alert.music_compact_layout}"
                         @change="${(e) => this._updateAlert(index, { music_compact_layout: e.target.checked || undefined })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                     ${alert.music_compact_layout ? html`
                     <ha-formfield .label="${this._t("music_compact_show_badge")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${alert.music_compact_show_badge !== false}"
                         @change="${(e) => this._updateAlert(index, { music_compact_show_badge: e.target.checked ? undefined : false })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>` : ""}
                   </div>
                   <div class="section-divider" data-sec="music_controls">${this._t("music_player_controls")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_art")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${alert.music_show_art !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_art: e.target.checked ? undefined : false })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                   </div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_title")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${alert.music_show_title !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_title: e.target.checked ? undefined : false })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                   </div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_artist")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${alert.music_show_artist !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_artist: e.target.checked ? undefined : false })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                   </div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_controls")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${alert.music_show_controls !== false}"
                         @change="${(e) => this._updateAlert(index, { music_show_controls: e.target.checked ? undefined : false })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                   </div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_power")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${!!alert.music_show_power}"
                         @change="${(e) => this._updateAlert(index, { music_show_power: e.target.checked || undefined })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                   </div>
                   <div>
                     <ha-formfield .label="${this._t("music_show_player_picker")}">
-                      <ha-switch
+                      <ha-checkbox
                         .checked="${!!alert.music_show_player_picker}"
                         @change="${(e) => this._updateAlert(index, { music_show_player_picker: e.target.checked || undefined })}"
-                      ></ha-switch>
+                      ></ha-checkbox>
                     </ha-formfield>
                   </div>
                 ` : ""}
@@ -7856,10 +7984,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("group")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.group}"
                       @change="${(e) => this._updateAlert(index, { group: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                 </div>
                 ${alert.group ? html`
@@ -7915,10 +8043,10 @@ class AlertTickerCardEditor extends LitElement {
                 <!-- on_change toggle (rule-set alerts; single-entity alerts pick "changes" in the condition) -->
                 <div>
                   <ha-formfield .label="${this._t("on_change")}">
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.on_change}"
                       @change="${(e) => this._updateAlert(index, { on_change: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </ha-formfield>
                   <div class="helper-text">${this._t("on_change_help")}</div>
                 </div>
@@ -8031,113 +8159,13 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="helper-text">${this._getAlertMode(index, alert) === "rs_notify" ? `💬 ${this._t("notify_placeholders_help")}` : this._t("alert_message_help")}</div>
 
 
-                <!-- Icon override -->
-                <div>
-                  <ha-formfield .label="${this._t("use_ha_icon")}">
-                    <ha-switch
-                      .checked="${!!alert.use_ha_icon}"
-                      @change="${(e) => this._alertHaIconToggled(e.target.checked, index)}"
-                    ></ha-switch>
-                  </ha-formfield>
-                  <ha-formfield .label="${this._t("use_entity_picture")}">
-                    <ha-switch
-                      .checked="${!!alert.use_entity_picture}"
-                      @change="${(e) => this._updateAlert(index, { use_entity_picture: e.target.checked || undefined })}"
-                    ></ha-switch>
-                  </ha-formfield>
-                  <ha-input
-                    .label="${this._t("icon_image")}"
-                    .value="${alert.icon_image || ""}"
-                    placeholder="/local/immagini/icona.png"
-                    @change="${(e) => this._updateAlert(index, { icon_image: e.target.value.trim() || undefined })}"
-                  ></ha-input>
-                  <div class="helper-text">${this._t("icon_image_help")}</div>
-                  ${(alert.icon_image || alert.use_entity_picture) ? html`
-                    <ha-input
-                      .label="${this._t("icon_size")}"
-                      .value="${alert.icon_size || ""}"
-                      placeholder="2rem"
-                      @change="${(e) => {
-                        const v = e.target.value.trim() || undefined;
-                        this._updateAlert(index, { icon_size: v });
-                      }}"
-                    ></ha-input>
-                    <div class="helper-text">${this._t("icon_size_help")}</div>
-                  ` : ""}
-                  ${alert.use_ha_icon ? html`
-                      <ha-icon-picker
-                        .label="${this._t("alert_icon")}"
-                        .value="${alert.icon || ""}"
-                        @value-changed="${(e) => this._alertIconChanged(e.detail.value, index)}"
-                      ></ha-icon-picker>
-                      ${(() => {
-                        if (alert.icon) return "";
-                        const stateObj = this._hass?.states?.[alert.entity];
-                        if (!stateObj) return "";
-                        return html`<div class="auto-icon-preview">
-                          <ha-state-icon .hass="${this._hass}" .stateObj="${stateObj}"></ha-state-icon>
-                          <span>${this._t("auto_icon_preview")}</span>
-                        </div>`;
-                      })()}
-                      <div class="icon-color-row">
-                        <input
-                          type="color"
-                          class="icon-color-swatch"
-                          .value="${this._cssColorToHex(alert.icon_color)}"
-                          @input="${(e) => this._updateAlert(index, { icon_color: e.target.value || undefined })}"
-                          title="${this._t("icon_color")}"
-                        />
-                        <ha-input
-                          .label="${this._t("icon_color")}"
-                          .value="${alert.icon_color || ""}"
-                          placeholder="inherit"
-                          @change="${(e) => {
-                            const v = e.target.value.trim() || undefined;
-                            this._updateAlert(index, { icon_color: v });
-                          }}"
-                        ></ha-input>
-                      </div>
-                      <div class="helper-text">${this._t("icon_color_help")}</div>
-                      <ha-input
-                        .label="${this._t("icon_size")}"
-                        .value="${alert.icon_size || ""}"
-                        placeholder="1.6em"
-                        @change="${(e) => {
-                          const v = e.target.value.trim() || undefined;
-                          this._updateAlert(index, { icon_size: v });
-                        }}"
-                      ></ha-input>
-                      <div class="helper-text">${this._t("icon_size_help")}</div>
-                      <div class="helper-text">${this._t("alert_icon_help")}</div>
-                  ` : ""}
-                  <div class="icon-color-row">
-                    <input
-                      type="color"
-                      class="icon-color-swatch"
-                      .value="${this._cssColorToHex(alert.color)}"
-                      @input="${(e) => this._updateAlert(index, { color: e.target.value || undefined })}"
-                      title="${this._t("accent_color")}"
-                    />
-                    <ha-input
-                      .label="${this._t("accent_color")}"
-                      .value="${alert.color || ""}"
-                      placeholder="inherit"
-                      @change="${(e) => {
-                        const v = e.target.value.trim() || undefined;
-                        this._updateAlert(index, { color: v });
-                      }}"
-                    ></ha-input>
-                  </div>
-                  <div class="helper-text">${this._t("accent_color_help")}</div>
-                </div>
-
                 <!-- Badge -->
                 <div>
                   <ha-formfield .label="${this._t("show_badge")}">
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${alert.show_badge !== false}"
                       @change="${(e) => this._updateAlert(index, { show_badge: e.target.checked ? undefined : false })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </ha-formfield>
                   ${alert.show_badge !== false ? html`
                     <ha-input
@@ -8171,10 +8199,10 @@ class AlertTickerCardEditor extends LitElement {
                     @change="${(e) => this._updateAlert(index, { secondary_attribute: e.target.value.trim() || undefined })}"
                   ></ha-input>
                   <ha-formfield .label="${this._t("show_secondary_name")}">
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.show_secondary_name}"
                       @change="${(e) => this._updateAlert(index, { show_secondary_name: e.target.checked ? true : undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </ha-formfield>
                 ` : ""}
 
@@ -8212,10 +8240,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_sound")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.sound}"
                       @change="${(e) => this._updateAlert(index, { sound: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("sound_enabled_help")}</div>
                 </div>
@@ -8236,10 +8264,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_tts")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.tts}"
                       @change="${(e) => this._updateAlert(index, { tts: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("alert_tts_help")}</div>
                   ${alert.tts ? html`
@@ -8308,10 +8336,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_push_notify")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.push_notify}"
                       @change="${(e) => this._updateAlert(index, { push_notify: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("alert_push_notify_help")}</div>
                   ${alert.push_notify ? html`
@@ -8381,20 +8409,20 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_camera_live")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.camera_live}"
                       @change="${(e) => this._updateAlert(index, { camera_live: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("alert_camera_live_help")}</div>
                 </div>
                 <div class="form-row">
                   <div class="form-row-inline">
                     <span>${this._t("alert_camera_in_card")}</span>
-                    <ha-switch
+                    <ha-checkbox
                       .checked="${!!alert.camera_in_card}"
                       @change="${(e) => this._updateAlert(index, { camera_in_card: e.target.checked || undefined })}"
-                    ></ha-switch>
+                    ></ha-checkbox>
                   </div>
                   <div class="helper-text">${this._t("alert_camera_in_card_help")}</div>
                 </div>
@@ -8473,10 +8501,11 @@ class AlertTickerCardEditor extends LitElement {
                 })()}
 
                 <!-- Tap action / Hold action / Snooze action -->
-                ${this._renderActionConfig(alert, index, "tap_action",        this._t("tap_action_section"))}
-                ${this._renderActionConfig(alert, index, "double_tap_action", this._t("double_tap_action_section"))}
-                ${this._renderActionConfig(alert, index, "hold_action",       this._t("hold_action_section"))}
-                ${this._renderActionConfig(alert, index, "snooze_action", this._t("snooze_action_section"))}
+                <div class="section-divider" data-sec="actions">👆 ${this._t("tap_actions_section")}</div>
+                ${this._renderActionConfig(alert, index, "tap_action",        this._t("tap_action_section"), { nested: true })}
+                ${this._renderActionConfig(alert, index, "double_tap_action", this._t("double_tap_action_section"), { nested: true })}
+                ${this._renderActionConfig(alert, index, "hold_action",       this._t("hold_action_section"), { nested: true })}
+                ${this._renderActionConfig(alert, index, "snooze_action", this._t("snooze_action_section"), { nested: true })}
 
                 <!-- ── AUTOMATION ───────────────────────────────────────── -->
                 <div class="section-divider" data-sec="automation">🔗 ${this._t("section_automation")}</div>
@@ -8493,19 +8522,6 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text" style="color:var(--warning-color,#f4a835);margin-top:4px">${this._t("active_state_entity_warning")}</div>
                 </div>
 
-                <!-- ── CARD OVERRIDE ────────────────────────────────────── -->
-                <div class="section-divider" data-sec="card_override">🃏 ${this._t("card_override_section")}</div>
-                <div class="helper-text">${this._t("card_override_help")}</div>
-                <ha-yaml-editor
-                  .label="${this._t("card_override_section")}"
-                  .value="${alert.card || {}}"
-                  @value-changed="${(e) => {
-                    const v = e.detail.value;
-                    this._updateAlert(index, {
-                      card: (v && typeof v === 'object' && Object.keys(v).length) ? v : undefined
-                    });
-                  }}"
-                ></ha-yaml-editor>
 
         </div>
       </div>
@@ -10212,10 +10228,10 @@ class AlertTickerCardEditor extends LitElement {
         <div class="form-row">
           <div class="form-row-inline">
             <span>${this._t("action_start_listening")}</span>
-            <ha-switch
+            <ha-checkbox
               .checked="${cfg.start_listening ?? false}"
               @change="${(e) => this._setActionConfig(index, key, "start_listening", e.target.checked)}"
-            ></ha-switch>
+            ></ha-checkbox>
           </div>
         </div>
       ` : ""}
@@ -10223,10 +10239,10 @@ class AlertTickerCardEditor extends LitElement {
         <div class="form-row" style="margin-top:10px">
           <div class="form-row-inline">
             <span>${this._t("action_confirmation")}</span>
-            <ha-switch
+            <ha-checkbox
               .checked="${!!cfg.confirmation}"
               @change="${(e) => this._setActionConfirmation(index, key, e.target.checked)}"
-            ></ha-switch>
+            ></ha-checkbox>
           </div>
           <div class="helper-text">${this._t("action_confirmation_help")}</div>
           ${cfg.confirmation ? html`
@@ -11481,6 +11497,19 @@ class AlertTickerCardEditor extends LitElement {
       .alert-form .atc-sec-body {
         margin-left: 8px;
         margin-right: 8px;
+      }
+      .atc-check-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        align-items: center;
+      }
+      /* checkbox rows: checkbox first, label beside it */
+      .alert-form .form-row-inline:has(> ha-checkbox) {
+        flex-direction: row-reverse;
+        justify-content: flex-end;
+        gap: 4px;
+        padding: 2px 0;
       }
       .atc-subpanel {
         border: 1px solid var(--divider-color, #e0e0e0);
