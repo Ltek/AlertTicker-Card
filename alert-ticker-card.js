@@ -86,6 +86,7 @@ const THEME_META = {
   lightning:    { icon: "🌩️", category: "critical", color: "#d500f9", bg: "linear-gradient(135deg,#0d001a,#1a0033)" },
   nuclear:      { icon: "☢️", category: "critical", color: "#ffd54f", bg: "linear-gradient(135deg,#1a1000,#2e1c00)" },
   flood:        { icon: "🌊", category: "critical", color: "#40c4ff", bg: "linear-gradient(135deg,#000d1a,#00264d)" },
+  fluid:        { icon: "🌊", category: "critical", color: "#40c4ff", bg: "linear-gradient(135deg,#000d1a,#00264d)" },
   motion:       { icon: "👁️", category: "critical", color: "#00e676", bg: "linear-gradient(135deg,#001a00,#003300)" },
   intruder:     { icon: "🚷", category: "critical", color: "#ff1744", bg: "linear-gradient(135deg,#0d0000,#1a0000)" },
   toxic:        { icon: "☠️", category: "critical", color: "#76ff03", bg: "linear-gradient(135deg,#0a0f00,#141f00)" },
@@ -6719,6 +6720,36 @@ class AlertTickerCard extends LitElement {
     `;
   }
 
+  /**
+   * FLUID — Flood's colors with a fluid water level: two wave layers moving in
+   * opposite directions, a slow swell and rising bubbles (after the look of
+   * swingerman/lovelace-fluid-level-background-card, MIT; redrawn in CSS/SVG).
+   * The water fills to the entity's value when it is a percentage, else ~half.
+   */
+  _renderFluid(alert) {
+    if (!alert) return html``;
+    const icon = this._getIcon(alert);
+    const label = this._getCategoryLabel(alert);
+    const st = alert.entity && this._hass?.states?.[alert.entity];
+    const pct = st && st.attributes?.unit_of_measurement === "%" ? parseFloat(alert.attribute ? st.attributes[alert.attribute] : st.state) : NaN;
+    const level = Number.isFinite(pct) ? Math.max(8, Math.min(92, pct)) : 48;
+    return html`
+      <div class="at-fluid">
+        <div class="fd-water" style="--fd-level:${level}%">
+          <div class="fd-wave fd-wave--back"></div>
+          <div class="fd-wave fd-wave--front"></div>
+          <div class="fd-body"><span class="fd-bubble"></span><span class="fd-bubble"></span><span class="fd-bubble"></span><span class="fd-bubble"></span><span class="fd-bubble"></span><span class="fd-bubble"></span></div>
+        </div>
+        <div class="fd-icon">${icon}</div>
+        <div class="fd-content">
+          <div class="fd-badge">${label}</div>
+          <div class="fd-title">${this._resolveMessage(alert)}</div>${this._renderSecondaryValue(alert)}
+        </div>
+        <div class="fd-right">${this._renderCounter()}</div>
+      </div>
+    `;
+  }
+
   /** MOTION — night-vision green eye scan, critical */
   _renderMotion(alert) {
     if (!alert) return html``;
@@ -7857,6 +7888,7 @@ class AlertTickerCard extends LitElement {
       case "heartbeat":    return this._renderHeartbeat(alert);
       case "retro":        return this._renderRetro(alert);
       case "flood":        return this._renderFlood(alert);
+      case "fluid":        return this._renderFluid(alert);
       case "motion":       return this._renderMotion(alert);
       case "intruder":     return this._renderIntruder(alert);
       case "toxic":        return this._renderToxic(alert);
@@ -9411,7 +9443,7 @@ class AlertTickerCard extends LitElement {
       .su-badge,.ck-badge,.cf-badge,.hb-badge { font-size: 0.72rem; }
       .ne-badge,.gl-badge,.mn-badge,.rt-badge { font-size: 0.72rem; }
       .mx-header { font-size: 0.72rem; }
-      .fl-badge,.mo-badge,.it-badge,.tx-badge { font-size: 0.72rem; }
+      .fl-badge,.fd-badge,.mo-badge,.it-badge,.tx-badge { font-size: 0.72rem; }
       .tp-badge,.bt-badge,.dr-badge { font-size: 0.72rem; }
       .pr-badge,.up-badge { font-size: 0.72rem; }
       .sh-badge,.pw-badge { font-size: 0.72rem; }
@@ -9424,7 +9456,7 @@ class AlertTickerCard extends LitElement {
       .ne-title,.gl-title,.mn-title,.rt-title { font-size: 0.98rem; }
       .mx-msg  { font-size: 0.96rem; }
       .mx-prompt { font-size: 0.88rem; }
-      .fl-title,.mo-title,.it-title,.tx-title { font-size: 1.05rem; }
+      .fl-title,.fd-title,.mo-title,.it-title,.tx-title { font-size: 1.05rem; }
       .tp-title,.bt-title,.dr-title { font-size: 0.98rem; }
       .pr-title,.up-title { font-size: 0.98rem; }
       .sh-title,.pw-title { font-size: 0.98rem; }
@@ -9672,6 +9704,69 @@ class AlertTickerCard extends LitElement {
       .fl-right   { flex-shrink: 0; position: relative; }
       .fl-badge { font-size: 0.65rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #00e5ff; margin-bottom: 3px; }
       .fl-title { font-weight: 700; color: #e0f7fa; }
+
+      /* -----------------------------------------------------------------------
+       * FLUID — Flood colors + fluid water level: two opposing wave layers,
+       * swell and rising bubbles
+       * --------------------------------------------------------------------- */
+      .at-fluid {
+        display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+        background: linear-gradient(180deg, #010b15 0%, #012a4a 100%);
+        border: 2px solid #0096c7; border-radius: 12px;
+        position: relative; overflow: hidden;
+        animation: flGlow 2s ease-in-out infinite;
+      }
+      .fd-water {
+        position: absolute; left: 0; right: 0; bottom: 0; height: var(--fd-level, 48%);
+        pointer-events: none; transition: height 1.2s ease;
+        animation: fdSwell 4s ease-in-out infinite;
+      }
+      @keyframes fdSwell { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+      .fd-wave {
+        position: absolute; left: 0; right: 0; top: -11px; height: 12px;
+        background-repeat: repeat-x; background-size: 200px 100%;
+      }
+      .fd-wave--back {
+        top: -14px; height: 15px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20' preserveAspectRatio='none'%3E%3Cpath d='M0 10 Q50 0 100 10 T200 10 V20 H0Z' fill='rgba(0,119,182,0.55)'/%3E%3C/svg%3E");
+        animation: fdWaveR 5.5s linear infinite;
+      }
+      .fd-wave--front {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20' preserveAspectRatio='none'%3E%3Cpath d='M0 10 Q50 0 100 10 T200 10 V20 H0Z' fill='rgba(0,172,212,0.5)'/%3E%3C/svg%3E");
+        animation: fdWaveL 3.4s linear infinite;
+      }
+      @keyframes fdWaveL { from { background-position-x: 0; } to { background-position-x: -200px; } }
+      @keyframes fdWaveR { from { background-position-x: 0; } to { background-position-x: 200px; } }
+      .fd-body {
+        position: absolute; inset: 0; overflow: hidden;
+        background: linear-gradient(180deg, rgba(0,172,212,0.5) 0%, rgba(0,80,130,0.65) 100%);
+      }
+      .fd-bubble {
+        position: absolute; bottom: -8px; width: 6px; height: 6px; border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.55); opacity: 0;
+        animation: fdBubble 3.8s ease-in infinite;
+      }
+      .fd-bubble:nth-child(1) { left: 12%; animation-delay: 0s; }
+      .fd-bubble:nth-child(2) { left: 27%; width: 4px; height: 4px; animation-delay: 1.3s; animation-duration: 3.1s; }
+      .fd-bubble:nth-child(3) { left: 44%; animation-delay: 2.4s; }
+      .fd-bubble:nth-child(4) { left: 61%; width: 8px; height: 8px; animation-delay: 0.7s; animation-duration: 4.6s; }
+      .fd-bubble:nth-child(5) { left: 78%; width: 4px; height: 4px; animation-delay: 1.9s; }
+      .fd-bubble:nth-child(6) { left: 90%; animation-delay: 3s; animation-duration: 3.4s; }
+      @keyframes fdBubble {
+        0%   { bottom: -8px; opacity: 0; transform: translateX(0); }
+        15%  { opacity: 0.85; }
+        50%  { transform: translateX(3px); }
+        100% { bottom: 92%; opacity: 0; transform: translateX(-2px); }
+      }
+      .fd-icon {
+        font-size: 2.2rem; flex-shrink: 0; position: relative;
+        filter: drop-shadow(0 0 10px #0096c7);
+        animation: flBob 2s ease-in-out infinite;
+      }
+      .fd-content { flex: 1; min-width: 0; position: relative; }
+      .fd-right   { flex-shrink: 0; position: relative; }
+      .fd-badge { font-size: 0.65rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #00e5ff; margin-bottom: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+      .fd-title { font-weight: 700; color: #e0f7fa; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 
       /* -----------------------------------------------------------------------
        * MOTION — night-vision green infrared scan, critical
@@ -12092,6 +12187,7 @@ class AlertTickerCard extends LitElement {
       .atc-ha-theme .at-lightning,
       .atc-ha-theme .at-nuclear,
       .atc-ha-theme .at-flood,
+      .atc-ha-theme .at-fluid,
       .atc-ha-theme .at-motion,
       .atc-ha-theme .at-intruder,
       .atc-ha-theme .at-toxic {
@@ -12103,6 +12199,7 @@ class AlertTickerCard extends LitElement {
       .atc-ha-theme .at-lightning [class$="-badge"],
       .atc-ha-theme .at-nuclear   [class$="-badge"],
       .atc-ha-theme .at-flood     [class$="-badge"],
+      .atc-ha-theme .at-fluid     [class$="-badge"],
       .atc-ha-theme .at-motion    [class$="-badge"],
       .atc-ha-theme .at-intruder  [class$="-badge"],
       .atc-ha-theme .at-toxic     [class$="-badge"] {
@@ -12352,6 +12449,7 @@ class AlertTickerCard extends LitElement {
       .atc-has-accent .at-emergency,  .atc-has-accent .at-alarm,
       .atc-has-accent .at-fire,       .atc-has-accent .at-lightning,
       .atc-has-accent .at-nuclear,    .atc-has-accent .at-flood,
+      .atc-has-accent .at-fluid,
       .atc-has-accent .at-motion,     .atc-has-accent .at-intruder,
       .atc-has-accent .at-toxic,      .atc-has-accent .at-warning,
       .atc-has-accent .at-caution,    .atc-has-accent .at-radar,
@@ -12385,6 +12483,7 @@ class AlertTickerCard extends LitElement {
       .atc-has-accent .at-emergency [class$="-badge"],  .atc-has-accent .at-alarm [class$="-badge"],
       .atc-has-accent .at-fire [class$="-badge"],       .atc-has-accent .at-lightning [class$="-badge"],
       .atc-has-accent .at-nuclear [class$="-badge"],    .atc-has-accent .at-flood [class$="-badge"],
+      .atc-has-accent .at-fluid [class$="-badge"],
       .atc-has-accent .at-motion [class$="-badge"],     .atc-has-accent .at-intruder [class$="-badge"],
       .atc-has-accent .at-toxic [class$="-badge"],      .atc-has-accent .at-warning [class$="-badge"],
       .atc-has-accent .at-caution [class$="-badge"],    .atc-has-accent .at-radar [class$="-badge"],

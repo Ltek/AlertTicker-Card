@@ -551,6 +551,7 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 | `lightning` | 🌩️ | Dark purple card with electric glow and lightning flash |
 | `nuclear` | ☢️ | Dark amber card with slowly rotating radiation symbol and radial glow pulse |
 | `flood` | 🌊 | Deep blue card with animated horizontal water waves |
+| `fluid` | 🌊 | Flood's colors with a fluid water level: two wave layers moving in opposite directions, a gentle swell and rising bubbles. With a `%` entity (e.g. a tank level) the water fills to its value; otherwise about half. Look inspired by [lovelace-fluid-level-background-card](https://github.com/swingerman/lovelace-fluid-level-background-card) (MIT), redrawn in CSS |
 | `motion` | 👁️ | Dark green night-vision infrared scan effect |
 | `intruder` | 🚷 | Black card with red siren flash and rotating warning icon |
 | `toxic` | ☠️ | Black/green card with rising poison bubbles |

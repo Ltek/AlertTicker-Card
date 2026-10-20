@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rule fields `visibility` (hidden in HA) and `sun`.
 - History: keep by number of alerts (up to 5000) or days (up to 5), and choose separately how much the card's 📋 panel shows (up to 500 alerts, or 1 hour – 5 days); a stored-history viewer in the editor.
 - Notification alerts ignore Companion app commands (`clear_notification`, `command_*`, …); `clear_notification` + tag clears the matching alert, and a repeated tag replaces the earlier notification.
+- New theme **`fluid`** ("Flood (fluid)"): Flood's look with a fluid water level — layered waves, swell and bubbles; fills to a `%` entity's value.
 - **All Notifications** template (listed first; the other templates are alphabetical); a **Quick Start** panel on the editor's main screen.
 - Alert editor sections: **Options** (Persistent / Sticky, Show in overlay, snooze duration, trigger on any change), **Appearance** (theme, entity-name line, icon source — theme / emoji / entity's HA icon / custom `mdi:` / entity picture / image —, accent color, animations, custom card), **Condition**, **Alert Grouping** (tap / hold inside), **Tap Actions** (Single Tap, Double Tap, Hold, Snooze), **Set Entity Value**. Checkboxes instead of toggles; a pencil marks sections changed from the defaults.
 - `rules:` as an alias for `groups:` on a rule set (a flat list = all must match); per-rule `enabled: false`; rule-set Export with per-rule match counts for troubleshooting.
