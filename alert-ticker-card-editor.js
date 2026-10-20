@@ -1906,6 +1906,20 @@ const ET = {
     test_mode_desc: "Shows all alerts as active, ignoring conditions. Cycling animation is paused — expand an alert in the editor to preview it instantly on the card.",
     test_mode_warning: "Remember to disable test mode before saving!",
     history_max_events: "History — max events to keep",
+    history_keep_title: "Stored in this browser",
+    history_keep_help: "Every alert that becomes active is recorded here, in this browser only (each browser / tablet has its own history). Keep up to 5000 alerts or 5 days.",
+    history_show_title: "Shown on the card (📋)",
+    history_show_help: "How much of the stored history the card's 📋 panel lists: everything stored, the latest alerts (up to 500), or a time window (1 hour to 5 days).",
+    history_by_count: "Number of alerts",
+    history_by_days: "Number of days",
+    history_by_time: "Time window",
+    history_show_all: "Everything stored",
+    history_n_alerts: "{n} alerts",
+    history_n_days: "{n} day(s)",
+    history_1_hour: "1 hour",
+    history_view: "View stored history ({n})",
+    history_view_empty: "Nothing recorded in this browser yet.",
+    history_view_more: "…and {n} older ones (newest 1000 listed).",
     history_max_events_help: "Automatically records every alert that becomes active. Tap 📋 on the card to view history with date/time. Data is stored in the browser.",
     history: "History",
     history_clear: "Clear",
@@ -6993,19 +7007,7 @@ class AlertTickerCardEditor extends LitElement {
 
       <!-- ── HISTORY ───────────────────────────────────────────────────── -->
       <div class="section-divider">📋 ${this._t("section_history")}</div>
-      <div class="form-row">
-        <div class="native-select-wrap">
-          <label class="native-select-label">${this._t("history_max_events")}</label>
-          <select class="native-select"
-            @change="${(e) => this._fireConfig({ ...this._config, history_max_events: parseInt(e.target.value) })}"
-          >
-            ${[25, 50, 100, 200].map((n) => html`
-              <option value="${n}" ?selected="${(cfg.history_max_events || 50) === n}">${n}</option>
-            `)}
-          </select>
-        </div>
-        <div class="helper-text">${this._t("history_max_events_help")}</div>
-      </div>
+      ${this._renderHistorySettings()}
 
     `;
   }
@@ -7516,6 +7518,69 @@ class AlertTickerCardEditor extends LitElement {
           })}
         </div>` : ""}
       </div>`;
+  }
+
+  /** History: what this browser stores, what the card's 📋 panel shows, and a viewer. */
+  _renderHistorySettings() {
+    const cfg = this._config;
+    const keepMode = cfg.history_keep_mode === "days" ? "days" : "count";
+    const keep = Number(cfg.history_keep ?? cfg.history_max_events) || (keepMode === "days" ? 1 : 50);
+    const showMode = cfg.history_show_mode === "hours" ? "hours" : "count";
+    const show = Number(cfg.history_show) || 0;
+    const KEEP = { count: [25, 50, 100, 200, 300, 400, 500, 1000, 2000, 3000, 4000, 5000], days: [1, 2, 3, 4, 5] };
+    const SHOW = { count: [25, 50, 100, 200, 300, 400, 500], hours: [1, 24, 48, 72, 96, 120] };
+    const set = (ch) => {
+      const next = { ...this._config, ...ch };
+      delete next.history_max_events; // replaced by history_keep
+      Object.keys(ch).forEach((k) => ch[k] === undefined && delete next[k]);
+      this._fireConfig(next);
+    };
+    const label = (mode, v) => mode === "days" ? this._t("history_n_days").replace("{n}", v)
+      : mode === "hours" ? (v === 1 ? this._t("history_1_hour") : this._t("history_n_days").replace("{n}", v / 24))
+      : this._t("history_n_alerts").replace("{n}", v);
+    let stored = [];
+    try { stored = JSON.parse(localStorage.getItem(globalThis.__alertTickerShared?.historyKey?.(cfg) || "") || "[]"); } catch (_) {}
+    const open = !!this._historyViewOpen;
+    const fmt = (ts) => { try { return new Date(ts).toLocaleString(this._lang || undefined); } catch (_) { return String(ts); } };
+    return html`
+      <div class="rs-section-title">${this._t("history_keep_title")}</div>
+      <div class="form-row-2col">
+        <select class="native-select" @change="${(e) => set({ history_keep_mode: e.target.value === "days" ? "days" : undefined, history_keep: e.target.value === "days" ? 1 : 50 })}">
+          <option value="count" ?selected="${keepMode === "count"}">${this._t("history_by_count")}</option>
+          <option value="days" ?selected="${keepMode === "days"}">${this._t("history_by_days")}</option>
+        </select>
+        <select class="native-select" @change="${(e) => set({ history_keep: Number(e.target.value) })}">
+          ${KEEP[keepMode].map((v) => html`<option value="${v}" ?selected="${keep === v}">${label(keepMode, v)}</option>`)}
+        </select>
+      </div>
+      <div class="helper-text">${this._t("history_keep_help")}</div>
+      <div class="rs-section-title">${this._t("history_show_title")}</div>
+      <div class="form-row-2col">
+        <select class="native-select" @change="${(e) => set({ history_show_mode: e.target.value === "hours" ? "hours" : undefined, history_show: e.target.value === "all" ? undefined : (e.target.value === "hours" ? 24 : 50) })}">
+          <option value="all" ?selected="${!show}">${this._t("history_show_all")}</option>
+          <option value="count" ?selected="${show && showMode === "count"}">${this._t("history_by_count")}</option>
+          <option value="hours" ?selected="${show && showMode === "hours"}">${this._t("history_by_time")}</option>
+        </select>
+        ${show ? html`<select class="native-select" @change="${(e) => set({ history_show: Number(e.target.value) })}">
+          ${SHOW[showMode].map((v) => html`<option value="${v}" ?selected="${show === v}">${label(showMode, v)}</option>`)}
+        </select>` : html`<span></span>`}
+      </div>
+      <div class="helper-text">${this._t("history_show_help")}</div>
+      <details class="atc-subpanel" ?open="${open}" @toggle="${(e) => { this._historyViewOpen = e.target.open; this.requestUpdate(); }}">
+        <summary>${this._t("history_view").replace("{n}", stored.length)}</summary>
+        ${open ? html`<div class="atc-subpanel-body">
+          ${stored.length ? html`<div class="filter-entity-list atc-hist-list">
+            ${stored.slice(0, 1000).map((e) => html`<div class="filter-entity-row">
+              <span class="filter-entity-name" title="${e.message}">${e.icon || ""} ${e.message}</span>
+              <span class="filter-entity-id" title="${e.entity || ""}">${e.entityName || e.entity || ""}</span>
+              <span class="filter-entity-state">${e.entityState || ""}</span>
+              <span class="filter-entity-id">${fmt(e.ts)}</span>
+            </div>`)}
+          </div>
+          ${stored.length > 1000 ? html`<div class="helper-text">${this._t("history_view_more").replace("{n}", stored.length - 1000)}</div>` : ""}` : html`<div class="helper-text">${this._t("history_view_empty")}</div>`}
+        </div>` : ""}
+      </details>
+    `;
   }
 
   _renderAlertsTab() {
@@ -11063,6 +11128,9 @@ class AlertTickerCardEditor extends LitElement {
         font-style: italic;
       }
       /* small status lists: name · entity id · state · action icon */
+      .atc-hist-list .filter-entity-row {
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+      }
       .filter-entity-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto 26px;
