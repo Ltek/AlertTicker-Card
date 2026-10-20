@@ -1287,6 +1287,17 @@ function _atcFilterEntities(hass, a, opts = {}) {
 // sends itself (push_notify, TTS via notify) are ignored, so an alert can never
 // re-trigger itself.
 // ---------------------------------------------------------------------------
+/**
+ * Home Assistant Companion app command messages — sent through notify, but they
+ * control the phone instead of showing anything, so they are never notifications.
+ */
+const _ATC_COMPANION_COMMANDS = new Set(["clear_notification", "remove_channel", "request_location_update",
+  "clear_badge", "update_complications", "TTS"]);
+function _atcIsCompanionCommand(message) {
+  const m = String(message ?? "").trim();
+  return _ATC_COMPANION_COMMANDS.has(m) || /^command_[a-z_]+$/.test(m);
+}
+
 const _ATC_NOTIFY = (() => {
   const DEFAULT_RETENTION_S = 3600;
   const MAX_ITEMS = 50;
@@ -1435,6 +1446,25 @@ const _ATC_NOTIFY = (() => {
     const title = str(data.title), message = str(data.message);
     if (_isOwnEcho(svc.replace(/^notify\./, ""), message)) return;
     const now = Date.now();
+    const tag = data.data?.tag != null ? str(data.data.tag) : "";
+    // Companion app commands are instructions to the phone, not notifications (never alerts).
+    // clear_notification + tag takes back an earlier notification: clear it here too.
+    if (_atcIsCompanionCommand(message)) {
+      if (message.trim() === "clear_notification" && tag) {
+        _items = _items.filter((n) => {
+          if (n.tag !== tag) return true;
+          const left = n.dest.filter((x) => !dest.includes(x));
+          if (left.length && left.length < n.dest.length) { n.dest = left; return true; } // cleared on some phones only
+          return false;
+        });
+        _changed();
+      }
+      return;
+    }
+    // A new notification with a tag already shown replaces the old one, like the phone does.
+    if (tag) {
+      _items = _items.filter((n) => !(n.tag === tag && n.ctx !== (ctx.id || null) && n.dest.some((x) => dest.includes(x))));
+    }
     // Same context + text = the same notification reaching another target
     // (a notify group's members, or a repeat over several phones).
     const same = ctx.id && _items.find(n => n.ctx === ctx.id && n.title === title && n.message === message && now - n.at < MERGE_WINDOW_MS);
@@ -1444,7 +1474,7 @@ const _ATC_NOTIFY = (() => {
       _items.push({
         id: `${slug(dest[0].replace(/^notify\./, ""))}_${++_seq}`,
         ctx: ctx.id || null, parent: ctx.parent_id || null,
-        title, message, tag: data.data?.tag != null ? str(data.data.tag) : "",
+        title, message, tag,
         dest, at: now,
       });
     }
@@ -2068,6 +2098,39 @@ function _atcRuleSetDiagnostics(hass, def) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Alert history — stored in this browser (localStorage), per card.
+//   Stored:  history_keep_mode "count" (history_keep alerts, up to 5000) or
+//            "days" (history_keep days, up to 5). Legacy history_max_events = a count.
+//   Shown on the card's 📋 panel: history_show_mode "count" (up to 500) or "hours"
+//            (history_show hours: 1, 24 … 120). Default: everything stored.
+// ---------------------------------------------------------------------------
+function _atcHistoryKey(config) {
+  const ids = (config?.alerts || []).map(a => a?.entity || "").filter(Boolean).sort().join("|");
+  return "atc-history" + (ids ? "-" + ids : "");
+}
+
+function _atcPruneHistory(list, config) {
+  const mode = config?.history_keep_mode === "days" ? "days" : "count";
+  if (mode === "days") {
+    const days = Math.min(5, Math.max(1, Number(config.history_keep) || 1));
+    const cutoff = Date.now() - days * 86400000;
+    return list.filter((e) => e.ts >= cutoff).slice(0, 5000);
+  }
+  const max = Math.min(5000, Math.max(1, Number(config?.history_keep ?? config?.history_max_events) || 50));
+  return list.slice(0, max);
+}
+
+function _atcShownHistory(list, config) {
+  const v = Number(config?.history_show);
+  if (!v) return list;
+  if (config.history_show_mode === "hours") {
+    const cutoff = Date.now() - Math.min(120, v) * 3600000;
+    return list.filter((e) => e.ts >= cutoff);
+  }
+  return list.slice(0, Math.min(500, v));
+}
+
 // The editor is a separate module (loaded on demand by getConfigElement), so it
 // reaches the same matcher through this namespace instead of keeping its own copy —
 // the editor's entity preview then always agrees with what the card shows.
@@ -2075,6 +2138,8 @@ globalThis.__alertTickerShared = Object.freeze({
   notifications: _ATC_NOTIFY,
   legacyFilterDef: _atcLegacyFilterDef,
   migrateConfig: _atcMigrateConfig,
+  historyKey: _atcHistoryKey,
+  isCompanionCommand: _atcIsCompanionCommand,
   possibleEntities: _atcPossibleEntities,
   normRuleSet: _atcNormRuleSet,
   ruleSetDiagnostics: _atcRuleSetDiagnostics,
@@ -5013,19 +5078,14 @@ class AlertTickerCard extends LitElement {
 
   /** Unique localStorage key per card instance, scoped to its entity IDs */
   get _historyKey() {
-    const ids = (this._config?.alerts || [])
-      .map(a => a.entity || "")
-      .filter(Boolean)
-      .sort()
-      .join("|");
-    return "atc-history" + (ids ? "-" + ids : "");
+    return _atcHistoryKey(this._config);
   }
 
   /** Load history from localStorage */
   _loadHistory() {
     try {
       const raw = localStorage.getItem(this._historyKey);
-      if (raw) this._history = JSON.parse(raw);
+      if (raw) this._history = _atcPruneHistory(JSON.parse(raw), this._config);
     } catch (_) { this._history = []; }
   }
 
@@ -5038,7 +5098,6 @@ class AlertTickerCard extends LitElement {
 
   /** Record a new alert event into history */
   _recordHistory(alert) {
-    const max = this._config.history_max_events || 50;
     const es = this._hass && alert.entity ? this._hass.states[alert.entity] : null;
     const entityName  = es ? (es.attributes.friendly_name || alert.entity) : (alert.entity || "");
     const entityState = es ? this._formatStateValue(es, alert.attribute || null) : null;
@@ -5067,7 +5126,7 @@ class AlertTickerCard extends LitElement {
       secondaryState,
     };
     this._history.unshift(entry);
-    if (this._history.length > max) this._history.length = max;
+    this._history = _atcPruneHistory(this._history, this._config);
     this._saveHistory();
 
     // If message contains {{ }}, the WS result may not be cached yet.
@@ -5540,9 +5599,9 @@ class AlertTickerCard extends LitElement {
           </div>
         </div>
         <div class="atc-history-list">
-          ${this._history.length === 0 ? html`
+          ${_atcShownHistory(this._history, this._config).length === 0 ? html`
             <div class="atc-history-empty">${this._t("history_empty")}</div>
-          ` : this._history.map((entry) => html`
+          ` : _atcShownHistory(this._history, this._config).map((entry) => html`
             <div class="atc-history-entry">
               <span class="atc-history-icon">${entry.icon}</span>
               <div class="atc-history-body">

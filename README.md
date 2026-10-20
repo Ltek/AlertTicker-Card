@@ -520,6 +520,8 @@ alerts:
 - **Tap** dismisses the notification (a persistent one is dismissed in Home Assistant). In **test mode** an alert with nothing matching shows a sample notification.
 - In the editor: **Scan automations for notifications** lists which automations and scripts send them (read-only, adapted from [Notification Manager Card](https://github.com/Ltek/notification-manager-card)); **Recent notifications** lists what arrived, with **Use** to build a rule from one.
 
+- **Companion app commands are ignored.** Messages like `clear_notification`, `remove_channel`, `request_location_update`, `clear_badge`, `update_complications`, `TTS` and `command_*` control the phone and show nothing, so they never become alerts. `clear_notification` with a `tag` also clears the matching notification's alert, and a new notification with a tag already shown replaces the old one — the same as on the phone.
+
 > ⚠️ Like TTS and push, this runs in the browser: only notifications that arrive while a dashboard is open are seen. Who sent a notification, and notifications other than the bell, are visible to **admin users only** — Home Assistant restricts those events. A sent notification has no "dismissed" event, so its alert is kept for `notifications_retention` seconds (default 3600).
 
 ---
@@ -1469,7 +1471,8 @@ The tab shows an **ON** badge when overlay mode is active.
 | `vertical` | `boolean` | `false` | Vertical layout — icon on top, message centered below |
 | `text_align` | `string` | `left` | `center` to center message text (useful in wide Panel layouts) |
 | `ha_theme` | `boolean` | `false` | Adapt card colors to the active HA global theme |
-| `history_max_events` | `number` | `50` | Max history entries to keep |
+| `history_keep_mode` / `history_keep` | `string` / `number` | `count` / `50` | What this browser stores: `count` = up to N alerts (max 5000), `days` = N days (max 5). Replaces `history_max_events` (still read) |
+| `history_show_mode` / `history_show` | `string` / `number` | all | What the card's 📋 panel lists: `count` = the latest N (max 500), `hours` = the last N hours (1–120); omit = everything stored |
 | `active_state_entity` | `string` | — | **Per-alert.** `input_boolean.*` entity to write `on`/`off` to when this specific alert becomes active or clears. Each alert can target a different boolean. Works only while the browser tab is open. |
 | `card_height` | `number` | *(auto)* | Fixed card height in px — prevents layout shifts when cycling |
 | `font_scale` | `number` | `1` | **New in 1.3.9.9.7** — proportional zoom for HD / 4K / wall-panel displays. `1` = normal, `1.5` = 50% larger, `2` = double. May require bumping `grid_options.rows`. |
