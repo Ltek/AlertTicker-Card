@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Duplicate** an alert or a rule set (#233); **switch an alert off** with `enabled: false` (#232).
 - **Order instead of priority:** drag-and-drop or ▲▼ reorder; a **Show in overlay** switch on each alert row and an "Alerts shown in the overlay" list in the Overlay tab.
 - Rule fields `visibility` (hidden in HA) and `sun`.
-- **All Notifications** template; a **Quick Start** panel on the editor's main screen.
+- **All Notifications** template (listed first; the other templates are alphabetical); a **Quick Start** panel on the editor's main screen.
+- Alert editor sections: **Options** (Persistent / Sticky, Show in overlay, snooze duration, trigger on any change), **Appearance** (theme, entity-name line, icon source — theme / emoji / entity's HA icon / custom `mdi:` / entity picture / image —, accent color, animations, custom card), **Condition**, **Alert Grouping** (tap / hold inside), **Tap Actions** (Single Tap, Double Tap, Hold, Snooze), **Set Entity Value**. Checkboxes instead of toggles; a pencil marks sections changed from the defaults.
 - `rules:` as an alias for `groups:` on a rule set (a flat list = all must match); per-rule `enabled: false`; rule-set Export with per-rule match counts for troubleshooting.
 - **Alert Templates panel** replaces the template dropdown: each template shows what it can match here and what's active now, with Create / Create & edit; template alerts are inserted by importance.
 - **Can match N entities** inside an alert: every entity it can cover, independent of their current state.

@@ -1846,7 +1846,8 @@ const ET = {
     snooze_default_duration_help: "Duration menu: tap on 💤 opens a menu to choose how long to snooze. Fixed duration: tap on 💤 snoozes immediately with no menu.",
     snooze_option_menu: "Show duration menu (as before)",
     snooze_duration: "Snooze duration for this alert 💤",
-    snooze_duration_help: "Overrides the global setting. Empty = use global.",
+    snooze_duration_help: "How long the 💤 button snoozes this alert. \"Use global setting\" follows the card's Snooze setting (General tab); \"Duration menu\" asks each time; or pick a fixed time for this alert only. Not shown for persistent alerts, which are dismissed instead.",
+    snooze_override_title: "Snooze duration",
     snooze_duration_menu: "Duration menu",
     snooze_duration_global: "Use global setting",
     sound_enabled: "Play a sound when an alert appears",
@@ -2014,7 +2015,7 @@ const ET = {
     area_filter_help: "Only match entities in the selected area. Checks entity area first, then falls back to device area.",
     alert_attribute: "Attribute (optional)",
     alert_attribute_help: "e.g. battery_level — leave empty to use entity state. Supports nested paths: e.g. activity.0.forecast",
-    secondary_entity: "Secondary value entity (optional)",
+    secondary_entity: "Secondary value entity",
     secondary_entity_help: "Shows the live value of this entity as an extra line below the message. E.g. a sensor listing open zones or active alerts.",
     secondary_text: "Static secondary text (optional)",
     secondary_text_help: "Fixed text shown below the message. Supports {state}, {name}, {entity}. No sensor entity required.",
@@ -2026,8 +2027,11 @@ const ET = {
     icon_source: "Icon",
     icon_src_theme: "Theme icon (default)",
     icon_src_emoji: "Custom emoji",
-    icon_src_ha: "Home Assistant icon (mdi:)",
-    icon_src_picture: "Entity picture",
+    icon_src_entity_icon: "Entity's own icon (from HA)",
+    icon_src_entity_icon_help: "The icon the entity has in Home Assistant (its own or its device class's), for each matching entity.",
+    icon_src_ha: "Custom icon (mdi:)",
+    icon_src_picture: "Entity picture (photo / thumbnail)",
+    icon_src_picture_help: "The entity's picture from Home Assistant (entity_picture): e.g. a person's photo, a camera snapshot or media cover art. Entities without a picture show the theme icon.",
     icon_src_image: "Image (path or URL)",
     icon_emoji: "Emoji",
     templates_any_notification: "Any notification",
@@ -2053,7 +2057,7 @@ const ET = {
     snooze_action_section: "Snooze 💤 — when the snooze button is tapped",
     card_override_section: "Custom card",
     card_override_help: "Replaces the theme with any native HA card (tile, entity, button…). Use 'this.entity_id' as a placeholder for the alert entity. Leave empty to use the normal theme.",
-    persistent: "Persistent alarm 🔒",
+    persistent: "Persistent / Sticky",
     persistent_help: "Once it fires, the alert stays on the card even after the condition clears (e.g. a leak that dried up), until you dismiss it with ✕ — so you don't miss something that happened while you weren't looking. Snooze is not offered for it.",
     group_section: "Alert Grouping",
     group_section_help: "When this alert matches several entities, show them as one summary slide instead of one slide each — e.g. \"5 batteries low\" — once at least the minimum number are active. Tap the summary to expand the list. Its message, secondary text, item message and tap / hold actions are set below.",
@@ -6569,7 +6573,7 @@ class AlertTickerCardEditor extends LitElement {
     const ruleSetCount = this._ruleSets().length;
     return html`
       <div class="hub-header">
-        <span class="hub-title">🚨 Alert Ticker Card</span>
+        <span class="hub-title">Alert Ticker Card</span>
         <span class="hub-version">v${CARD_VERSION}</span>
       </div>
 
@@ -7478,7 +7482,10 @@ class AlertTickerCardEditor extends LitElement {
         </div>
         ${toast ? html`<div class="rs-notice atc-tpl-toast">✓ ${this._t("templates_added").replace("{name}", toast.name)}</div>` : ""}
         ${open ? html`<div class="atc-tpl-list">
-          ${Object.entries(ALERT_TEMPLATES).map(([key, t]) => {
+          ${Object.entries(ALERT_TEMPLATES)
+            .sort(([ka, a], [kb, b]) => (ka === "all_notifications" ? -1 : kb === "all_notifications" ? 1
+              : (a.nameByLang[lang] || a.nameByLang.en).localeCompare(b.nameByLang[lang] || b.nameByLang.en)))
+            .map(([key, t]) => {
             const m = this._templateMatches(key) || { parts: [], possible: 0, active: 0, needs: false, added: -1 };
             const listKey = `tpl_${key}`;
             const listOpen = this._filterPreviewOpen.has(listKey);
@@ -7494,7 +7501,7 @@ class AlertTickerCardEditor extends LitElement {
                         <a href="#" class="rs-chip rs-chip--static rs-chip--link" @click="${(e) => { e.preventDefault(); const n = new Set(this._filterPreviewOpen); if (n.has(listKey)) n.delete(listKey); else n.add(listKey); this._filterPreviewOpen = n; }}">
                           ${m.possible ? this._t("possible_count").replace("{n}", m.possible) : this._t("templates_no_match")} ${m.possible ? (listOpen ? "▲" : "▼") : ""}</a>
                         <span class="rs-chip rs-chip--static">${this._t("possible_active").replace("{n}", m.active)}</span>`}
-                      ${m.added >= 0 ? html`<a href="#" class="rs-chip rs-chip--static rs-chip--link" @click="${(e) => { e.preventDefault(); this._templatesOpen = false; this._editingIndex = m.added; this.requestUpdate(); }}">✓ ${this._t("templates_added_chip")}</a>` : ""}
+                      ${m.added >= 0 ? html`<a href="#" class="rs-chip rs-chip--static rs-chip--link rs-chip--accent" @click="${(e) => { e.preventDefault(); this._templatesOpen = false; this._editingIndex = m.added; this.requestUpdate(); }}">✓ ${this._t("templates_added_chip")}</a>` : ""}
                     </div>
                   </div>
                   <div class="alert-actions">
@@ -7715,6 +7722,7 @@ class AlertTickerCardEditor extends LitElement {
 
                 <!-- Per-alert snooze duration override (hidden when persistent) -->
                 ${alert.persistent ? "" : html`
+                <div class="rs-section-title">💤 ${this._t("snooze_override_title")}</div>
                 <div class="native-select-wrap">
                   <select class="native-select"
                     @change="${(e) => {
@@ -7791,7 +7799,7 @@ class AlertTickerCardEditor extends LitElement {
                     <div class="native-select-wrap">
                       <label class="native-select-label">${this._t("icon_source")}</label>
                       <select class="native-select" @change="${(e) => this._setIconMode(index, e.target.value)}">
-                        ${["theme", "emoji", "ha", "picture", "image"].map((m) => html`<option value="${m}" ?selected="${im === m}">${this._t("icon_src_" + m)}</option>`)}
+                        ${["theme", "emoji", "entity_icon", "ha", "picture", "image"].map((m) => html`<option value="${m}" ?selected="${im === m}">${this._t("icon_src_" + m)}</option>`)}
                       </select>
                     </div>
                     ${im === "emoji" ? html`
@@ -7799,12 +7807,10 @@ class AlertTickerCardEditor extends LitElement {
                         @change="${(e) => this._updateAlert(index, { icon: e.target.value.trim() || undefined })}"></ha-input>` : ""}
                     ${im === "ha" ? html`
                       <ha-icon-picker .label="${this._t("alert_icon")}" .value="${alert.icon || ""}"
-                        @value-changed="${(e) => this._alertIconChanged(e.detail.value, index)}"></ha-icon-picker>
-                      ${!alert.icon && this._hass?.states?.[alert.entity] ? html`<div class="auto-icon-preview">
-                        <ha-state-icon .hass="${this._hass}" .stateObj="${this._hass.states[alert.entity]}"></ha-state-icon>
-                        <span>${this._t("auto_icon_preview")}</span></div>` : ""}
-                      ${color("icon_color", "icon_color")}
-                      ${size("1.6em")}` : ""}
+                        @value-changed="${(e) => this._updateAlert(index, { icon: e.detail.value || "mdi:bell" })}"></ha-icon-picker>` : ""}
+                    ${im === "entity_icon" ? html`<div class="helper-text">${this._t("icon_src_entity_icon_help")}</div>` : ""}
+                    ${im === "picture" ? html`<div class="helper-text">${this._t("icon_src_picture_help")}</div>` : ""}
+                    ${im === "ha" || im === "entity_icon" ? html`${color("icon_color", "icon_color")}${size("1.6em")}` : ""}
                     ${im === "image" ? html`
                       <ha-input .label="${this._t("icon_image")}" .value="${alert.icon_image || ""}" placeholder="/local/icons/home.png"
                         @change="${(e) => this._updateAlert(index, { icon_image: e.target.value.trim() || undefined })}"></ha-input>
@@ -10029,7 +10035,7 @@ class AlertTickerCardEditor extends LitElement {
   _iconMode(alert) {
     if (alert.icon_image) return "image";
     if (alert.use_entity_picture) return "picture";
-    if (alert.use_ha_icon) return "ha";
+    if (alert.use_ha_icon) return alert.icon ? "ha" : "entity_icon";
     if (alert.icon && !/^[\w-]+:/.test(alert.icon)) return "emoji";
     return "theme";
   }
@@ -10039,7 +10045,10 @@ class AlertTickerCardEditor extends LitElement {
     const clear = { use_ha_icon: undefined, use_entity_picture: undefined, icon_image: undefined, icon_color: undefined };
     if (mode === "theme") return this._updateAlert(index, { ...clear, icon: undefined, icon_size: undefined });
     if (mode === "emoji") return this._updateAlert(index, { ...clear, icon: this._iconMode(alert) === "emoji" ? alert.icon : ((THEME_META[alert.theme] || {}).icon || "🔔"), icon_size: undefined });
-    if (mode === "ha") return this._alertHaIconToggled(true, index);
+    // entity's own icon: use_ha_icon without an icon — the card reads it from HA
+    if (mode === "entity_icon") return this._updateAlert(index, { ...clear, icon_color: alert.icon_color, use_ha_icon: true, icon: undefined });
+    if (mode === "ha") return this._updateAlert(index, { ...clear, icon_color: alert.icon_color, use_ha_icon: true,
+      icon: (alert.icon && /^[\w-]+:/.test(alert.icon)) ? alert.icon : (this._hass?.entities?.[alert.entity]?.icon || "mdi:bell") });
     if (mode === "picture") return this._updateAlert(index, { ...clear, icon: undefined, use_entity_picture: true });
     if (mode === "image") return this._updateAlert(index, { ...clear, icon: undefined, icon_image: alert.icon_image || "/local/" });
   }
@@ -10532,10 +10541,11 @@ class AlertTickerCardEditor extends LitElement {
       /* ---- Hub header & footer ---- */
       .hub-header {
         display: flex;
-        align-items: baseline;
+        align-items: center;
+        justify-content: space-between;
         gap: 8px;
-        padding: 4px 0 12px;
-        border-bottom: 2px solid var(--primary-color, #03a9f4);
+        padding: 4px 0 10px;
+        border-bottom: 1px solid var(--divider-color, #e0e0e0);
         margin-bottom: 4px;
       }
       .hub-title {
@@ -11518,8 +11528,15 @@ class AlertTickerCardEditor extends LitElement {
         gap: 4px;
         padding: 2px 0;
       }
-      .atc-quickstart {
+      .atc-quickstart,
+      .atc-quickstart[open] {
         margin: 6px 0 10px;
+        border: 1px dashed var(--primary-color, #03a9f4);
+      }
+      .rs-chip--accent {
+        background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 22%, transparent);
+        color: var(--accent-color, var(--primary-color, #03a9f4));
+        font-weight: 600;
       }
       .atc-qs-body p {
         margin: 0 0 6px;
