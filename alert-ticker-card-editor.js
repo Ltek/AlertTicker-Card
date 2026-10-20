@@ -397,6 +397,19 @@ const ALERT_TEMPLATES = {
     ],
   },
 
+  all_notifications: {
+    icon: "💬",
+    nameByLang: { en: "All Notifications", it: "Tutte le notifiche" },
+    descByLang: {
+      en: "An alert for every Home Assistant notification (mobile, bell, notify services) — narrow it down in its rule set",
+      it: "Un avviso per ogni notifica di Home Assistant (mobile, campanella, servizi notify) — restringi nel rule set",
+    },
+    alerts: [{
+      rule_set: { name: "All Notifications", watch: "notifications", groups: [] },
+      theme: "notification", message: "{title}", auto_dismiss_after: 300,
+    }],
+  },
+
   device_offline: {
     icon: "📡",
     nameByLang: {
@@ -1840,7 +1853,7 @@ const ET = {
     sound_enabled_help: "Plays an auto-generated tone when an alert becomes active. Tone varies by category (Critical = double high beep, Warning = medium beep, Info = soft beep, OK = rising chime). Requires browser autoplay permission.",
     sound_url: "Custom audio URL (global)",
     sound_url_help: "URL of an .mp3 or .wav file to use instead of the generated sound. Leave empty for the generated tone.",
-    alert_sound: "Sound enabled for this alert",
+    alert_sound: "Sound / Audio",
     alert_sound_url: "Custom audio URL for this alert",
     alert_sound_url_help: "Overrides the global URL. Leave empty to use the global one.",
     tab_tts: "Text-to-Speech",
@@ -2010,6 +2023,16 @@ const ET = {
     show_filter_name_help: "This alert shows once for each matching entity. Show entity name puts that entity's name on a line under the message; Show its state adds its current state next to the name.",
     show_notification_text_help: "Puts the notification's message on a line under the alert message.",
     appearance_section: "Appearance",
+    icon_source: "Icon",
+    icon_src_theme: "Theme icon (default)",
+    icon_src_emoji: "Custom emoji",
+    icon_src_ha: "Home Assistant icon (mdi:)",
+    icon_src_picture: "Entity picture",
+    icon_src_image: "Image (path or URL)",
+    icon_emoji: "Emoji",
+    templates_any_notification: "Any notification",
+    quick_start_title: "Quick Start — click here",
+    quick_start_body: "Fastest start: open Alerts and expand Alert Templates. Each template (batteries, doors & windows, water leaks, smoke & CO, motion, updates, all notifications…) shows how many of your entities it can match and how many are alerting now — click the count to see them.\nPress + (Create) to add it, or the pencil (Create & edit) to add it and open it. A template creates a rule set that finds the matching entities for you, and the alert is placed by importance — critical ones near the top.\nThen adjust the alert's theme, message and options, drag alerts to set which shows first, and switch on Test mode to preview each one on the card.\nFor your own alerts use Entity (one entity), Entity Rule Set (many entities by label, area, device class…) or Notification Rule Set (Home Assistant notifications).",
     tap_actions_section: "Tap Actions",
     battery_trim_name: "Strip «Battery» suffix from entity name",
     secondary_attribute: "Secondary value attribute",
@@ -2021,18 +2044,18 @@ const ET = {
     add_condition: "Add condition",
     condition_entity: "Condition entity",
     condition_attribute: "Condition attribute",
-    tap_action_section: "Tap action",
-    double_tap_action_section: "Double tap action",
-    hold_action_section: "Hold action (500ms)",
+    tap_action_section: "Single Tap",
+    double_tap_action_section: "Double Tap",
+    hold_action_section: "Hold (500 ms)",
     clear_tap_action_section: "Tap on 'all clear' card",
     clear_double_tap_action_section: "Double tap on 'all clear' card",
     clear_hold_action_section: "Hold on 'all clear' card (500ms)",
-    snooze_action_section: "Snooze action 💤 — executed when the snooze button is tapped",
+    snooze_action_section: "Snooze 💤 — when the snooze button is tapped",
     card_override_section: "Custom card",
     card_override_help: "Replaces the theme with any native HA card (tile, entity, button…). Use 'this.entity_id' as a placeholder for the alert entity. Leave empty to use the normal theme.",
     persistent: "Persistent alarm 🔒",
-    persistent_help: "Stays visible even after the sensor returns to normal. Press ✕ to dismiss.",
-    group_section: "Group alerts",
+    persistent_help: "Once it fires, the alert stays on the card even after the condition clears (e.g. a leak that dried up), until you dismiss it with ✕ — so you don't miss something that happened while you weren't looking. Snooze is not offered for it.",
+    group_section: "Alert Grouping",
     group_section_help: "When this alert matches several entities, show them as one summary slide instead of one slide each — e.g. \"5 batteries low\" — once at least the minimum number are active. Tap the summary to expand the list. Its message, secondary text, item message and tap / hold actions are set below.",
     group: "Enable grouping",
     group_min: "Minimum to group",
@@ -2043,8 +2066,8 @@ const ET = {
     group_secondary_text_help: "Secondary line below the group message. Supports {count} and {names}. If not set, shows the entity name list.",
     group_expanded_message: "Item message (expanded)",
     group_expanded_message_help: "Message for each entity when the group is expanded. Use {state}, {name}, {entity}, {device}, {area}. Supports {{ states('sensor.x') }} templates.",
-    group_tap_action_section: "Group tap action",
-    group_hold_action_section: "Group hold action",
+    group_tap_action_section: "Group Single Tap",
+    group_hold_action_section: "Group Hold",
     timer_theme_category: "Timer",
     message_placeholder_hint: "Placeholders: {name} entity name, {state} state, {entity} entity ID, {device} device name, {area} area",
     timer_placeholder_hint: "Use {timer} in the message to show the countdown (e.g. 'Disabled for {timer}')",
@@ -6291,17 +6314,17 @@ class AlertTickerCardEditor extends LitElement {
       case "music_controls": return any(["music_show_art", "music_show_title", "music_show_artist", "music_show_controls", "music_show_power", "music_show_player_picker"]);
       // sections with an on/off switch count only while switched on (hidden settings don't count)
       case "group": return !!alert.group;
-      case "conditions": return any(["on_change", "attribute"]) || (mode === "entity" && ((alert.operator || "=") !== "=" || (alert.state != null && String(alert.state) !== "on") || !!(alert.rule_set && typeof alert.rule_set === "object" && (alert.rule_set.groups || []).some((g) => (g.rules || []).length))));
+      case "conditions": return mode === "entity" && (any(["on_change", "attribute"])) || (mode === "entity" && ((alert.operator || "=") !== "=" || (alert.state != null && String(alert.state) !== "on") || !!(alert.rule_set && typeof alert.rule_set === "object" && (alert.rule_set.groups || []).some((g) => (g.rules || []).length))));
       case "timing": return any(["trigger_delay", "auto_dismiss_after"]);
       case "message": {
         const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
         const msgChanged = !!alert.message && alert.message !== dflt && !(mode === "rs_notify" && alert.message === "{title}");
         return msgChanged || any(["badge_label", "history_message", "show_badge"]);
       }
-      case "appearance": return any(["icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "color", "show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
+      case "appearance": return any(["disable_animation", "icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "color", "show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
       case "actions": return ["tap_action", "double_tap_action", "hold_action", "snooze_action"].some((k) => this._actionSet(alert[k]));
       case "secondary": return any(["secondary_entity", "secondary_attribute", "secondary_text", "show_secondary_name", "secondary_value_align"]);
-      case "options": return any(["persistent", "overlay", "disable_animation", "snooze_duration"]);
+      case "options": return any(["persistent", "overlay", "snooze_duration"]) || (mode === "rs_entity" && !!alert.on_change);
       case "sound": return !!alert.sound;
       case "tts": return !!alert.tts;
       case "push": return !!(alert.push_notify || alert.notify_push);
@@ -6550,9 +6573,10 @@ class AlertTickerCardEditor extends LitElement {
         <span class="hub-version">v${CARD_VERSION}</span>
       </div>
 
-      <div class="hub-welcome">
-        <p class="hub-welcome-text">${this._t("hub_welcome")}</p>
-      </div>
+      <details class="atc-subpanel atc-quickstart">
+        <summary>🚀 ${this._t("quick_start_title")}</summary>
+        <div class="atc-subpanel-body helper-text atc-qs-body">${this._t("quick_start_body").split("\n").map((l) => html`<p>${l}</p>`)}</div>
+      </details>
 
       <!-- Alerts — full width -->
       <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("alerts")}">
@@ -7435,7 +7459,8 @@ class AlertTickerCardEditor extends LitElement {
     const ids = new Set(m.alerts.map((a) => a.rule_set).filter((x) => typeof x === "string"));
     const added = (this._config.alerts || []).findIndex((a) => typeof a?.rule_set === "string" && ids.has(a.rule_set)
       && !this._ruleSets().every((rs) => rs.id !== a.rule_set));
-    return { parts, possible: possible.size, active: active.size, needs, added };
+    const notify = resolved.some((a) => shared.isNotificationSet(a._rule_set_def || a.rule_set));
+    return { parts, possible: possible.size, active: active.size, needs, added, notify };
   }
 
   _renderTemplatesPanel() {
@@ -7458,14 +7483,14 @@ class AlertTickerCardEditor extends LitElement {
             const listKey = `tpl_${key}`;
             const listOpen = this._filterPreviewOpen.has(listKey);
             return html`
-              <div class="atc-tpl-row ${m.possible === 0 && !m.needs ? "atc-tpl-row--none" : ""}">
+              <div class="atc-tpl-row ${m.possible === 0 && !m.needs && !m.notify ? "atc-tpl-row--none" : ""}">
                 <div class="atc-tpl-main">
                   <span class="alert-icon-badge">${t.icon}</span>
                   <div class="alert-summary-text">
                     <div class="alert-entity-label">${t.nameByLang[lang] || t.nameByLang.en}</div>
                     <div class="alert-msg-label">${t.descByLang[lang] || t.descByLang.en}</div>
                     <div class="rs-chips rs-chips--summary">
-                      ${m.needs ? html`<span class="rs-chip rs-chip--static">${this._t("templates_needs_setup")}</span>` : html`
+                      ${m.notify ? html`<span class="rs-chip rs-chip--static">${this._t("templates_any_notification")}</span>` : m.needs ? html`<span class="rs-chip rs-chip--static">${this._t("templates_needs_setup")}</span>` : html`
                         <a href="#" class="rs-chip rs-chip--static rs-chip--link" @click="${(e) => { e.preventDefault(); const n = new Set(this._filterPreviewOpen); if (n.has(listKey)) n.delete(listKey); else n.add(listKey); this._filterPreviewOpen = n; }}">
                           ${m.possible ? this._t("possible_count").replace("{n}", m.possible) : this._t("templates_no_match")} ${m.possible ? (listOpen ? "▲" : "▼") : ""}</a>
                         <span class="rs-chip rs-chip--static">${this._t("possible_active").replace("{n}", m.active)}</span>`}
@@ -7650,6 +7675,18 @@ class AlertTickerCardEditor extends LitElement {
                 <!-- ── 5. OPZIONI ─────────────────────────────────────────── -->
                 <div class="section-divider" data-sec="options">⚙️ ${this._t("alert_options_section")}</div>
 
+                ${this._getAlertMode(index, alert) === "rs_entity" ? html`
+                <!-- on_change toggle (rule-set alerts; single-entity alerts pick "changes" in the condition) -->
+                <div>
+                  <ha-formfield .label="${this._t("on_change")}">
+                    <ha-checkbox
+                      .checked="${!!alert.on_change}"
+                      @change="${(e) => this._updateAlert(index, { on_change: e.target.checked || undefined })}"
+                    ></ha-checkbox>
+                  </ha-formfield>
+                  <div class="helper-text">${this._t("on_change_help")}</div>
+                </div>
+                ` : ""}
                 <!-- Persistent alarm toggle -->
                 <div class="form-row">
                   <div class="form-row-inline">
@@ -7659,6 +7696,7 @@ class AlertTickerCardEditor extends LitElement {
                       @change="${(e) => this._updateAlert(index, { persistent: e.target.checked || undefined })}"
                     ></ha-checkbox>
                   </div>
+                  <div class="helper-text">${this._t("persistent_help")}</div>
                 </div>
 
                 <!-- Overlay toggle — visible only when overlay_mode is enabled globally -->
@@ -7674,18 +7712,6 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">${this._t("alert_overlay_help")}</div>
                 </div>
                 ` : ""}
-                <!-- Per-alert disable_animation toggle -->
-                <div class="form-row">
-                  <div class="form-row-inline">
-                    <span>${this._t("disable_animation")}</span>
-                    <ha-checkbox
-                      .checked="${!!alert.disable_animation}"
-                      @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"
-                    ></ha-checkbox>
-                  </div>
-                  <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
-                </div>
-                <div class="helper-text">${this._t("persistent_help")}</div>
 
                 <!-- Per-alert snooze duration override (hidden when persistent) -->
                 ${alert.persistent ? "" : html`
@@ -7726,108 +7752,6 @@ class AlertTickerCardEditor extends LitElement {
                 ${this._isTimerLike(alert.entity) ? html`
                   <div class="helper-text">${this._t("timer_placeholder_hint")}</div>
                 ` : ""}
-
-                <!-- Icon override -->
-                <div>
-                  <ha-formfield .label="${this._t("use_ha_icon")}">
-                    <ha-checkbox
-                      .checked="${!!alert.use_ha_icon}"
-                      @change="${(e) => this._alertHaIconToggled(e.target.checked, index)}"
-                    ></ha-checkbox>
-                  </ha-formfield>
-                  <ha-formfield .label="${this._t("use_entity_picture")}">
-                    <ha-checkbox
-                      .checked="${!!alert.use_entity_picture}"
-                      @change="${(e) => this._updateAlert(index, { use_entity_picture: e.target.checked || undefined })}"
-                    ></ha-checkbox>
-                  </ha-formfield>
-                  <ha-input
-                    .label="${this._t("icon_image")}"
-                    .value="${alert.icon_image || ""}"
-                    placeholder="/local/immagini/icona.png"
-                    @change="${(e) => this._updateAlert(index, { icon_image: e.target.value.trim() || undefined })}"
-                  ></ha-input>
-                  <div class="helper-text">${this._t("icon_image_help")}</div>
-                  ${(alert.icon_image || alert.use_entity_picture) ? html`
-                    <ha-input
-                      .label="${this._t("icon_size")}"
-                      .value="${alert.icon_size || ""}"
-                      placeholder="2rem"
-                      @change="${(e) => {
-                        const v = e.target.value.trim() || undefined;
-                        this._updateAlert(index, { icon_size: v });
-                      }}"
-                    ></ha-input>
-                    <div class="helper-text">${this._t("icon_size_help")}</div>
-                  ` : ""}
-                  ${alert.use_ha_icon ? html`
-                      <ha-icon-picker
-                        .label="${this._t("alert_icon")}"
-                        .value="${alert.icon || ""}"
-                        @value-changed="${(e) => this._alertIconChanged(e.detail.value, index)}"
-                      ></ha-icon-picker>
-                      ${(() => {
-                        if (alert.icon) return "";
-                        const stateObj = this._hass?.states?.[alert.entity];
-                        if (!stateObj) return "";
-                        return html`<div class="auto-icon-preview">
-                          <ha-state-icon .hass="${this._hass}" .stateObj="${stateObj}"></ha-state-icon>
-                          <span>${this._t("auto_icon_preview")}</span>
-                        </div>`;
-                      })()}
-                      <div class="icon-color-row">
-                        <input
-                          type="color"
-                          class="icon-color-swatch"
-                          .value="${this._cssColorToHex(alert.icon_color)}"
-                          @input="${(e) => this._updateAlert(index, { icon_color: e.target.value || undefined })}"
-                          title="${this._t("icon_color")}"
-                        />
-                        <ha-input
-                          .label="${this._t("icon_color")}"
-                          .value="${alert.icon_color || ""}"
-                          placeholder="inherit"
-                          @change="${(e) => {
-                            const v = e.target.value.trim() || undefined;
-                            this._updateAlert(index, { icon_color: v });
-                          }}"
-                        ></ha-input>
-                      </div>
-                      <div class="helper-text">${this._t("icon_color_help")}</div>
-                      <ha-input
-                        .label="${this._t("icon_size")}"
-                        .value="${alert.icon_size || ""}"
-                        placeholder="1.6em"
-                        @change="${(e) => {
-                          const v = e.target.value.trim() || undefined;
-                          this._updateAlert(index, { icon_size: v });
-                        }}"
-                      ></ha-input>
-                      <div class="helper-text">${this._t("icon_size_help")}</div>
-                      <div class="helper-text">${this._t("alert_icon_help")}</div>
-                  ` : ""}
-                  <div class="icon-color-row">
-                    <input
-                      type="color"
-                      class="icon-color-swatch"
-                      .value="${this._cssColorToHex(alert.color)}"
-                      @input="${(e) => this._updateAlert(index, { color: e.target.value || undefined })}"
-                      title="${this._t("accent_color")}"
-                    />
-                    <ha-input
-                      .label="${this._t("accent_color")}"
-                      .value="${alert.color || ""}"
-                      placeholder="inherit"
-                      @change="${(e) => {
-                        const v = e.target.value.trim() || undefined;
-                        this._updateAlert(index, { color: v });
-                      }}"
-                    ></ha-input>
-                  </div>
-                  <div class="helper-text">${this._t("accent_color_help")}</div>
-                </div>
-
-
                 <!-- Line under the message (multi-entity alerts) -->
                 ${this._getAlertMode(index, alert) !== "entity" ? html`
                   <div class="atc-check-row">
@@ -7848,6 +7772,64 @@ class AlertTickerCardEditor extends LitElement {
                   </div>
                   <div class="helper-text">${this._t(this._getAlertMode(index, alert) === "rs_notify" ? "show_notification_text_help" : "show_filter_name_help")}</div>
                 ` : ""}
+
+
+                <!-- Icon: one choice, only its settings shown -->
+                ${(() => {
+                  const im = this._iconMode(alert);
+                  const size = (ph) => html`
+                    <ha-input .label="${this._t("icon_size")}" .value="${alert.icon_size || ""}" placeholder="${ph}"
+                      @change="${(e) => this._updateAlert(index, { icon_size: e.target.value.trim() || undefined })}"></ha-input>`;
+                  const color = (key, labelKey) => html`
+                    <div class="icon-color-row">
+                      <input type="color" class="icon-color-swatch" .value="${this._cssColorToHex(alert[key])}"
+                        @input="${(e) => this._updateAlert(index, { [key]: e.target.value || undefined })}" title="${this._t(labelKey)}" />
+                      <ha-input .label="${this._t(labelKey)}" .value="${alert[key] || ""}" placeholder="inherit"
+                        @change="${(e) => this._updateAlert(index, { [key]: e.target.value.trim() || undefined })}"></ha-input>
+                    </div>`;
+                  return html`
+                    <div class="native-select-wrap">
+                      <label class="native-select-label">${this._t("icon_source")}</label>
+                      <select class="native-select" @change="${(e) => this._setIconMode(index, e.target.value)}">
+                        ${["theme", "emoji", "ha", "picture", "image"].map((m) => html`<option value="${m}" ?selected="${im === m}">${this._t("icon_src_" + m)}</option>`)}
+                      </select>
+                    </div>
+                    ${im === "emoji" ? html`
+                      <ha-input .label="${this._t("icon_emoji")}" .value="${alert.icon || ""}" placeholder="💠"
+                        @change="${(e) => this._updateAlert(index, { icon: e.target.value.trim() || undefined })}"></ha-input>` : ""}
+                    ${im === "ha" ? html`
+                      <ha-icon-picker .label="${this._t("alert_icon")}" .value="${alert.icon || ""}"
+                        @value-changed="${(e) => this._alertIconChanged(e.detail.value, index)}"></ha-icon-picker>
+                      ${!alert.icon && this._hass?.states?.[alert.entity] ? html`<div class="auto-icon-preview">
+                        <ha-state-icon .hass="${this._hass}" .stateObj="${this._hass.states[alert.entity]}"></ha-state-icon>
+                        <span>${this._t("auto_icon_preview")}</span></div>` : ""}
+                      ${color("icon_color", "icon_color")}
+                      ${size("1.6em")}` : ""}
+                    ${im === "image" ? html`
+                      <ha-input .label="${this._t("icon_image")}" .value="${alert.icon_image || ""}" placeholder="/local/icons/home.png"
+                        @change="${(e) => this._updateAlert(index, { icon_image: e.target.value.trim() || undefined })}"></ha-input>
+                      <div class="helper-text">${this._t("icon_image_help")}</div>` : ""}
+                    ${im === "picture" || im === "image" ? size("2rem") : ""}
+
+                    <ha-formfield .label="${this._t("accent_color")}">
+                      <ha-checkbox .checked="${!!alert.color || !!this._accentOn?.has(index)}"
+                        @change="${(e) => {
+                          const n = new Set(this._accentOn || []);
+                          if (e.target.checked) n.add(index); else n.delete(index);
+                          this._accentOn = n;
+                          if (!e.target.checked) this._updateAlert(index, { color: undefined }); else this.requestUpdate();
+                        }}"></ha-checkbox>
+                    </ha-formfield>
+                    ${alert.color || this._accentOn?.has(index) ? html`${color("color", "accent_color")}
+                      <div class="helper-text">${this._t("accent_color_help")}</div>` : ""}
+
+                    <ha-formfield .label="${this._t("disable_animation")}">
+                      <ha-checkbox .checked="${!!alert.disable_animation}"
+                        @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"></ha-checkbox>
+                    </ha-formfield>
+                    <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
+                  `;
+                })()}
 
                 <!-- Custom card (replaces the alert's look) -->
                 <ha-formfield .label="${this._t("card_override_section")}">
@@ -8036,21 +8018,8 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
                 <!-- ── 2. CONDIZIONE ──────────────────────────────────────── -->
-                ${this._getAlertMode(index, alert) !== "rs_notify" ? html`<div class="section-divider" data-sec="conditions">⚡ ${this._t(this._getAlertMode(index, alert) === "entity" ? "conditions_section" : "rs_trigger_section")}</div>` : ""}
+                ${this._getAlertMode(index, alert) === "entity" ? html`<div class="section-divider" data-sec="conditions">⚡ ${this._t("conditions_section")}</div>` : ""}
 
-                ${this._getAlertMode(index, alert) === "rs_entity" ? html`<div class="helper-text">${this._t("rs_entity_conditions_help")}</div>` : ""}
-                ${this._getAlertMode(index, alert) === "rs_entity" ? html`
-                <!-- on_change toggle (rule-set alerts; single-entity alerts pick "changes" in the condition) -->
-                <div>
-                  <ha-formfield .label="${this._t("on_change")}">
-                    <ha-checkbox
-                      .checked="${!!alert.on_change}"
-                      @change="${(e) => this._updateAlert(index, { on_change: e.target.checked || undefined })}"
-                    ></ha-checkbox>
-                  </ha-formfield>
-                  <div class="helper-text">${this._t("on_change_help")}</div>
-                </div>
-                ` : ""}
                 ${this._getAlertMode(index, alert) === "entity" ? html`
                 <div class="rs-section-title">${this._t("own_condition_title")}</div>
                 <!-- Own condition: operator + value; "changes (any value)" = on_change -->
@@ -9055,7 +9024,13 @@ class AlertTickerCardEditor extends LitElement {
           <div class="rs-chips rs-chips--summary">${this._ruleSetChips(rs, used)}</div>
         </div>
         <div class="alert-actions">
-          ${this._iconButton("mdi:export-variant", this._t("ruleset_export"), () => { this._rsExport = this._rsExport === si ? -1 : si; this._rsEditing = si; this.requestUpdate(); })}
+          ${this._iconButton("mdi:export-variant", this._t("ruleset_export"), () => {
+            const open = this._rsExport !== si;
+            this._rsExport = open ? si : -1;
+            // frozen when opened, so re-renders (HA updates every few seconds) don't reset it
+            this._rsExportText = open ? JSON.stringify({ rule_set: rs, diagnostics: globalThis.__alertTickerShared?.ruleSetDiagnostics?.(this._previewHass(), rs) }, null, 2) : "";
+            this._rsEditing = si; this.requestUpdate();
+          })}
           ${this._iconButton("mdi:content-copy", this._t("ruleset_duplicate"), () => this._duplicateRuleSet(si))}
           ${this._deleteButton(() => this._deleteRuleSet(si))}
         </div>
@@ -9105,21 +9080,34 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
+  /** Copies text: Clipboard API, else a hidden textarea + execCommand (works without HTTPS). */
+  async _copyText(text, btn) {
+    let ok = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (_) {}
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        (this.shadowRoot || document.body).appendChild(ta);
+        ta.select(); ok = document.execCommand("copy"); ta.remove();
+      } catch (_) {}
+    }
+    this._rsCopied = ok;
+    this.requestUpdate();
+    if (ok) setTimeout(() => { this._rsCopied = false; this.requestUpdate(); }, 2000);
+  }
+
   /** Troubleshooting export: the rule set + per-rule match counts, as JSON, with Copy. */
   _renderRsExport(rs) {
-    const shared = globalThis.__alertTickerShared;
-    const text = JSON.stringify({ rule_set: rs, diagnostics: shared?.ruleSetDiagnostics?.(this._previewHass(), rs) }, null, 2);
+    if (!this._rsExportText) this._rsExportText = JSON.stringify({ rule_set: rs, diagnostics: globalThis.__alertTickerShared?.ruleSetDiagnostics?.(this._previewHass(), rs) }, null, 2);
+    const text = this._rsExportText;
     return html`
       <div class="rs-notify-box">
         <div class="rs-section-title">${this._t("ruleset_export")}</div>
         <div class="helper-text">${this._t("ruleset_export_help")}</div>
-        <textarea class="rs-export" readonly rows="12" .value="${text}" @focus="${(e) => e.target.select()}"></textarea>
+        <textarea class="rs-export" readonly rows="12" .value="${text}"></textarea>
         <div class="rs-add-row">
-          <button class="rs-btn rs-btn--small" @click="${async (e) => {
-            const b = e.currentTarget;
-            try { await navigator.clipboard.writeText(text); b.textContent = this._t("ruleset_copied"); }
-            catch (_) { b.closest(".rs-notify-box")?.querySelector("textarea")?.select(); }
-          }}">${this._t("ruleset_copy")}</button>
+          <button class="rs-btn rs-btn--small" @click="${(e) => this._copyText(text, e.currentTarget)}">${this._rsCopied ? this._t("ruleset_copied") : this._t("ruleset_copy")}</button>
           <button class="rs-btn rs-btn--small" @click="${() => { this._rsExport = -1; this.requestUpdate(); }}">${this._t("notify_close")}</button>
         </div>
       </div>`;
@@ -10036,6 +10024,25 @@ class AlertTickerCardEditor extends LitElement {
     this._updateAlert(index, { message: value });
   }
 
+
+  /** Where the alert's icon comes from: theme | emoji | ha | picture | image. */
+  _iconMode(alert) {
+    if (alert.icon_image) return "image";
+    if (alert.use_entity_picture) return "picture";
+    if (alert.use_ha_icon) return "ha";
+    if (alert.icon && !/^[\w-]+:/.test(alert.icon)) return "emoji";
+    return "theme";
+  }
+
+  _setIconMode(index, mode) {
+    const alert = (this._config.alerts || [])[index] || {};
+    const clear = { use_ha_icon: undefined, use_entity_picture: undefined, icon_image: undefined, icon_color: undefined };
+    if (mode === "theme") return this._updateAlert(index, { ...clear, icon: undefined, icon_size: undefined });
+    if (mode === "emoji") return this._updateAlert(index, { ...clear, icon: this._iconMode(alert) === "emoji" ? alert.icon : ((THEME_META[alert.theme] || {}).icon || "🔔"), icon_size: undefined });
+    if (mode === "ha") return this._alertHaIconToggled(true, index);
+    if (mode === "picture") return this._updateAlert(index, { ...clear, icon: undefined, use_entity_picture: true });
+    if (mode === "image") return this._updateAlert(index, { ...clear, icon: undefined, icon_image: alert.icon_image || "/local/" });
+  }
 
   _alertIconChanged(value, index) {
     this._updateAlert(index, { icon: value });
@@ -11510,6 +11517,13 @@ class AlertTickerCardEditor extends LitElement {
         justify-content: flex-end;
         gap: 4px;
         padding: 2px 0;
+      }
+      .atc-quickstart {
+        margin: 6px 0 10px;
+      }
+      .atc-qs-body p {
+        margin: 0 0 6px;
+        line-height: 1.4;
       }
       .atc-subpanel {
         border: 1px solid var(--divider-color, #e0e0e0);
