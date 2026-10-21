@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rule fields `visibility` (hidden in HA) and `sun`.
 - History: keep by number of alerts (up to 5000) or days (up to 5), and choose separately how much the card's 📋 panel shows (up to 500 alerts, or 1 hour – 5 days); a stored-history viewer in the editor.
 - Notification alerts ignore Companion app commands (`clear_notification`, `command_*`, …); `clear_notification` + tag clears the matching alert, and a repeated tag replaces the earlier notification.
+- Editor: **Themes & Layout** has two buttons at the top — *Themes* and *Layout Defaults - All Themes*; cycling / animation and the card controls (snooze bar & button, history button, counter, dismiss bar) moved there from General; **History** has its own page on the main screen.
 - **Themes & Layout** section: customize any theme in place (`theme_styles`) — text size/color, effects, colors and layout per theme, with preview and Reset to Default; settings layer card → theme → alert.
 - Alert Templates: 🔍 previews a template on the card in the editor's preview pane.
 - Per-alert text style: size (slider) and color (default / theme color / custom / CSS) for the message and for the entity info line.

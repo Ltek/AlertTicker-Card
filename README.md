@@ -1402,17 +1402,22 @@ You can **reorder** alerts with ↑ / ↓ buttons.
 
 | Field | Description |
 |-------|-------------|
-| **Cycle interval** | Seconds between alerts when multiple are active (default: 5) |
-| **Transition animation** | Animation played when switching alerts (12 options) — preview plays on change |
-| **Show widget in cycle** | Insert the clear widget as a slide in the alert rotation |
-| **Snooze behaviour** | Fixed duration or menu (30min / 1h / 4h / 8h / 24h) |
-| **Show snooze bar** | Toggle the amber snooze reactivation bar |
-| **History max events** | How many history entries to keep (25 / 50 / 100 / 200) |
+| **Snooze behaviour** | Fixed duration or menu (30min / 1h / 4h / 8h / 24h / 1w / 1m) |
+| **Swipe to snooze** | Swipe an alert to snooze it |
 | **TTS enabled** | Master toggle to enable or disable all TTS announcements |
-| **Show history button** | Toggle to show or hide the 📋 history button |
-| **Show snooze button** | Toggle to show or hide the 💤 snooze button |
+| **Push notifications enabled** | Master toggle for all push notifications |
 
-### 🖼️ Layout & Appearance tab
+### 📋 History tab
+
+| Field | Description |
+|-------|-------------|
+| **Stored in this browser** | Keep up to N alerts (max 5000) or N days (max 5) |
+| **Shown on the card (📋)** | Everything stored, the latest N (max 500), or a time window (1 hour – 5 days) |
+| **View stored history** | List what this browser has recorded |
+
+### 🖼️ Themes & Layout tab
+
+Two buttons at the top switch between **🎨 Themes** (customize each theme — see *Themes & Layout* above) and **🖼️ Layout Defaults - All Themes**, the card-wide settings every theme starts from:
 
 | Field | Description |
 |-------|-------------|
@@ -1420,8 +1425,11 @@ You can **reorder** alerts with ↑ / ↓ buttons.
 | **Vertical layout** | Stack icon on top, message below, centered |
 | **Text align center** | Center the message text — useful in wide Panel layouts |
 | **Large buttons** | Always-visible pill-shaped 💤 and 📋 buttons |
-| **Fixed card height** | Lock the card height in px to prevent layout shifts |
-| **Card border** | Toggle to show the standard HA border around the card (off by default) |
+| **Fixed card height** / **Font scale** | Lock the card height in px; scale everything for HD/4K panels |
+| **Card border** / **Severity border** / **Custom background** | Card frame and background |
+| **Cycle interval** / **Transition animation** | Seconds between alerts; the animation when switching (preview plays on change) |
+| **Disable animations** | Stop all ambient animations |
+| **Card controls** | Show the snooze bar, 💤 snooze button, 📋 history button, counter and dismiss bar |
 
 ### 🔔 Overlay tab
 
