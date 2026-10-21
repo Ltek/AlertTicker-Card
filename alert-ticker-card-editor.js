@@ -1745,6 +1745,8 @@ const ET = {
     alert_overlay_each_match: "once for each match",
     alert_overlay_needs_mode: "Turn on the overlay first (Overlay section)",
     overlay_alerts_title: "Alerts shown in the overlay",
+    overlay_row_hide: "Shown in the overlay — click to hide",
+    overlay_row_show: "Hidden from the overlay — click to show",
     overlay_alerts_help: "Same order as the Alerts list — reorder there.",
     priority_migration_notice: "Priority numbers were replaced by the list order: the alerts are now listed in the order they showed on the card. Drag to reorder. Alerts below the old minimum overlay priority are no longer shown in the overlay. Save to keep it.",
     ruleset_field_visibility: "Visibility in Home Assistant",
@@ -1956,8 +1958,8 @@ const ET = {
     theme_preset_add_domain: "+ Add domain…",
     theme_preset_state: "Alert when state is (optional)",
     theme_preset_state_ph: "e.g. unlocked, open, on",
-    theme_preset_help: "This theme is now an Alert Preset (Alerts → Alert Presets): Create builds an alert with this theme for every entity in these domains — when its state is the one above, or on any change when empty. You can edit the alert afterwards.",
-    theme_preset_none: "Add a domain to make this theme an Alert Preset.",
+    theme_preset_help: "✕ on a domain chip removes it. This theme is now an Alert Preset (Alerts → Alert Presets): Create builds an alert with this theme for every entity in these domains — when its state is the one above, or on any change when empty. You can edit the alert afterwards.",
+    theme_preset_none: "Add a domain to make this theme an Alert Preset. Each added domain shows as a chip — ✕ on the chip removes it. Built-in presets (above) are fixed and can't be changed here.",
     theme_preset_builtin: "Built-in presets using this theme:",
     scope_class: "class: {v}",
     scope_notifications: "notifications",
@@ -7781,11 +7783,12 @@ class AlertTickerCardEditor extends LitElement {
       <div class="helper-text">${this._t("overlay_alerts_help")}</div>
       <div class="atc-ov-list">
         ${alerts.map((a, i) => html`
-          <div class="form-row-inline atc-ov-row ${a.enabled === false ? "atc-row--off" : ""}">
-            <ha-formfield .label="${this._modeIcon(this._getAlertMode(i, a))} ${a.name || `${this._t("alert_num")} ${i + 1}`}">
-            <ha-checkbox .checked="${a.overlay !== false}"
-              @change="${(e) => this._updateAlert(i, { overlay: e.target.checked ? undefined : false })}"></ha-checkbox>
-</ha-formfield>
+          <div class="atc-ov-row ${a.enabled === false ? "atc-row--off" : ""} ${a.overlay === false ? "atc-ov-row--hidden" : ""}">
+            ${this._iconButton(a.overlay !== false ? "mdi:eye-outline" : "mdi:eye-off-outline",
+              this._t(a.overlay !== false ? "overlay_row_hide" : "overlay_row_show"),
+              () => this._updateAlert(i, { overlay: a.overlay !== false ? false : undefined }), false, a.overlay !== false ? "atc-icon--on" : "")}
+            <span class="atc-ov-icon">${this._modeIcon(this._getAlertMode(i, a))}</span>
+            <span class="atc-ov-name">${a.name || `${this._t("alert_num")} ${i + 1}`}</span>
           </div>`)}
       </div>`;
   }
@@ -12175,6 +12178,7 @@ class AlertTickerCardEditor extends LitElement {
       .atc-theme-edit.is-open, .alert-item:hover .atc-theme-edit { color: var(--primary-color, #03a9f4); }
       .atc-customized { color: var(--accent-color, var(--primary-color, #03a9f4)); }
       .rs-chip-x { border: none; background: none; color: inherit; cursor: pointer; padding: 0 0 0 4px; font-size: 11px; }
+      .rs-chip-x:hover { color: var(--error-color, #f44336); }
       .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
       .atc-theme-panel { padding: 4px 10px 10px; }
       .atc-inherit { opacity: 0.65; font-size: 0.85rem; white-space: nowrap; }
@@ -12804,6 +12808,11 @@ class AlertTickerCardEditor extends LitElement {
       .form-row-inline, .toggle-row { font-size: var(--ltek-fs-label); }
       .atc-gd-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
       .atc-gd .atc-subpanel-body .form-row { margin-bottom: 6px; }
+      .atc-ov-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: var(--ltek-fs-label); }
+      .atc-ov-row .atc-icon--on { color: var(--primary-color, #03a9f4); }
+      .atc-ov-row--hidden .atc-ov-name, .atc-ov-row--hidden .atc-ov-icon { opacity: 0.45; }
+      .atc-ov-icon { --mdc-icon-size: var(--ltek-icon-sm); display: inline-flex; }
+      .atc-ov-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .atc-scope-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
       .rs-chip--scope {
         background: color-mix(in srgb, var(--primary-color, #03a9f4) 14%, transparent);
