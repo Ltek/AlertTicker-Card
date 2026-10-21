@@ -213,7 +213,7 @@ alerts:
 - Enable `tts: true` on any individual alert.
 - If no `tts_message` is set, the card **auto-generates a natural sentence** from a built-in dictionary in 10 languages, based on the alert's theme category. For example, a `critical` theme in Italian produces *"Allarme critico: Sensore fumo cucina"*.
 - The spoken language is read from `hass.language` and falls back to English automatically.
-- Set a global **master toggle** (`tts_enabled: false`) in the General tab to disable all TTS at once without losing per-alert settings.
+- Set a global **master toggle** (`tts_enabled: false`) in Global Defaults → Voice & Push to disable all TTS at once without losing per-alert settings.
 
 ### TTS service options
 
@@ -270,7 +270,7 @@ alerts:
 - If no `push_notify_title` is set, the card uses the alert's **badge label** (or `name` if set).
 - If no `push_notify_message` is set, the card uses the alert's **display message** (same text shown in the ticker).
 - Both fields support `{state}`, `{name}`, `{entity}`, `{device}` placeholders and full Jinja2 templates.
-- Set a global **master toggle** (`push_notify_enabled: false`) in the General tab → 📱 Push Notifications to disable all push notifications at once without touching individual alerts.
+- Set a global **master toggle** (`push_notify_enabled: false`) in Global Defaults → Voice & Push to disable all push notifications at once without touching individual alerts.
 
 ### Per-alert push notification options
 
@@ -936,7 +936,7 @@ Position options:
 
 ### Snooze
 
-Tap 💤 on any active alert to snooze it. Two modes (configurable in General tab):
+Tap 💤 on any active alert to snooze it. Two modes (configurable in Global Defaults → Snooze):
 
 - **Menu** *(default)* — choose 1h / 4h / 8h / 24h from a menu on the card
 - **Fixed duration** — configure 30min / 1h / 4h / 8h / 24h for immediate one-tap snooze
@@ -1313,7 +1313,7 @@ Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, 
 
 Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; a green state marks the ones alerting now.
 
-**Themes & Layout** (main screen): every theme can be customized *in place* — all alerts using it follow. The list shows the themes your alerts use (or customized / all), each with how many alerts use it, a 🔍 preview on the card (kept on while you edit the theme), and **Reset to Default**. A theme's panel has Message / Entity info text (size, color), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border). Settings layer **card → theme → alert**: *Default* means "use the level below", and an alert's own setting still wins (its editor shows what it inherits and links to *Customize theme*). Vertical, large buttons, the counter and the snooze / history buttons stay card-wide. The card-wide Layout & Appearance settings are below the theme list.
+**Themes** (main screen): every theme can be customized *in place* — all alerts using it follow. The list shows the themes your alerts use (or customized / all), each with how many alerts use it, a 🔍 preview on the card (kept on while you edit the theme), and **Reset to Default**. A theme's panel has Message / Entity info text (size, color), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border). Settings layer **card → theme → alert**: *Default* means "use the level below", and an alert's own setting still wins (its editor shows what it inherits and links to *Customize theme*). Vertical, large buttons, the counter and the snooze / history buttons stay card-wide. Their defaults are in **Global Defaults → Look**.
 
 ```yaml
 theme_styles:
@@ -1398,16 +1398,21 @@ For each alert:
 
 You can **reorder** alerts with ↑ / ↓ buttons.
 
-### ⚙️ General tab
+The main screen lists every page as a full-width tile: Alerts, Rule Sets, Themes, Global Defaults, History, Overlay, All Clear. All on/off settings are checkboxes.
 
-| Field | Description |
-|-------|-------------|
-| **Snooze behaviour** | Fixed duration or menu (30min / 1h / 4h / 8h / 24h / 1w / 1m) |
-| **Swipe to snooze** | Swipe an alert to snooze it |
-| **TTS enabled** | Master toggle to enable or disable all TTS announcements |
-| **Push notifications enabled** | Master toggle for all push notifications |
+### ⚙️ Global Defaults
 
-### 📋 History tab
+Card-wide settings, rarely changed, in collapsible groups (closed by default; ✎ marks a changed group). Themes can override the Look settings per theme, and an alert its own.
+
+| Group | Fields |
+|-------|--------|
+| **🖼️ Look** | Adapt to HA theme, vertical layout, centered text, large buttons, fixed card height, font scale, card border, severity border, custom background |
+| **🔄 Cycling & Animation** | Cycle interval, transition animation (preview plays on change), disable animations |
+| **🎛️ Card controls** | Show the snooze bar, 💤 snooze button, 📋 history button, counter and dismiss bar |
+| **💤 Snooze** | Fixed duration or menu (30 min – 1 month); swipe to snooze |
+| **🗣️ Voice & Push** | Master switches for all TTS announcements and all push notifications |
+
+### 📋 History
 
 | Field | Description |
 |-------|-------------|
@@ -1415,21 +1420,9 @@ You can **reorder** alerts with ↑ / ↓ buttons.
 | **Shown on the card (📋)** | Everything stored, the latest N (max 500), or a time window (1 hour – 5 days) |
 | **View stored history** | List what this browser has recorded |
 
-### 🖼️ Themes & Layout tab
+### 🎨 Themes
 
-Two buttons at the top switch between **🎨 Themes** (customize each theme — see *Themes & Layout* above) and **🖼️ Layout Defaults - All Themes**, the card-wide settings every theme starts from:
-
-| Field | Description |
-|-------|-------------|
-| **Adapt to HA theme** | Adapt colors to the active HA global theme |
-| **Vertical layout** | Stack icon on top, message below, centered |
-| **Text align center** | Center the message text — useful in wide Panel layouts |
-| **Large buttons** | Always-visible pill-shaped 💤 and 📋 buttons |
-| **Fixed card height** / **Font scale** | Lock the card height in px; scale everything for HD/4K panels |
-| **Card border** / **Severity border** / **Custom background** | Card frame and background |
-| **Cycle interval** / **Transition animation** | Seconds between alerts; the animation when switching (preview plays on change) |
-| **Disable animations** | Stop all ambient animations |
-| **Card controls** | Show the snooze bar, 💤 snooze button, 📋 history button, counter and dismiss bar |
+Customize each theme in place — see *Themes* above. A theme's *Default* values come from Global Defaults → Look.
 
 ### 🔔 Overlay tab
 
@@ -1491,7 +1484,7 @@ The tab shows an **ON** badge when overlay mode is active.
 | `text_align` | `string` | `left` | `center` to center message text (useful in wide Panel layouts) |
 | `ha_theme` | `boolean` | `false` | Adapt card colors to the active HA global theme |
 | `history_keep_mode` / `history_keep` | `string` / `number` | `count` / `50` | What this browser stores: `count` = up to N alerts (max 5000), `days` = N days (max 5). Replaces `history_max_events` (still read) |
-| `theme_styles` | `object` | — | Per-theme customisation, edited in **Themes & Layout** (see below). Keys per theme: `message_size`, `message_color`, `entity_size`, `entity_color`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
+| `theme_styles` | `object` | — | Per-theme customisation, edited in **Themes** (see below). Keys per theme: `message_size`, `message_color`, `entity_size`, `entity_color`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
 | `history_show_mode` / `history_show` | `string` / `number` | all | What the card's 📋 panel lists: `count` = the latest N (max 500), `hours` = the last N hours (1–120); omit = everything stored |
 | `active_state_entity` | `string` | — | **Per-alert.** `input_boolean.*` entity to write `on`/`off` to when this specific alert becomes active or clears. Each alert can target a different boolean. Works only while the browser tab is open. |
 | `card_height` | `number` | *(auto)* | Fixed card height in px — prevents layout shifts when cycling |
