@@ -1734,7 +1734,7 @@ const ET = {
     entity_row_active: "Matching now",
     entity_row_inactive: "Not matching now",
     templates_title: "Alert Presets",
-    templates_sub: "Alert Presets are the Alert Themes that have a domain (or device class) associated with them. Using one immediately builds an alert for those entities — you can still edit it afterwards.",
+    templates_sub: "Themes with domain or device class associations",
     templates_create: "Create",
     templates_create_edit: "Create & edit",
     templates_added: "Added {name}.",
@@ -1954,8 +1954,15 @@ const ET = {
     themes_title: "Themes",
     themes_help: "Built-in themes are templates: open one to see it, ✎+ makes an editable copy under My themes. Alerts using a theme all look the same — what you see in the preview is what the card shows.",
     themes_show: "Show",
-    themes_filter_used: "Used by my alerts",
-    themes_filter_custom: "Custom",
+    themes_filter_used: "Themes in Use",
+    themes_filter_custom: "My Custom Themes",
+    themes_filter_builtin: "Built-Ins",
+    themes_none_used: "No alert uses a theme yet.",
+    themes_none_presets: "No theme has an association yet.",
+    themes_none_builtin: "No built-in themes.",
+    reset_confirm: "{what}?",
+    reset_yes: "Yes, reset",
+    reset_cancel: "Cancel",
     themes_mine: "My themes",
     themes_mine_none: "No custom themes yet — use ✎+ on any built-in theme to make an editable copy.",
     theme_custom_word: "custom",
@@ -6934,7 +6941,7 @@ class AlertTickerCardEditor extends LitElement {
   _openTheme(theme) {
     this._activeSection = "layout";
     this._themeOpen = theme;
-    this._themeFilter = this._isCustomTheme(theme) ? "custom" : "all";
+    this._themeFilter = this._isCustomTheme(theme) ? "custom" : "builtin";
     this._setThemePreview(theme);
     this.requestUpdate();
   }
@@ -6969,31 +6976,31 @@ class AlertTickerCardEditor extends LitElement {
     const customs = this._config.custom_themes || {};
     const used = new Map();
     (this._config.alerts || []).forEach((a) => a?.theme && used.set(a.theme, (used.get(a.theme) || 0) + 1));
-    const filter = this._themeFilter || (used.size ? "used" : "all");
+    const filter = ["used", "custom", "presets", "builtin"].includes(this._themeFilter) ? this._themeFilter : (used.size ? "used" : "builtin");
     const GROUPS = [["critical", "🚨"], ["warning", "⚠️"], ["info", "ℹ️"], ["ok", "✅"], ["style", "🎨"], ["timer", "⏱️"]];
     const presetThemes = this._presetThemes();
-    const show = (v) => filter === "all" || (filter === "used" ? used.has(v) : filter === "presets" ? presetThemes.has(v) : filter === "custom" ? !!customs[v] : false);
-    const nameOf = (v) => this._themeLabel({ value: v }).replace(/\s*\(.*\)$/, "");
-    const mine = Object.keys(customs).filter(show);
-    const builtinGroups = filter === "custom" ? [] : GROUPS.map(([cat, emoji]) => [cat, emoji,
-      THEME_OPTIONS.map((o) => o.value).filter((v) => (THEME_META[v] || {}).category === cat && show(v))]).filter(([, , items]) => items.length);
+    const all = [...Object.keys(customs), ...THEME_OPTIONS.map((o) => o.value)];
+    const show = (v) => filter === "used" ? used.has(v) : filter === "custom" ? !!customs[v]
+      : filter === "presets" ? presetThemes.has(v) : !customs[v];
+    const nameOf = (v) => customs[v] ? this._themeLabel({ value: v }) : this._themeLabel({ value: v }).replace(/\s*\(.*\)$/, "");
+    const sortName = (v) => nameOf(v).replace(/^\S+\s+/, "").toLowerCase();
+    const groups = GROUPS.map(([cat, emoji]) => [cat, emoji,
+      all.filter((v) => _tmeta(v).category === cat && show(v)).sort((x, y) => sortName(x).localeCompare(sortName(y)))])
+      .filter(([, , items]) => items.length);
     return html`
       <div class="helper-text">${this._t("themes_help")}</div>
       <div class="atc-seg atc-seg--4" role="tablist" aria-label="${this._t("themes_show")}">
-        ${["used", "custom", "presets", "all"].map((f) => html`<button role="tab" class="atc-seg-btn ${filter === f ? "is-on" : ""}"
+        ${["used", "custom", "presets", "builtin"].map((f) => html`<button role="tab" class="atc-seg-btn ${filter === f ? "is-on" : ""}"
           aria-selected="${filter === f}" @click="${() => { this._themeFilter = f; this.requestUpdate(); }}">${this._t("themes_filter_" + f)}</button>`)}
       </div>
       ${this._themePreview ? html`<div class="rs-notice">🔍 ${this._t("theme_previewing").replace("{name}", nameOf(this._themePreview))}</div>` : ""}
-      ${mine.length ? html`
-        <div class="rs-section-title">⭐ ${this._t("themes_mine")}</div>
-        <div class="atc-theme-list">${mine.map((v) => this._renderThemeRow(v, this._themeLabel({ value: v }), used.get(v) || 0, true))}</div>` : ""}
-      ${filter === "custom" && !mine.length ? html`<div class="helper-text">${this._t("themes_mine_none")}</div>` : ""}
-      ${builtinGroups.map(([cat, emoji, items]) => html`
+      ${groups.map(([cat, emoji, items]) => html`
         <div class="rs-section-title">${cat === "timer" ? `⏱️ ${this._t("timer_theme_category")}` : this._groupLabel(cat, emoji)}</div>
-        <div class="atc-theme-list">${items.map((v) => this._renderThemeRow(v, nameOf(v), used.get(v) || 0, false))}</div>`)}
-      ${filter !== "custom" && !mine.length && !builtinGroups.length ? html`<div class="helper-text">${this._t("themes_none")}</div>` : ""}
+        <div class="atc-theme-list">${items.map((v) => this._renderThemeRow(v, nameOf(v), used.get(v) || 0, !!customs[v]))}</div>`)}
+      ${groups.length ? "" : html`<div class="helper-text">${this._t(filter === "custom" ? "themes_mine_none" : "themes_none_" + filter)}</div>`}
     `;
   }
+
 
 
   /** Themes that are an Alert Preset: holding any built-in or own item. */
@@ -7003,6 +7010,18 @@ class AlertTickerCardEditor extends LitElement {
     return set;
   }
 
+
+  /** A Reset button that asks first: click → "Reset …? Yes / Cancel" in place. */
+  _resetButton(key, label, onConfirm, disabled = false) {
+    if (this._confirmReset === key) return html`
+      <span class="atc-confirm">
+        <span>${this._t("reset_confirm").replace("{what}", label)}</span>
+        <button class="atc-btn-reset atc-btn-reset--danger" @click="${(e) => { e.stopPropagation(); this._confirmReset = null; onConfirm(); this.requestUpdate(); }}">${this._t("reset_yes")}</button>
+        <button class="atc-btn-reset" @click="${(e) => { e.stopPropagation(); this._confirmReset = null; this.requestUpdate(); }}">${this._t("reset_cancel")}</button>
+      </span>`;
+    return html`<button class="atc-btn-reset" ?disabled="${disabled}"
+      @click="${(e) => { e.stopPropagation(); this._confirmReset = key; this.requestUpdate(); }}"><ha-icon icon="mdi:restore"></ha-icon> ${label}</button>`;
+  }
 
   _deleteButtonFor(title, onClick) {
     return html`<button class="btn-icon atc-act atc-act--del" title="${title}"
@@ -7078,11 +7097,11 @@ class AlertTickerCardEditor extends LitElement {
             ${domains.filter((d) => !items.includes(`domain:${d}`)).map((d) => html`<option value="domain:${d}">${d}</option>`)}
           </optgroup>
         </select>
-        ${isDefault ? "" : html`<button class="atc-btn-reset" @click="${() => {
+        ${isDefault ? "" : this._resetButton(`assoc:${theme}`, this._t("theme_preset_reset"), () => {
           const assoc = { ...(this._config.theme_associations || {}) }; delete assoc[theme];
           const next = { ...this._config, theme_associations: assoc }; if (!Object.keys(assoc).length) delete next.theme_associations;
           this._fireConfig(next);
-        }}"><ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_preset_reset")}</button>`}
+        })}
       </div>
       ${own.length ? html`
         <ha-input .label="${this._t("theme_preset_state")}" .value="${as.state || ""}" placeholder="${this._t("theme_preset_state_ph")}"
@@ -7168,9 +7187,9 @@ class AlertTickerCardEditor extends LitElement {
         ${this._triControl(this._t("severity_border"), ts.severity_border, cfg.severity_border !== false, set("severity_border"))}
 
         <div class="helper-text">${this._t("theme_panel_help")}</div>
-        <button class="atc-btn-reset" ?disabled="${Object.keys(ts).every((k) => k === "base" || k === "name")}"
-          @click="${() => this._setThemeStyle(theme, Object.fromEntries(Object.keys(ts).filter((k) => k !== "base" && k !== "name").map((k) => [k, undefined])))}">
-          <ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_reset_look").replace("{base}", this._themeLabel({ value: ts.base }).replace(/\s*\(.*\)$/, ""))}</button>
+        ${this._resetButton(`look:${theme}`, this._t("theme_reset_look").replace("{base}", this._themeLabel({ value: ts.base }).replace(/\s*\(.*\)$/, "")),
+          () => this._setThemeStyle(theme, Object.fromEntries(Object.keys(ts).filter((k) => k !== "base" && k !== "name").map((k) => [k, undefined]))),
+          Object.keys(ts).every((k) => k === "base" || k === "name"))}
       </div>`;
   }
 
@@ -12376,6 +12395,8 @@ class AlertTickerCardEditor extends LitElement {
       }
       .atc-btn-reset:hover:not([disabled]) { border-color: var(--primary-color, #03a9f4); color: var(--primary-color, #03a9f4); }
       .atc-btn-reset[disabled] { opacity: 0.4; cursor: default; }
+      .atc-confirm { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--ltek-fs-label, 13px); }
+      .atc-btn-reset--danger { border-color: var(--error-color, #f44336); color: var(--error-color, #f44336); }
       .atc-act--on {
         color: var(--accent-color, var(--primary-color, #03a9f4));
         background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 15%, transparent);
