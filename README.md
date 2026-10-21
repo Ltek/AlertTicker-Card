@@ -1313,6 +1313,14 @@ Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, 
 
 Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; a green state marks the ones alerting now.
 
+**Themes & Layout** (main screen): every theme can be customized *in place* — all alerts using it follow. The list shows the themes your alerts use (or customized / all), each with how many alerts use it, a 🔍 preview on the card (kept on while you edit the theme), and **Reset to Default**. A theme's panel has Message / Entity info text (size, color), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border). Settings layer **card → theme → alert**: *Default* means "use the level below", and an alert's own setting still wins (its editor shows what it inherits and links to *Customize theme*). Vertical, large buttons, the counter and the snooze / history buttons stay card-wide. The card-wide Layout & Appearance settings are below the theme list.
+
+```yaml
+theme_styles:
+  flood: { message_size: 20, flash_background: true }
+  alarm: { flash_background: false }
+```
+
 In **Alert Templates**, 🔍 on a template previews it on the card in the editor's preview pane (only while editing; never saved — it stops when you click 🔍 again, close the panel or change anything).
 
 On the main screen, **🚀 Quick Start** (click to open) explains how to get going with Alert Templates.
@@ -1475,6 +1483,7 @@ The tab shows an **ON** badge when overlay mode is active.
 | `text_align` | `string` | `left` | `center` to center message text (useful in wide Panel layouts) |
 | `ha_theme` | `boolean` | `false` | Adapt card colors to the active HA global theme |
 | `history_keep_mode` / `history_keep` | `string` / `number` | `count` / `50` | What this browser stores: `count` = up to N alerts (max 5000), `days` = N days (max 5). Replaces `history_max_events` (still read) |
+| `theme_styles` | `object` | — | Per-theme customisation, edited in **Themes & Layout** (see below). Keys per theme: `message_size`, `message_color`, `entity_size`, `entity_color`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
 | `history_show_mode` / `history_show` | `string` / `number` | all | What the card's 📋 panel lists: `count` = the latest N (max 500), `hours` = the last N hours (1–120); omit = everything stored |
 | `active_state_entity` | `string` | — | **Per-alert.** `input_boolean.*` entity to write `on`/`off` to when this specific alert becomes active or clears. Each alert can target a different boolean. Works only while the browser tab is open. |
 | `card_height` | `number` | *(auto)* | Fixed card height in px — prevents layout shifts when cycling |

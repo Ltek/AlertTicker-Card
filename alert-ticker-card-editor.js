@@ -1769,9 +1769,9 @@ const ET = {
     alert_rule_set_missing: "This rule set no longer exists — the alert matches nothing until you pick another.",
     back: "Back",
     all_clear_disabled_help: "Enable 'All Clear' to configure the no-alerts message.",
-    tab_layout: "Layout",
+    tab_layout: "Themes & Layout",
     hub_desc_general: "Cycle, snooze & history",
-    hub_desc_layout: "Theme, card height & visual appearance",
+    hub_desc_layout: "Customize themes; card height & visual appearance",
     hub_desc_overlay: "Global banner across all dashboards",
     hub_desc_alerts: "Manage alert conditions",
     hub_desc_allclear: "Message when no alerts are active",
@@ -1934,6 +1934,36 @@ const ET = {
     color_mode_theme: "Theme color",
     color_mode_custom: "Custom",
     color_mode_css: "CSS value",
+    themes_title: "Themes",
+    themes_help: "Customize any theme in place: every alert using it follows. An alert's own setting still wins; Default means \"use the card-wide setting above\" (or the theme's own look).",
+    themes_show: "Show",
+    themes_filter_used: "Used by my alerts",
+    themes_filter_customized: "Customized",
+    themes_filter_all: "All themes",
+    themes_none: "No themes to show — choose \"All themes\".",
+    themes_reset_all: "Reset all ({n})",
+    theme_used_by: "Used by {n} alert(s)",
+    theme_unused: "Not used",
+    theme_customized: "customized",
+    theme_preview: "Preview this theme on the card",
+    theme_previewing: "Previewing {name} on the card while you edit it. Click 🔍 again or close the theme to stop — it is never saved.",
+    theme_reset: "Reset to Default",
+    theme_effects: "Effects",
+    theme_accent: "Accent color",
+    theme_background: "Background",
+    theme_card_height: "Card height",
+    theme_font_scale: "Font scale",
+    theme_card_border: "Card border",
+    theme_colors: "Colors",
+    theme_layout: "Layout",
+    theme_panel_help: "Default = the card-wide value (Layout & Appearance below), or the theme's own look.",
+    theme_customized_note: "This alert's theme is customized.",
+    theme_customize_link: "Customize theme →",
+    inherited_value: "Default: {v}",
+    inherited_theme: "theme",
+    tri_default: "Default ({v})",
+    tri_on: "On",
+    tri_off: "Off",
     pulse_card: "Pulse the card",
     pulse_card_help: "The whole card gently grows and glows in the theme (or accent) color.",
     flash_background: "Flash the background",
@@ -6746,10 +6776,157 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
+  /** theme_styles entry for a theme ({} when not customised). */
+  _themeStyle(theme) {
+    return (theme && this._config?.theme_styles?.[theme]) || {};
+  }
+
+  /** Changes one theme's settings in place; undefined removes a key, an empty entry is dropped. */
+  _setThemeStyle(theme, changes) {
+    const styles = { ...(this._config.theme_styles || {}) };
+    const st = { ...(styles[theme] || {}), ...changes };
+    Object.keys(st).forEach((k) => st[k] === undefined && delete st[k]);
+    if (Object.keys(st).length) styles[theme] = st; else delete styles[theme];
+    const next = { ...this._config, theme_styles: styles };
+    if (!Object.keys(styles).length) delete next.theme_styles;
+    this._fireConfig(next);
+  }
+
+  _openTheme(theme) {
+    this._activeSection = "layout";
+    this._themeOpen = theme;
+    this._themeFilter = "all";
+    this._setThemePreview(theme);
+    this.requestUpdate();
+  }
+
+  /** Alerts the card shows while previewing a theme: the first alert using it, else a sample. */
+  _themePreviewAlerts(theme) {
+    const lang = this._lang || "en";
+    const msgs = DEFAULT_MSG[lang] || DEFAULT_MSG.en;
+    const own = (this._config.alerts || []).find((a) => a?.theme === theme);
+    const shared = globalThis.__alertTickerShared;
+    let entity = own && typeof own.entity === "string" ? own.entity : "";
+    if (own && !entity && shared) {
+      const [att] = shared.attachRuleSets([own], this._ruleSets());
+      entity = (shared.possibleEntities(this._previewHass(), att) || [])[0]?.[0] || "";
+    }
+    const { rule_set, ...rest } = own || {};
+    return [{ ...rest, theme, entity, message: (own?.message && !/\{title\}/.test(own.message) ? own.message : "") || msgs[theme] || DEFAULT_MSG.en[theme] || theme,
+      _expanded: !!entity && !(own && typeof own.entity === "string") }];
+  }
+
+  /** Previews a theme on the card (null = stop). Carried on every config change while set. */
+  _setThemePreview(theme) {
+    this._themePreview = theme || null;
+    this._tplPreview = null;
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: theme ? { ...this._config, _preview_alerts: this._themePreviewAlerts(theme) } : { ...this._config } },
+      bubbles: true, composed: true,
+    }));
+  }
+
+  _renderThemesList() {
+    const lang = this._lang || "en";
+    const styles = this._config.theme_styles || {};
+    const used = new Map();
+    (this._config.alerts || []).forEach((a) => a?.theme && used.set(a.theme, (used.get(a.theme) || 0) + 1));
+    const filter = this._themeFilter || (used.size ? "used" : "all");
+    const GROUPS = [["critical", "🚨"], ["warning", "⚠️"], ["info", "ℹ️"], ["ok", "✅"], ["style", "🎨"], ["timer", "⏱️"]];
+    const show = (v) => filter === "all" || (filter === "used" ? used.has(v) : !!styles[v]);
+    const nameOf = (v) => this._themeLabel({ value: v }).replace(/\s*\(.*\)$/, "");
+    const customized = Object.keys(styles).length;
+    return html`
+      <div class="section-divider">🎨 ${this._t("themes_title")}</div>
+      <div class="helper-text">${this._t("themes_help")}</div>
+      <div class="atc-frow">
+        <span class="atc-frow-label">${this._t("themes_show")}</span>
+        <select class="native-select atc-frow-select" @change="${(e) => { this._themeFilter = e.target.value; this.requestUpdate(); }}">
+          ${["used", "customized", "all"].map((f) => html`<option value="${f}" ?selected="${filter === f}">${this._t("themes_filter_" + f)}</option>`)}
+        </select>
+        ${customized ? html`<button class="atc-btn-reset" @click="${() => { const n = { ...this._config }; delete n.theme_styles; this._themeOpen = null; this._fireConfig(n); }}">
+          <ha-icon icon="mdi:restore"></ha-icon> ${this._t("themes_reset_all").replace("{n}", customized)}</button>` : ""}
+      </div>
+      ${this._themePreview ? html`<div class="rs-notice">🔍 ${this._t("theme_previewing").replace("{name}", nameOf(this._themePreview))}</div>` : ""}
+      ${GROUPS.map(([cat, emoji]) => {
+        const items = THEME_OPTIONS.map((o) => o.value).filter((v) => (THEME_META[v] || {}).category === cat && show(v));
+        if (!items.length) return "";
+        return html`
+          <div class="rs-section-title">${cat === "timer" ? `⏱️ ${this._t("timer_theme_category")}` : this._groupLabel(cat, emoji)}</div>
+          <div class="atc-theme-list">
+            ${items.map((v) => this._renderThemeRow(v, nameOf(v), used.get(v) || 0, !!styles[v]))}
+          </div>`;
+      })}
+      ${GROUPS.every(([cat]) => !THEME_OPTIONS.some((o) => (THEME_META[o.value] || {}).category === cat && show(o.value)))
+        ? html`<div class="helper-text">${this._t("themes_none")}</div>` : ""}
+    `;
+  }
+
+  _renderThemeRow(theme, name, uses, isCustom) {
+    const open = this._themeOpen === theme;
+    const previewing = this._themePreview === theme;
+    return html`
+      <div class="atc-row ${open ? "is-open" : ""}">
+        <div class="alert-item" @click="${() => { this._themeOpen = open ? null : theme; if (!open) this._setThemePreview(theme); else if (previewing) this._setThemePreview(null); this.requestUpdate(); }}">
+          <div class="alert-summary-text">
+            <div class="alert-entity-label">${name}${isCustom ? html` <ha-icon class="atc-mod-mark" icon="mdi:pencil" title="${this._t("theme_customized")}"></ha-icon>` : ""}</div>
+            <div class="alert-msg-label">${uses ? this._t("theme_used_by").replace("{n}", uses) : this._t("theme_unused")}${isCustom ? ` · ${this._t("theme_customized")}` : ""}</div>
+          </div>
+          <div class="alert-actions">
+            ${this._iconButton("mdi:magnify", this._t(previewing ? "templates_preview_off" : "theme_preview"), () => { this._setThemePreview(previewing ? null : theme); this.requestUpdate(); }, false, previewing ? "atc-act--on" : "")}
+            ${isCustom ? this._iconButton("mdi:restore", this._t("theme_reset"), () => this._setThemeStyle(theme, Object.fromEntries(Object.keys(this._themeStyle(theme)).map((k) => [k, undefined])))) : ""}
+          </div>
+          <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
+        </div>
+        ${open ? this._renderThemePanel(theme) : ""}
+      </div>`;
+  }
+
+  _renderThemePanel(theme) {
+    const ts = this._themeStyle(theme);
+    const cfg = this._config;
+    const set = (k) => (v) => this._setThemeStyle(theme, { [k]: v });
+    const native = !!globalThis.__alertTickerShared?.nativeFlashThemes?.has(theme);
+    const animOff = (ts.disable_animation ?? false) || !!cfg.disable_animation;
+    return html`
+      <div class="atc-theme-panel">
+        <div class="rs-section-title">${this._t("text_style_message")}</div>
+        ${this._sizeControl(this._t("text_size"), ts.message_size, 16, 10, 40, set("message_size"))}
+        ${this._colorControl(this._t("text_color"), ts.message_color, set("message_color"), `t:${theme}:msg`)}
+        <div class="rs-section-title">${this._t("text_style_entity")}</div>
+        ${this._sizeControl(this._t("text_size"), ts.entity_size, 12, 8, 30, set("entity_size"))}
+        ${this._colorControl(this._t("text_color"), ts.entity_color, set("entity_color"), `t:${theme}:ent`)}
+
+        <div class="rs-section-title">${this._t("theme_effects")}</div>
+        ${this._triControl(this._t("disable_animation"), ts.disable_animation, !!cfg.disable_animation, set("disable_animation"))}
+        ${animOff ? "" : html`
+          ${this._triControl(this._t("pulse_card"), ts.pulse, false, set("pulse"))}
+          ${this._triControl(this._t("flash_background"), ts.flash_background, native, set("flash_background"))}`}
+
+        <div class="rs-section-title">${this._t("theme_colors")}</div>
+        ${this._colorControl(this._t("theme_accent"), ts.color, set("color"), `t:${theme}:accent`)}
+        ${this._colorControl(this._t("theme_background"), typeof ts.card_background === "string" ? ts.card_background : "", set("card_background"), `t:${theme}:bg`)}
+
+        <div class="rs-section-title">${this._t("theme_layout")}</div>
+        ${this._sizeControl(this._t("theme_card_height"), ts.card_height, cfg.card_height || 80, 40, 400, set("card_height"), { inherited: cfg.card_height })}
+        ${this._sizeControl(this._t("theme_font_scale"), ts.font_scale, cfg.font_scale || 1, 0.6, 3, set("font_scale"), { step: 0.1, unit: "×", inherited: cfg.font_scale })}
+        ${this._triControl(this._t("text_align_center"), ts.text_align === "center" ? true : ts.text_align === "left" ? false : undefined, cfg.text_align === "center",
+          (v) => this._setThemeStyle(theme, { text_align: v === true ? "center" : v === false ? "left" : undefined }))}
+        ${this._triControl(this._t("theme_card_border"), ts.card_border, !!cfg.card_border, set("card_border"))}
+        ${this._triControl(this._t("severity_border"), ts.severity_border, cfg.severity_border !== false, set("severity_border"))}
+
+        <div class="helper-text">${this._t("theme_panel_help")}</div>
+        <button class="atc-btn-reset" ?disabled="${!Object.keys(ts).length}"
+          @click="${() => this._setThemeStyle(theme, Object.fromEntries(Object.keys(ts).map((k) => [k, undefined])))}">
+          <ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_reset")}</button>
+      </div>`;
+  }
+
   _renderLayoutTab() {
     const cfg = this._config;
     return html`
       ${this._renderSectionHeader("tab_layout")}
+      ${this._renderThemesList()}
 
       <div class="section-divider">🖼️ ${this._t("section_layout")}</div>
       <div class="form-row">
@@ -7521,6 +7698,7 @@ class AlertTickerCardEditor extends LitElement {
   /** 🔍 on a template: show it on the card in the editor's preview pane (again = off). */
   _toggleTemplatePreview(key) {
     const on = this._tplPreview !== key;
+    this._themePreview = null;
     const alerts = on ? this._templatePreviewAlerts(key) : [];
     this._tplPreview = on && alerts.length ? key : null;
     // Sent past _fireConfig on purpose: the editor's own config stays clean, so the
@@ -7961,24 +8139,28 @@ class AlertTickerCardEditor extends LitElement {
                     ${alert.color || this._accentOn?.has(index) ? html`${color("color", "accent_color")}
                       <div class="helper-text">${this._t("accent_color_help")}</div>` : ""}
 
-                    <ha-formfield .label="${this._t("disable_animation")}">
-                      <ha-checkbox .checked="${!!alert.disable_animation}"
-                        @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"></ha-checkbox>
-                    </ha-formfield>
-                    <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
-                    ${alert.disable_animation || this._config.disable_animation ? "" : (() => {
+                    ${(() => {
+                      // checkbox showing the inherited (theme) value; stores only a difference from it
+                      const ts = this._themeStyle(alert.theme);
+                      const inh = (k, d) => ts[k] ?? d;
+                      const box = (k, d, labelKey) => html`
+                        <ha-formfield .label="${this._t(labelKey)}">
+                          <ha-checkbox .checked="${alert[k] ?? inh(k, d)}"
+                            @change="${(e) => this._updateAlert(index, { [k]: e.target.checked === inh(k, d) ? undefined : e.target.checked })}"></ha-checkbox>
+                        </ha-formfield>`;
                       const native = !!globalThis.__alertTickerShared?.nativeFlashThemes?.has(alert.theme);
+                      const animOff = (alert.disable_animation ?? inh("disable_animation", false)) || this._config.disable_animation;
                       return html`
-                      <ha-formfield .label="${this._t("pulse_card")}">
-                        <ha-checkbox .checked="${!!alert.pulse}"
-                          @change="${(e) => this._updateAlert(index, { pulse: e.target.checked || undefined })}"></ha-checkbox>
-                      </ha-formfield>
+                      ${box("disable_animation", false, "disable_animation")}
+                      <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
+                      ${animOff ? "" : html`
+                      ${box("pulse", false, "pulse_card")}
                       <div class="helper-text">${this._t("pulse_card_help")}</div>
-                      <ha-formfield .label="${this._t("flash_background")}">
-                        <ha-checkbox .checked="${alert.flash_background ?? native}"
-                          @change="${(e) => this._updateAlert(index, { flash_background: e.target.checked === native ? undefined : e.target.checked })}"></ha-checkbox>
-                      </ha-formfield>
-                      <div class="helper-text">${this._t(native ? "flash_background_native_help" : "flash_background_help")}</div>`;
+                      ${box("flash_background", native, "flash_background")}
+                      <div class="helper-text">${this._t(native ? "flash_background_native_help" : "flash_background_help")}</div>`}
+                      ${Object.keys(ts).length ? html`<div class="helper-text">🎨 ${this._t("theme_customized_note")}
+                        <a href="#" @click="${(e) => { e.preventDefault(); this._openTheme(alert.theme); }}">${this._t("theme_customize_link")}</a></div>`
+                        : html`<div class="helper-text"><a href="#" @click="${(e) => { e.preventDefault(); this._openTheme(alert.theme); }}">${this._t("theme_customize_link")}</a></div>`}`;
                     })()}
                   `;
                 })()}
@@ -8280,11 +8462,11 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="helper-text">${this._getAlertMode(index, alert) === "rs_notify" ? `💬 ${this._t("notify_placeholders_help")}` : this._t("alert_message_help")}</div>
 
                 <div class="rs-section-title">${this._t("text_style_message")}</div>
-                ${this._sizeControl(this._t("text_size"), alert.message_size, 16, 10, 40, (v) => this._updateAlert(index, { message_size: v }))}
-                ${this._colorControl(this._t("text_color"), alert.message_color, (v) => this._updateAlert(index, { message_color: v }), `msg:${index}`)}
+                ${this._sizeControl(this._t("text_size"), alert.message_size, 16, 10, 40, (v) => this._updateAlert(index, { message_size: v }), { inherited: this._themeStyle(alert.theme).message_size })}
+                ${this._colorControl(this._t("text_color"), alert.message_color, (v) => this._updateAlert(index, { message_color: v }), `msg:${index}`, this._themeStyle(alert.theme).message_color)}
                 <div class="rs-section-title">${this._t("text_style_entity")}</div>
-                ${this._sizeControl(this._t("text_size"), alert.entity_size, 12, 8, 30, (v) => this._updateAlert(index, { entity_size: v }))}
-                ${this._colorControl(this._t("text_color"), alert.entity_color, (v) => this._updateAlert(index, { entity_color: v }), `ent:${index}`)}
+                ${this._sizeControl(this._t("text_size"), alert.entity_size, 12, 8, 30, (v) => this._updateAlert(index, { entity_size: v }), { inherited: this._themeStyle(alert.theme).entity_size })}
+                ${this._colorControl(this._t("text_color"), alert.entity_color, (v) => this._updateAlert(index, { entity_color: v }), `ent:${index}`, this._themeStyle(alert.theme).entity_color)}
                 <div class="helper-text">${this._t("text_style_help")}</div>
 
 
@@ -8666,9 +8848,11 @@ class AlertTickerCardEditor extends LitElement {
     if (this._config && JSON.stringify(this._config) === JSON.stringify(newConfig)) return;
     this._config = newConfig;
     this._tplPreview = null; // any real change ends a template preview (the new config has none)
+    // A theme preview stays on while its theme is being edited: the change is re-sent with it.
+    const sent = this._themePreview ? { ...newConfig, _preview_alerts: this._themePreviewAlerts(this._themePreview) } : newConfig;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
-        detail: { config: newConfig },
+        detail: { config: sent },
         bubbles: true,
         composed: true,
       })
@@ -8830,7 +9014,7 @@ class AlertTickerCardEditor extends LitElement {
    * theme variable, custom swatch, or any CSS color. A stored value we don't
    * recognise shows as CSS and is kept as is.
    */
-  _colorControl(label, value, onChange, stateKey) {
+  _colorControl(label, value, onChange, stateKey, inherited) {
     const VARS = [["var(--primary-color)", "Primary"], ["var(--accent-color)", "Accent"],
       ["var(--primary-text-color)", "Primary text"], ["var(--secondary-text-color)", "Secondary text"],
       ["var(--disabled-text-color)", "Disabled text"], ["var(--state-active-color)", "State active"],
@@ -8850,7 +9034,7 @@ class AlertTickerCardEditor extends LitElement {
       <div class="atc-frow">
         <span class="atc-frow-label">${label}</span>
         <select class="native-select atc-frow-select" @change="${(e) => setMode(e.target.value)}">
-          ${["default", "theme", "custom", "css"].map((m) => html`<option value="${m}" ?selected="${mode === m}">${this._t("color_mode_" + m)}</option>`)}
+          ${["default", "theme", "custom", "css"].map((m) => html`<option value="${m}" ?selected="${mode === m}">${this._t("color_mode_" + m)}${m === "default" && inherited ? ` (${this._t("inherited_theme")})` : ""}</option>`)}
         </select>
         ${mode === "theme" ? html`<select class="native-select atc-frow-select" @change="${(e) => onChange(e.target.value)}">
           ${VARS.map(([x, n]) => html`<option value="${x}" ?selected="${v === x}">${n}</option>`)}</select>` : ""}
@@ -8862,16 +9046,32 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /** Size option — design guide: a slider with a bold px readout, behind an enable checkbox. */
-  _sizeControl(label, value, def, min, max, onChange) {
+  _sizeControl(label, value, def, min, max, onChange, { step = 1, unit = "px", inherited } = {}) {
     const on = Number(value) > 0;
+    const fmt = (v) => unit === "×" ? `${Number(v).toFixed(1)}×` : `${v}${unit}`;
     return html`
       <div class="atc-frow atc-frow--nowrap">
         <ha-formfield .label="${label}">
-          <ha-checkbox .checked="${on}" @change="${(e) => onChange(e.target.checked ? def : undefined)}"></ha-checkbox>
+          <ha-checkbox .checked="${on}" @change="${(e) => onChange(e.target.checked ? (Number(inherited) > 0 ? Number(inherited) : def) : undefined)}"></ha-checkbox>
         </ha-formfield>
-        ${on ? html`<input type="range" class="atc-slider" min="${min}" max="${max}" step="1" .value="${String(value)}"
+        ${on ? html`<input type="range" class="atc-slider" min="${min}" max="${max}" step="${step}" .value="${String(value)}"
             @input="${(e) => onChange(Number(e.target.value))}" />
-          <span class="atc-slider-val">${value}px</span>` : ""}
+          <span class="atc-slider-val">${fmt(value)}</span>`
+          : Number(inherited) > 0 ? html`<span class="atc-inherit">${this._t("inherited_value").replace("{v}", fmt(inherited))}</span>` : ""}
+      </div>`;
+  }
+
+  /** On / off setting that can also inherit: Default (shows what it inherits) / On / Off. */
+  _triControl(label, value, inheritedOn, onChange) {
+    const cur = value === true ? "on" : value === false ? "off" : "default";
+    return html`
+      <div class="atc-frow">
+        <span class="atc-frow-label">${label}</span>
+        <select class="native-select atc-frow-select" @change="${(e) => onChange(e.target.value === "on" ? true : e.target.value === "off" ? false : undefined)}">
+          <option value="default" ?selected="${cur === "default"}">${this._t("tri_default").replace("{v}", this._t(inheritedOn ? "tri_on" : "tri_off"))}</option>
+          <option value="on" ?selected="${cur === "on"}">${this._t("tri_on")}</option>
+          <option value="off" ?selected="${cur === "off"}">${this._t("tri_off")}</option>
+        </select>
       </div>`;
   }
 
@@ -9920,6 +10120,7 @@ class AlertTickerCardEditor extends LitElement {
   // Event handlers — tabs & general
   // -------------------------------------------------------------------------
   _sectionChanged(section) {
+    if (this._themePreview && section !== "layout") this._setThemePreview(null);
     this._activeSection = section;
     this.requestUpdate();
   }
@@ -11741,6 +11942,18 @@ class AlertTickerCardEditor extends LitElement {
         margin: 6px 0 10px;
         border: 1px dashed var(--primary-color, #03a9f4);
       }
+      .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+      .atc-theme-panel { padding: 4px 10px 10px; }
+      .atc-inherit { opacity: 0.65; font-size: 0.85rem; white-space: nowrap; }
+      .atc-mod-mark { --mdc-icon-size: 14px; color: var(--primary-color, #03a9f4); vertical-align: middle; }
+      .atc-btn-reset {
+        display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 10px;
+        border: 1px solid var(--divider-color, #ccc); border-radius: 6px; background: transparent;
+        color: var(--primary-text-color); font: inherit; font-size: 0.85rem; cursor: pointer;
+        --mdc-icon-size: 16px;
+      }
+      .atc-btn-reset:hover:not([disabled]) { border-color: var(--primary-color, #03a9f4); color: var(--primary-color, #03a9f4); }
+      .atc-btn-reset[disabled] { opacity: 0.4; cursor: default; }
       .atc-act--on {
         color: var(--accent-color, var(--primary-color, #03a9f4));
         background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 15%, transparent);

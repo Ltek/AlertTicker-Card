@@ -1801,6 +1801,39 @@ function _atcExtraConditionResults(hass, alert, ctx) {
  * the matched entity's name, or a notification's message. null for single-entity
  * alerts. (Label- and area-only filters were left out before.)
  */
+/**
+ * Per-theme customisation (theme_styles: { <theme>: {...} }), edited in place in the
+ * editor's Themes & Layout section. Settings layer card → theme → alert: an alert's
+ * own value wins, then its theme's, then the card-wide one.
+ *   THEME_ALERT_KEYS  are merged into each alert of that theme (setConfig).
+ *   THEME_LAYOUT_KEYS override the card-wide layout while that theme is on screen.
+ */
+const _ATC_THEME_ALERT_KEYS = ["message_size", "message_color", "entity_size", "entity_color",
+  "flash_background", "pulse", "disable_animation", "color"];
+const _ATC_THEME_LAYOUT_KEYS = ["card_height", "font_scale", "text_align", "card_border", "severity_border", "card_background"];
+
+function _atcApplyThemeStyles(alerts, styles) {
+  if (!styles || typeof styles !== "object" || !Array.isArray(alerts)) return alerts;
+  return alerts.map((a) => {
+    const ts = a && styles[a.theme];
+    if (!ts) return a;
+    let out = null;
+    for (const k of _ATC_THEME_ALERT_KEYS) {
+      if (a[k] === undefined && ts[k] !== undefined) (out = out || { ...a })[k] = ts[k];
+    }
+    return out || a;
+  });
+}
+
+/** Card config with the on-screen theme's layout overrides applied. */
+function _atcLayoutFor(config, theme) {
+  const ts = theme && config?.theme_styles?.[theme];
+  if (!ts) return config || {};
+  const out = { ...config };
+  for (const k of _ATC_THEME_LAYOUT_KEYS) if (ts[k] !== undefined) out[k] = ts[k];
+  return out;
+}
+
 /** Themes whose look already flashes the background (flash_background defaults on). */
 const _ATC_NATIVE_FLASH = new Set(["alarm", "intruder"]);
 
@@ -2168,6 +2201,10 @@ globalThis.__alertTickerShared = Object.freeze({
   legacyFilterDef: _atcLegacyFilterDef,
   migrateConfig: _atcMigrateConfig,
   nativeFlashThemes: _ATC_NATIVE_FLASH,
+  themeAlertKeys: _ATC_THEME_ALERT_KEYS,
+  themeLayoutKeys: _ATC_THEME_LAYOUT_KEYS,
+  applyThemeStyles: _atcApplyThemeStyles,
+  layoutFor: _atcLayoutFor,
   historyKey: _atcHistoryKey,
   isCompanionCommand: _atcIsCompanionCommand,
   possibleEntities: _atcPossibleEntities,
@@ -3350,7 +3387,7 @@ class AlertTickerCard extends LitElement {
     };
     // Resolve `rule_set: <id>` references once, so the card and the overlay watcher
     // both evaluate the alert's rule set without needing the card config.
-    this._config.alerts = _atcAttachRuleSets(this._config.alerts, this._config.rule_sets);
+    this._config.alerts = _atcApplyThemeStyles(_atcAttachRuleSets(this._config.alerts, this._config.rule_sets), this._config.theme_styles);
     // Re-derive the hass this card sees in case a notification rule set was just added/removed.
     if (this._rawHass) this._hass = _atcHassFor(this._config, this._rawHass);
     // Stop/start cycle timer based on test_mode
@@ -3481,7 +3518,7 @@ class AlertTickerCard extends LitElement {
     // the editor strips _preview_alerts on its next config.
     const pv = this._config._preview_alerts;
     if (Array.isArray(pv) && pv.length && _atcPreviewAllowed()) {
-      this._activeAlerts = pv.map((a, i) => {
+      this._activeAlerts = _atcApplyThemeStyles(pv, this._config.theme_styles).map((a, i) => {
         const st = a.entity && this._hass.states[a.entity];
         const name = st?.attributes?.friendly_name || a.entity || "";
         return {
@@ -6095,21 +6132,24 @@ class AlertTickerCard extends LitElement {
     // while any popup is open (see :host(.atc-popup-open) in styles).
     this.classList.toggle('atc-popup-open', !!(this._snoozeMenuOpen || this._historyOpen || this._musicPickerOpen));
     this.style.height = this._config?.vertical ? "100%" : "";
+    // Layout of the theme on screen (theme_styles overrides the card-wide values)
+    const onScreen = this._activeAlerts[this._currentIndex];
+    const L = _atcLayoutFor(this._config, onScreen ? onScreen.theme : (this._config?.show_when_clear ? this._config.clear_theme : null));
     // Fixed card height — prevents layout shifts when cycling between alerts
-    const cardHeight = this._config?.card_height;
+    const cardHeight = L.card_height;
     this.style.setProperty("--atc-card-height", cardHeight ? `${cardHeight}px` : "");
     // Density scaling: when card_height is set, shrink padding/gap/icon proportionally.
     // Base natural height ≈ 72px (16px top + 16px bottom + ~40px content).
-    this.style.setProperty("--atc-card-outline", this._config?.card_border
+    this.style.setProperty("--atc-card-outline", L.card_border
       ? "1px solid var(--ha-card-border-color, var(--divider-color, rgba(255,255,255,0.25)))"
       : "var(--ha-card-border-width, 0px) solid var(--ha-card-border-color, transparent)");
-    this.style.setProperty("--atc-severity-border-width", this._config?.severity_border === false ? "0px" : "");
+    this.style.setProperty("--atc-severity-border-width", L.severity_border === false ? "0px" : "");
     // Font scaling for HD / 4K / wall-panel displays (#forum feedback from Ricardo).
     // Uses CSS `zoom` to proportionally enlarge text + icons + padding together.
     // Default 1 (no scaling); typical use case is 1.3-2 for large screens.
-    const fontScale = parseFloat(this._config?.font_scale) || 1;
+    const fontScale = parseFloat(L.font_scale) || 1;
     this.style.setProperty("--atc-zoom", fontScale > 0.5 && fontScale <= 4 ? String(fontScale) : "1");
-    const bg = this._config?.card_background;
+    const bg = L.card_background;
     if (bg && bg !== false) {
       let bgValue;
       if (bg === true) {
@@ -6126,7 +6166,7 @@ class AlertTickerCard extends LitElement {
       this.style.removeProperty("--atc-card-bg-override");
       this.classList.remove("atc-has-bg-override");
     }
-    this.classList.toggle("atc-center-text", this._config?.text_align === "center");
+    this.classList.toggle("atc-center-text", L.text_align === "center");
     this.shadowRoot?.querySelectorAll(".atc-ha-icon").forEach(el => {
       el.parentElement?.classList.add("atc-has-mdi-icon");
     });
