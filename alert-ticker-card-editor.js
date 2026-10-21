@@ -1770,7 +1770,7 @@ const ET = {
     back: "Back",
     all_clear_disabled_help: "Enable 'All Clear' to configure the no-alerts message.",
     tab_layout: "Themes & Layout",
-    hub_desc_general: "Cycle, snooze & history",
+    hub_desc_general: "Snooze, voice (TTS) & push",
     hub_desc_layout: "Customize themes; card height & visual appearance",
     hub_desc_overlay: "Global banner across all dashboards",
     hub_desc_alerts: "Manage alert conditions",
@@ -1823,7 +1823,12 @@ const ET = {
     cycle_interval_help: "Seconds between alerts when multiple are active",
     show_widget_in_cycle: "Show weather/time in cycle",
     section_all_clear: "All clear card",
-    section_layout: "Layout & Appearance",
+    section_layout: "Layout Defaults - All Themes",
+    layout_defaults_help: "Card-wide settings every theme starts from. A theme can override the look settings in Themes; an alert can override its own.",
+    layout_defaults_look: "Look",
+    section_card_controls: "Card controls",
+    tab_history: "History",
+    hub_desc_history: "What is recorded and shown",
     section_cycling: "Cycling & Animation",
     section_snooze: "Snooze 💤",
     section_history: "History",
@@ -1935,7 +1940,7 @@ const ET = {
     color_mode_custom: "Custom",
     color_mode_css: "CSS value",
     themes_title: "Themes",
-    themes_help: "Customize any theme in place: every alert using it follows. An alert's own setting still wins; Default means \"use the card-wide setting above\" (or the theme's own look).",
+    themes_help: "Customize any theme in place: every alert using it follows. An alert's own setting still wins; Default means \"use Layout Defaults - All Themes\" (or the theme's own look).",
     themes_show: "Show",
     themes_filter_used: "Used by my alerts",
     themes_filter_customized: "Customized",
@@ -1956,7 +1961,7 @@ const ET = {
     theme_card_border: "Card border",
     theme_colors: "Colors",
     theme_layout: "Layout",
-    theme_panel_help: "Default = the card-wide value (Layout & Appearance below), or the theme's own look.",
+    theme_panel_help: "Default = the value in Layout Defaults - All Themes, or the theme's own look.",
     theme_customized_note: "This alert's theme is customized.",
     theme_customize_link: "Customize theme →",
     inherited_value: "Default: {v}",
@@ -6637,6 +6642,7 @@ class AlertTickerCardEditor extends LitElement {
           s === "overlay"  ? this._renderOverlayTab()  :
           s === "allclear" ? this._renderAllClearTab()  :
           s === "rulesets" ? this._renderRuleSetsTab()  :
+          s === "history"  ? this._renderHistoryTab()   :
           this._renderAlertsTab()}
         <div class="version-badge">${this._t("version")}: ${CARD_VERSION}</div>
       </div>
@@ -6691,6 +6697,11 @@ class AlertTickerCardEditor extends LitElement {
           <span class="hub-tile-icon">🖼️</span>
           <span class="hub-tile-label">${this._t("tab_layout")}</span>
           <span class="hub-tile-desc">${this._t("hub_desc_layout")}</span>
+        </button>
+        <button class="hub-tile" @click="${() => this._sectionChanged("history")}">
+          <span class="hub-tile-icon">📋</span>
+          <span class="hub-tile-label">${this._t("tab_history")}</span>
+          <span class="hub-tile-desc">${this._t("hub_desc_history")}</span>
         </button>
         <button class="hub-tile" @click="${() => this._sectionChanged("overlay")}">
           <span class="hub-tile-icon">🔔</span>
@@ -6837,7 +6848,6 @@ class AlertTickerCardEditor extends LitElement {
     const nameOf = (v) => this._themeLabel({ value: v }).replace(/\s*\(.*\)$/, "");
     const customized = Object.keys(styles).length;
     return html`
-      <div class="section-divider">🎨 ${this._t("themes_title")}</div>
       <div class="helper-text">${this._t("themes_help")}</div>
       <div class="atc-frow">
         <span class="atc-frow-label">${this._t("themes_show")}</span>
@@ -6923,12 +6933,30 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _renderLayoutTab() {
-    const cfg = this._config;
+    const view = this._layoutView === "defaults" ? "defaults" : "themes";
+    const pick = (v) => {
+      this._layoutView = v;
+      if (v !== "themes" && this._themePreview) this._setThemePreview(null);
+      this.requestUpdate();
+    };
     return html`
       ${this._renderSectionHeader("tab_layout")}
-      ${this._renderThemesList()}
+      <div class="atc-seg" role="tablist">
+        <button role="tab" class="atc-seg-btn ${view === "themes" ? "is-on" : ""}" aria-selected="${view === "themes"}"
+          @click="${() => pick("themes")}">🎨 ${this._t("themes_title")}</button>
+        <button role="tab" class="atc-seg-btn ${view === "defaults" ? "is-on" : ""}" aria-selected="${view === "defaults"}"
+          @click="${() => pick("defaults")}">🖼️ ${this._t("section_layout")}</button>
+      </div>
+      ${view === "themes" ? this._renderThemesList() : this._renderLayoutDefaults()}
+    `;
+  }
 
-      <div class="section-divider">🖼️ ${this._t("section_layout")}</div>
+  /** Card-wide look & display settings — the defaults every theme starts from. */
+  _renderLayoutDefaults() {
+    const cfg = this._config;
+    return html`
+      <div class="helper-text">${this._t("layout_defaults_help")}</div>
+      <div class="section-divider">🖼️ ${this._t("layout_defaults_look")}</div>
       <div class="form-row">
         <div class="form-row-inline">
           <span>${this._t("ha_theme")}</span>
@@ -7072,14 +7100,6 @@ class AlertTickerCardEditor extends LitElement {
         })() : ""}
         <div class="helper-text">${this._t("card_background_help")}</div>
       </div>
-    `;
-  }
-
-  _renderGeneralTab() {
-    const cfg = this._config;
-
-    return html`
-      ${this._renderSectionHeader("tab_general")}
 
       <!-- ── CYCLING & ANIMATION ───────────────────────────────────────── -->
       <div class="section-divider">🔄 ${this._t("section_cycling")}</div>
@@ -7117,31 +7137,8 @@ class AlertTickerCardEditor extends LitElement {
         <div class="helper-text">${this._t("disable_animation_help")}</div>
       </div>
 
-      <!-- ── SNOOZE ────────────────────────────────────────────────────── -->
-      <div class="section-divider">💤 ${this._t("section_snooze")}</div>
-      <div class="form-row">
-        <div class="native-select-wrap">
-          <label class="native-select-label">${this._t("snooze_default_duration")}</label>
-          <select class="native-select"
-            @change="${(e) => this._fireConfig({ ...this._config, snooze_default_duration: e.target.value === "menu" ? undefined : parseFloat(e.target.value) })}"
-          >
-            <option value="menu" ?selected="${!cfg.snooze_default_duration}">${this._t("snooze_option_menu")}</option>
-            ${[[0.5, "30 min"], [1, "1h"], [4, "4h"], [8, "8h"], [24, "24h"], [168, "1w"], [720, "1m"]].map(([v, label]) => html`
-              <option value="${v}" ?selected="${cfg.snooze_default_duration === v}">${label}</option>
-            `)}
-          </select>
-        </div>
-        <div class="helper-text">${this._t("snooze_default_duration_help")}</div>
-      </div>
-      <div class="form-row">
-        <div class="form-row-inline">
-          <span>${this._t("swipe_to_snooze")}</span>
-          <ha-switch
-            .checked="${!!cfg.swipe_to_snooze}"
-            @change="${(e) => this._fireConfig({ ...this._config, swipe_to_snooze: e.target.checked || undefined })}"
-          ></ha-switch>
-        </div>
-      </div>
+      <!-- ── CARD CONTROLS (moved from General) ── -->
+      <div class="section-divider">🎛️ ${this._t("section_card_controls")}</div>
       <div class="form-row">
         <div class="form-row-inline">
           <span>${this._t("show_snooze_bar")}</span>
@@ -7188,6 +7185,40 @@ class AlertTickerCardEditor extends LitElement {
         </div>
       </div>
 
+    `;
+  }
+
+  _renderGeneralTab() {
+    const cfg = this._config;
+
+    return html`
+      ${this._renderSectionHeader("tab_general")}
+
+      <!-- ── SNOOZE ────────────────────────────────────────────────────── -->
+      <div class="section-divider">💤 ${this._t("section_snooze")}</div>
+      <div class="form-row">
+        <div class="native-select-wrap">
+          <label class="native-select-label">${this._t("snooze_default_duration")}</label>
+          <select class="native-select"
+            @change="${(e) => this._fireConfig({ ...this._config, snooze_default_duration: e.target.value === "menu" ? undefined : parseFloat(e.target.value) })}"
+          >
+            <option value="menu" ?selected="${!cfg.snooze_default_duration}">${this._t("snooze_option_menu")}</option>
+            ${[[0.5, "30 min"], [1, "1h"], [4, "4h"], [8, "8h"], [24, "24h"], [168, "1w"], [720, "1m"]].map(([v, label]) => html`
+              <option value="${v}" ?selected="${cfg.snooze_default_duration === v}">${label}</option>
+            `)}
+          </select>
+        </div>
+        <div class="helper-text">${this._t("snooze_default_duration_help")}</div>
+      </div>
+      <div class="form-row">
+        <div class="form-row-inline">
+          <span>${this._t("swipe_to_snooze")}</span>
+          <ha-switch
+            .checked="${!!cfg.swipe_to_snooze}"
+            @change="${(e) => this._fireConfig({ ...this._config, swipe_to_snooze: e.target.checked || undefined })}"
+          ></ha-switch>
+        </div>
+      </div>
       <!-- ── TTS MASTER ───────────────────────────────────────────────── -->
       <div class="section-divider">${this._t("section_tts")}</div>
       <div class="form-row">
@@ -7216,10 +7247,13 @@ class AlertTickerCardEditor extends LitElement {
         <div class="helper-text" style="color:var(--warning-color,#f4a835);margin-top:4px">${this._t("client_side_warning")}</div>
       </div>
 
-      <!-- ── HISTORY ───────────────────────────────────────────────────── -->
-      <div class="section-divider">📋 ${this._t("section_history")}</div>
-      ${this._renderHistorySettings()}
+    `;
+  }
 
+  _renderHistoryTab() {
+    return html`
+      ${this._renderSectionHeader("tab_history")}
+      ${this._renderHistorySettings()}
     `;
   }
 
@@ -11941,6 +11975,23 @@ class AlertTickerCardEditor extends LitElement {
       .atc-quickstart[open] {
         margin: 6px 0 10px;
         border: 1px dashed var(--primary-color, #03a9f4);
+      }
+      .atc-seg {
+        position: sticky; top: 0; z-index: 5;
+        display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        padding: 8px 0 10px; margin-bottom: 4px;
+        background: var(--card-background-color, var(--primary-background-color, #1c1c1c));
+      }
+      .atc-seg-btn {
+        padding: 9px 10px; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 600; font-size: 0.9rem;
+        border: 1px solid var(--divider-color, #444); background: transparent; color: var(--primary-text-color);
+        transition: border-color .15s, box-shadow .15s, background .15s;
+      }
+      .atc-seg-btn:hover { border-color: var(--primary-color, #03a9f4); }
+      .atc-seg-btn.is-on {
+        border-color: var(--primary-color, #03a9f4); color: var(--primary-color, #03a9f4);
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 12%, transparent);
+        box-shadow: 0 0 0 1px var(--primary-color, #03a9f4), 0 0 12px color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
       }
       .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
       .atc-theme-panel { padding: 4px 10px 10px; }
