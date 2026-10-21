@@ -20,15 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - History: keep by number of alerts (up to 5000) or days (up to 5), and choose separately how much the card's 📋 panel shows (up to 500 alerts, or 1 hour – 5 days); a stored-history viewer in the editor.
 - Notification alerts ignore Companion app commands (`clear_notification`, `command_*`, …); `clear_notification` + tag clears the matching alert, and a repeated tag replaces the earlier notification.
 - Editor reorganised: the main screen is a stack of full-width tiles (Alerts, Rule Sets, Themes, Global Defaults, History, Overlay, All Clear). **Global Defaults** merges General and Layout into collapsible groups — Look, Cycling & Animation, Card controls, Snooze, Voice & Push. **History** has its own page. Every toggle is now a checkbox; headings, text and icon sizes follow the design guide (uppercase accent subtitles).
-- **Themes** page: customize any theme in place (`theme_styles`) — text size/color, effects, colors and layout per theme, with preview and Reset to Default; settings layer card → theme → alert.
-- Alert Templates: 🔍 previews a template on the card in the editor's preview pane.
+- **Themes** page: filter buttons (Used / Customized / Alert Presets / All), a ✎ pencil to edit each theme, and **Associated domains** that turn a theme into an Alert Preset (`preset_domains`, `preset_state`). Customize any theme in place (`theme_styles`) — text size/color, effects, colors and layout per theme, with preview and Reset to Default; settings layer card → theme → alert.
+- Alert Presets: 🔍 previews a preset on the card in the editor's preview pane.
 - Per-alert text style: size (slider) and color (default / theme color / custom / CSS) for the message and for the entity info line.
 - Per-alert **Pulse the card** and **Flash the background** (on by default for alarm and intruder, which already flash; can be turned off there). Both follow Disable animations.
 - New theme **`water`** ("Water"): Flood's look with a fluid water level — layered waves, swell and bubbles; fills to a `%` entity's value.
-- **All Notifications** template (listed first; the other templates are alphabetical); a **Quick Start** panel on the editor's main screen.
+- **All Notifications** preset (listed first; the other presets are alphabetical); a **Quick Start** panel on the editor's main screen.
 - Alert editor sections: **Options** (Persistent / Sticky, Show in overlay, snooze duration, trigger on any change), **Appearance** (theme, entity-name line, icon source — theme / emoji / entity's HA icon / custom `mdi:` / entity picture / image —, accent color, animations, custom card), **Condition**, **Alert Grouping** (tap / hold inside), **Tap Actions** (Single Tap, Double Tap, Hold, Snooze), **Set Entity Value**. Checkboxes instead of toggles; a pencil marks sections changed from the defaults.
 - `rules:` as an alias for `groups:` on a rule set (a flat list = all must match); per-rule `enabled: false`; rule-set Export with per-rule match counts for troubleshooting.
-- **Alert Templates panel** replaces the template dropdown: each template shows what it can match here and what's active now, with Create / Create & edit; template alerts are inserted by importance.
+- **Alert Presets panel** (was "Alert Templates") replaces the template dropdown: each preset shows what it can match here and what's active now, with Create / Create & edit; preset alerts are inserted by importance.
 - **Can match N entities** inside an alert: every entity it can cover, independent of their current state.
 
 ### Changed
