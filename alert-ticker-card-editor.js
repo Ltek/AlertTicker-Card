@@ -92,6 +92,13 @@ const THEME_META = {
 // Uses device_class filters so no per-entity selection is required — the
 // template auto-matches all pertinent entities on the user's HA instance.
 // ---------------------------------------------------------------------------
+// Custom themes of the config being edited (set in setConfig / _fireConfig).
+let _ATC_CUSTOM_THEMES = {};
+/** Built-in theme a (possibly custom) theme id renders as. */
+function _tbase(id) { return (id && _ATC_CUSTOM_THEMES[id]?.base) || id; }
+/** THEME_META for a (possibly custom) theme id. */
+function _tmeta(id) { return THEME_META[_tbase(id)] || {}; }
+
 const ALERT_TEMPLATES = {
   battery_monitor: {
     icon: "🔋",
@@ -1945,10 +1952,29 @@ const ET = {
     color_mode_custom: "Custom",
     color_mode_css: "CSS value",
     themes_title: "Themes",
-    themes_help: "Customize any theme in place: every alert using it follows. An alert's own setting still wins; Default means \"use Global Defaults\" (or the theme's own look).",
+    themes_help: "Built-in themes are templates: open one to see it, ✎+ makes an editable copy under My themes. Alerts using a theme all look the same — what you see in the preview is what the card shows.",
     themes_show: "Show",
     themes_filter_used: "Used by my alerts",
-    themes_filter_customized: "Customized",
+    themes_filter_custom: "Custom",
+    themes_mine: "My themes",
+    themes_mine_none: "No custom themes yet — use ✎+ on any built-in theme to make an editable copy.",
+    theme_custom_word: "custom",
+    theme_copy: "copy",
+    theme_based_on: "based on {name}",
+    theme_duplicate: "Duplicate",
+    theme_duplicate_edit: "Duplicate to customize",
+    theme_delete: "Delete this theme ({n} alert(s) go back to the built-in it was based on)",
+    theme_view: "View",
+    theme_name: "Name",
+    theme_icon: "Icon",
+    theme_look_title: "Look",
+    theme_builtin_readonly: "Built-in themes can't be changed. Duplicate it to make your own version — it starts from this look and keeps \"based on\" its name.",
+    theme_reset_look: "Reset look to {base}",
+    alert_look_from_theme: "Icon, colors, text, severity label and effects come from the theme.",
+    theme_edit_link: "Edit theme →",
+    theme_duplicate_link: "Duplicate & customize theme →",
+    look_migration_notice: "Look settings of {n} alert(s) moved into {m} custom theme(s), so every look setting is now on a theme.",
+    look_migration_open: "Show",
     themes_filter_presets: "Alert Presets",
     remove: "Remove",
     theme_is_preset: "Preset",
@@ -1996,7 +2022,7 @@ const ET = {
     theme_card_border: "Card border",
     theme_colors: "Colors",
     theme_layout: "Layout",
-    theme_panel_help: "Default = the value in Global Defaults, or the theme's own look.",
+    theme_panel_help: "Default = the value in Global Defaults, or the built-in theme's own look.",
     theme_customized_note: "This alert's theme is customized.",
     theme_customize_link: "Customize theme →",
     inherited_value: "Default: {v}",
@@ -6440,11 +6466,11 @@ class AlertTickerCardEditor extends LitElement {
       case "conditions": return mode === "entity" && (any(["on_change", "attribute"])) || (mode === "entity" && ((alert.operator || "=") !== "=" || (alert.state != null && String(alert.state) !== "on") || !!(alert.rule_set && typeof alert.rule_set === "object" && (alert.rule_set.groups || []).some((g) => (g.rules || []).length))));
       case "timing": return any(["trigger_delay", "auto_dismiss_after"]);
       case "message": {
-        const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
+        const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[_tbase(alert.theme)] || "";
         const msgChanged = !!alert.message && alert.message !== dflt && !(mode === "rs_notify" && alert.message === "{title}");
-        return msgChanged || any(["badge_label", "history_message", "show_badge", "message_size", "message_color", "entity_size", "entity_color"]);
+        return msgChanged || any(["history_message"]);
       }
-      case "appearance": return any(["disable_animation", "pulse", "flash_background", "icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "color", "show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
+      case "appearance": return this._isCustomTheme(alert.theme) || any(["show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
       case "actions": return ["tap_action", "double_tap_action", "hold_action", "snooze_action"].some((k) => this._actionSet(alert[k]));
       case "secondary": return any(["secondary_entity", "secondary_attribute", "secondary_text", "show_secondary_name", "secondary_value_align"]);
       case "options": return any(["persistent", "overlay", "snooze_duration"]) || (mode === "rs_entity" && !!alert.on_change);
@@ -6554,6 +6580,17 @@ class AlertTickerCardEditor extends LitElement {
     // _preview_index / _preview_anim are ephemeral signals: the card uses them
     // for one render cycle but they must not end up saved in the user's YAML.
     // Leaving them in causes the JSON dedup in _fireConfig to malfunction.
+    // Look settings live on themes: per-alert ones and theme_styles become custom themes.
+    const migLook = globalThis.__alertTickerShared?.migrateLook;
+    if (migLook) {
+      const r = migLook(config);
+      if (r.config !== config) {
+        config = r.config;
+        if (r.moved || r.made) this._lookMigrated = { moved: r.moved, made: r.made };
+        queueMicrotask(() => this._fireConfig({ ...this._config }));
+      }
+    }
+    _ATC_CUSTOM_THEMES = config.custom_themes || {};
     const { _preview_index, _preview_anim, _preview_alerts, ...cleanConfig } = config;
     const merged = { ...defaults, ...cleanConfig };
     // Preserve existing alert object references where the content is identical.
@@ -6627,6 +6664,8 @@ class AlertTickerCardEditor extends LitElement {
 
   /** Returns a translated label for a theme option entry */
   _themeLabel(opt) {
+    const ct = this._config?.custom_themes?.[opt.value];
+    if (ct) return `${this._themeLabel({ value: ct.base }).split(" ")[0]} ${ct.name || opt.value}`;
     const EMOJI = {
       emergency: "🚨", fire: "🔥", alarm: "🔴", lightning: "🌩️", nuclear: "☢️",
       flood: "🌊", water: "🌊", motion: "👁️", intruder: "🚷", toxic: "☠️",
@@ -6812,6 +6851,8 @@ class AlertTickerCardEditor extends LitElement {
         ? [{ cat: "ok", emoji: "✅" }]
         : [...GROUPS, TIMER_GROUP];
 
+    const mine = Object.entries(this._config?.custom_themes || {})
+      .filter(([, ct]) => groups.some((g) => (THEME_META[ct.base] || {}).category === g.cat));
     return html`
       <div class="native-select-wrap">
         <label class="native-select-label">${this._t(labelKey)}</label>
@@ -6819,10 +6860,13 @@ class AlertTickerCardEditor extends LitElement {
           class="native-select"
           @change="${(e) => handler(e.target.value)}"
         >
+          ${mine.length ? html`<optgroup label="⭐ ${this._t("themes_mine")}">
+            ${mine.map(([id]) => html`<option value="${id}" ?selected="${currentValue === id}">${this._themeLabel({ value: id })}</option>`)}
+          </optgroup>` : ""}
           ${groups.map((g) => html`
             <optgroup label="${g.label || this._groupLabel(g.cat, g.emoji)}">
               ${THEME_OPTIONS
-                .filter((o) => (THEME_META[o.value] || {}).category === g.cat)
+                .filter((o) => _tmeta(o.value).category === g.cat)
                 .map((o) => html`
                   <option value="${o.value}" ?selected="${currentValue === o.value}">
                     ${this._themeLabel(o)}
@@ -6835,26 +6879,62 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
-  /** theme_styles entry for a theme ({} when not customised). */
+  /** Look settings of a custom theme ({} for a built-in, which can't be changed). */
   _themeStyle(theme) {
-    return (theme && this._config?.theme_styles?.[theme]) || {};
+    return (theme && this._config?.custom_themes?.[theme]) || {};
   }
 
-  /** Changes one theme's settings in place; undefined removes a key, an empty entry is dropped. */
+  _isCustomTheme(theme) { return !!this._config?.custom_themes?.[theme]; }
+
+
+  /** Changes a custom theme's settings; undefined removes a key. Built-ins are read-only. */
   _setThemeStyle(theme, changes) {
-    const styles = { ...(this._config.theme_styles || {}) };
-    const st = { ...(styles[theme] || {}), ...changes };
+    const customs = { ...(this._config.custom_themes || {}) };
+    if (!customs[theme]) return;
+    const st = { ...customs[theme], ...changes };
     Object.keys(st).forEach((k) => st[k] === undefined && delete st[k]);
-    if (Object.keys(st).length) styles[theme] = st; else delete styles[theme];
-    const next = { ...this._config, theme_styles: styles };
-    if (!Object.keys(styles).length) delete next.theme_styles;
+    customs[theme] = st;
+    this._fireConfig({ ...this._config, custom_themes: customs });
+  }
+
+  /** Copies a theme (built-in or custom) into a new custom theme and opens it. */
+  _duplicateTheme(theme) {
+    const customs = { ...(this._config.custom_themes || {}) };
+    const src = customs[theme];
+    const base = src ? src.base : theme;
+    const baseName = this._themeLabel({ value: base }).replace(/^\S+\s+/, "").replace(/\s*\(.*\)$/, "");
+    let n = 1, id = `${base}_custom`;
+    while (customs[id]) id = `${base}_custom_${++n}`;
+    const name = src ? `${src.name || theme} (${this._t("theme_copy")})` : `${baseName} (${this._t("theme_custom_word")}${n > 1 ? " " + n : ""})`;
+    customs[id] = { ...(src || {}), base, name };
+    this._themeOpen = id;
+    this._themeFilter = "custom";
+    this._fireConfig({ ...this._config, custom_themes: customs });
+    this._setThemePreview(id);
+    return id;
+  }
+
+  /** Deletes a custom theme; its alerts go back to the built-in it was based on. */
+  _deleteCustomTheme(id) {
+    const customs = { ...(this._config.custom_themes || {}) };
+    const ct = customs[id];
+    if (!ct) return;
+    delete customs[id];
+    const next = { ...this._config, custom_themes: customs,
+      alerts: (this._config.alerts || []).map((a) => (a?.theme === id ? { ...a, theme: ct.base } : a)) };
+    if (!Object.keys(customs).length) delete next.custom_themes;
+    const assoc = { ...(next.theme_associations || {}) };
+    if (assoc[id]) { delete assoc[id]; if (Object.keys(assoc).length) next.theme_associations = assoc; else delete next.theme_associations; }
+    if (this._themeOpen === id) this._themeOpen = null;
+    if (this._themePreview === id) this._themePreview = null;
     this._fireConfig(next);
   }
+
 
   _openTheme(theme) {
     this._activeSection = "layout";
     this._themeOpen = theme;
-    this._themeFilter = "all";
+    this._themeFilter = this._isCustomTheme(theme) ? "custom" : "all";
     this._setThemePreview(theme);
     this.requestUpdate();
   }
@@ -6871,7 +6951,7 @@ class AlertTickerCardEditor extends LitElement {
       entity = (shared.possibleEntities(this._previewHass(), att) || [])[0]?.[0] || "";
     }
     const { rule_set, ...rest } = own || {};
-    return [{ ...rest, theme, entity, message: (own?.message && !/\{title\}/.test(own.message) ? own.message : "") || msgs[theme] || DEFAULT_MSG.en[theme] || theme,
+    return [{ ...rest, theme, entity, message: (own?.message && !/\{title\}/.test(own.message) ? own.message : "") || msgs[_tbase(theme)] || DEFAULT_MSG.en[_tbase(theme)] || theme,
       _expanded: !!entity && !(own && typeof own.entity === "string") }];
   }
 
@@ -6886,48 +6966,48 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _renderThemesList() {
-    const lang = this._lang || "en";
-    const styles = this._config.theme_styles || {};
+    const customs = this._config.custom_themes || {};
     const used = new Map();
     (this._config.alerts || []).forEach((a) => a?.theme && used.set(a.theme, (used.get(a.theme) || 0) + 1));
     const filter = this._themeFilter || (used.size ? "used" : "all");
     const GROUPS = [["critical", "🚨"], ["warning", "⚠️"], ["info", "ℹ️"], ["ok", "✅"], ["style", "🎨"], ["timer", "⏱️"]];
     const presetThemes = this._presetThemes();
-    const show = (v) => filter === "all" || (filter === "used" ? used.has(v) : filter === "presets" ? presetThemes.has(v) : !!styles[v]);
+    const show = (v) => filter === "all" || (filter === "used" ? used.has(v) : filter === "presets" ? presetThemes.has(v) : filter === "custom" ? !!customs[v] : false);
     const nameOf = (v) => this._themeLabel({ value: v }).replace(/\s*\(.*\)$/, "");
-    const customized = Object.keys(styles).length;
+    const mine = Object.keys(customs).filter(show);
+    const builtinGroups = filter === "custom" ? [] : GROUPS.map(([cat, emoji]) => [cat, emoji,
+      THEME_OPTIONS.map((o) => o.value).filter((v) => (THEME_META[v] || {}).category === cat && show(v))]).filter(([, , items]) => items.length);
     return html`
       <div class="helper-text">${this._t("themes_help")}</div>
       <div class="atc-seg atc-seg--4" role="tablist" aria-label="${this._t("themes_show")}">
-        ${["used", "customized", "presets", "all"].map((f) => html`<button role="tab" class="atc-seg-btn ${filter === f ? "is-on" : ""}"
+        ${["used", "custom", "presets", "all"].map((f) => html`<button role="tab" class="atc-seg-btn ${filter === f ? "is-on" : ""}"
           aria-selected="${filter === f}" @click="${() => { this._themeFilter = f; this.requestUpdate(); }}">${this._t("themes_filter_" + f)}</button>`)}
       </div>
-      <div class="atc-frow">
-        ${customized ? html`<button class="atc-btn-reset" @click="${() => { const n = { ...this._config }; delete n.theme_styles; this._themeOpen = null; this._fireConfig(n); }}">
-          <ha-icon icon="mdi:restore"></ha-icon> ${this._t("themes_reset_all").replace("{n}", customized)}</button>` : ""}
-      </div>
       ${this._themePreview ? html`<div class="rs-notice">🔍 ${this._t("theme_previewing").replace("{name}", nameOf(this._themePreview))}</div>` : ""}
-      ${GROUPS.map(([cat, emoji]) => {
-        const items = THEME_OPTIONS.map((o) => o.value).filter((v) => (THEME_META[v] || {}).category === cat && show(v));
-        if (!items.length) return "";
-        return html`
-          <div class="rs-section-title">${cat === "timer" ? `⏱️ ${this._t("timer_theme_category")}` : this._groupLabel(cat, emoji)}</div>
-          <div class="atc-theme-list">
-            ${items.map((v) => this._renderThemeRow(v, nameOf(v), used.get(v) || 0, !!styles[v]))}
-          </div>`;
-      })}
-      ${GROUPS.every(([cat]) => !THEME_OPTIONS.some((o) => (THEME_META[o.value] || {}).category === cat && show(o.value)))
-        ? html`<div class="helper-text">${this._t("themes_none")}</div>` : ""}
+      ${mine.length ? html`
+        <div class="rs-section-title">⭐ ${this._t("themes_mine")}</div>
+        <div class="atc-theme-list">${mine.map((v) => this._renderThemeRow(v, this._themeLabel({ value: v }), used.get(v) || 0, true))}</div>` : ""}
+      ${filter === "custom" && !mine.length ? html`<div class="helper-text">${this._t("themes_mine_none")}</div>` : ""}
+      ${builtinGroups.map(([cat, emoji, items]) => html`
+        <div class="rs-section-title">${cat === "timer" ? `⏱️ ${this._t("timer_theme_category")}` : this._groupLabel(cat, emoji)}</div>
+        <div class="atc-theme-list">${items.map((v) => this._renderThemeRow(v, nameOf(v), used.get(v) || 0, false))}</div>`)}
+      ${filter !== "custom" && !mine.length && !builtinGroups.length ? html`<div class="helper-text">${this._t("themes_none")}</div>` : ""}
     `;
   }
+
 
   /** Themes that are an Alert Preset: holding any built-in or own item. */
   _presetThemes() {
     const set = new Set(Object.values(this._presetAssignment()));
-    for (const th of Object.keys(this._config?.theme_styles || {})) if (this._themeItems(th).length) set.add(th);
+    for (const th of Object.keys(this._config?.theme_associations || {})) if (this._themeItems(th).length) set.add(th);
     return set;
   }
 
+
+  _deleteButtonFor(title, onClick) {
+    return html`<button class="btn-icon atc-act atc-act--del" title="${title}"
+      @click="${(e) => { e.stopPropagation(); onClick(); }}"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>`;
+  }
 
   _renderThemeRow(theme, name, uses, isCustom) {
     const open = this._themeOpen === theme;
@@ -6937,13 +7017,16 @@ class AlertTickerCardEditor extends LitElement {
         <div class="alert-item" @click="${() => { this._themeOpen = open ? null : theme; if (!open) this._setThemePreview(theme); else if (previewing) this._setThemePreview(null); this.requestUpdate(); }}">
           <div class="alert-summary-text">
             <div class="alert-entity-label">${name}${this._presetThemes().has(theme) ? this._scopeChips(this._themeScopes(theme)) : ""}</div>
-            <div class="alert-msg-label">${uses ? this._t("theme_used_by").replace("{n}", uses) : this._t("theme_unused")}${isCustom ? html` · <span class="atc-customized">${this._t("theme_customized")}</span>` : ""}</div>
+            <div class="alert-msg-label">${isCustom ? html`<span class="atc-customized">${this._t("theme_based_on").replace("{name}", this._themeLabel({ value: this._config.custom_themes[theme].base }).replace(/\s*\(.*\)$/, ""))}</span> · ` : ""}${uses ? this._t("theme_used_by").replace("{n}", uses) : this._t("theme_unused")}</div>
           </div>
           <div class="alert-actions">
             ${this._iconButton("mdi:magnify", this._t(previewing ? "templates_preview_off" : "theme_preview"), () => { this._setThemePreview(previewing ? null : theme); this.requestUpdate(); }, false, previewing ? "atc-act--on" : "")}
-            ${isCustom ? this._iconButton("mdi:restore", this._t("theme_reset"), () => this._setThemeStyle(theme, Object.fromEntries(Object.keys(this._themeStyle(theme)).map((k) => [k, undefined])))) : ""}
+            ${isCustom ? html`
+              ${this._iconButton("mdi:content-copy", this._t("theme_duplicate"), () => this._duplicateTheme(theme))}
+              ${this._deleteButtonFor(this._t("theme_delete").replace("{n}", uses), () => this._deleteCustomTheme(theme))}`
+              : this._iconButton("mdi:pencil-plus-outline", this._t("theme_duplicate_edit"), () => this._duplicateTheme(theme))}
           </div>
-          <ha-icon class="atc-theme-edit ${open ? "is-open" : ""}" icon="${open ? "mdi:pencil" : "mdi:pencil-outline"}" title="${this._t("theme_edit")}"></ha-icon>
+          <ha-icon class="atc-theme-edit ${open ? "is-open" : ""}" icon="${isCustom ? (open ? "mdi:pencil" : "mdi:pencil-outline") : (open ? "mdi:eye" : "mdi:eye-outline")}" title="${this._t(isCustom ? "theme_edit" : "theme_view")}"></ha-icon>
         </div>
         ${open ? this._renderThemePanel(theme) : ""}
       </div>`;
@@ -6971,8 +7054,8 @@ class AlertTickerCardEditor extends LitElement {
     const classes = [...new Set(Object.values(h?.states || {}).map((st) => st.attributes?.device_class).filter(Boolean))].sort();
     const own = items.filter((x) => !x.startsWith("builtin:"));
     const dflt = bi.filter((it) => it.defaultTheme === theme).map((it) => it.id);
-    const isDefault = Array.isArray(ts.preset_items) ? false : !ts.preset_domains?.length
-      && items.length === dflt.length && dflt.every((x) => items.includes(x));
+    const as = this._config.theme_associations?.[theme] || {};
+    const isDefault = !Array.isArray(as.items) && !as.state;
     const add = (v) => { if (v && !items.includes(v)) this._setThemeItems(theme, [...items, v]); };
     return html`
       <div class="atc-preset-chips">
@@ -6996,16 +7079,14 @@ class AlertTickerCardEditor extends LitElement {
           </optgroup>
         </select>
         ${isDefault ? "" : html`<button class="atc-btn-reset" @click="${() => {
-          const styles = { ...(this._config.theme_styles || {}) };
-          const st = { ...(styles[theme] || {}) }; delete st.preset_items; delete st.preset_domains; delete st.preset_state;
-          if (Object.keys(st).length) styles[theme] = st; else delete styles[theme];
-          const next = { ...this._config, theme_styles: styles }; if (!Object.keys(styles).length) delete next.theme_styles;
+          const assoc = { ...(this._config.theme_associations || {}) }; delete assoc[theme];
+          const next = { ...this._config, theme_associations: assoc }; if (!Object.keys(assoc).length) delete next.theme_associations;
           this._fireConfig(next);
         }}"><ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_preset_reset")}</button>`}
       </div>
       ${own.length ? html`
-        <ha-input .label="${this._t("theme_preset_state")}" .value="${ts.preset_state || ""}" placeholder="${this._t("theme_preset_state_ph")}"
-          @change="${(e) => this._setThemeStyle(theme, { preset_state: e.target.value.trim() || undefined })}"></ha-input>` : ""}
+        <ha-input .label="${this._t("theme_preset_state")}" .value="${as.state || ""}" placeholder="${this._t("theme_preset_state_ph")}"
+          @change="${(e) => this._setThemeAssocState(theme, e.target.value.trim() || undefined)}"></ha-input>` : ""}
       <div class="helper-text">${this._t("theme_preset_help")}</div>`;
   }
 
@@ -7014,12 +7095,46 @@ class AlertTickerCardEditor extends LitElement {
     const ts = this._themeStyle(theme);
     const cfg = this._config;
     const set = (k) => (v) => this._setThemeStyle(theme, { [k]: v });
-    const native = !!globalThis.__alertTickerShared?.nativeFlashThemes?.has(theme);
+    const native = !!globalThis.__alertTickerShared?.nativeFlashThemes?.has(_tbase(theme));
     const animOff = (ts.disable_animation ?? false) || !!cfg.disable_animation;
-    return html`
+    const custom = this._isCustomTheme(theme);
+    if (!custom) return html`
       <div class="atc-theme-panel">
         <div class="rs-section-title">${this._t("theme_preset_title")}</div>
         ${this._renderPresetDomains(theme, ts)}
+        <div class="rs-section-title">${this._t("theme_look_title")}</div>
+        <div class="helper-text">${this._t("theme_builtin_readonly")}</div>
+        <button class="atc-btn-reset" @click="${() => this._duplicateTheme(theme)}">
+          <ha-icon icon="mdi:pencil-plus-outline"></ha-icon> ${this._t("theme_duplicate_edit")}</button>
+      </div>`;
+    const im = this._iconMode(ts);
+    return html`
+      <div class="atc-theme-panel">
+        <ha-input .label="${this._t("theme_name")}" .value="${ts.name || ""}"
+          @change="${(e) => this._setThemeStyle(theme, { name: e.target.value.trim() || ts.name })}"></ha-input>
+        <div class="helper-text">${this._t("theme_based_on").replace("{name}", this._themeLabel({ value: ts.base }))}</div>
+
+        <div class="rs-section-title">${this._t("theme_preset_title")}</div>
+        ${this._renderPresetDomains(theme, ts)}
+
+        <div class="rs-section-title">${this._t("theme_icon")}</div>
+        <div class="atc-frow">
+          <span class="atc-frow-label">${this._t("icon_source")}</span>
+          <select class="native-select atc-frow-select" @change="${(e) => this._setThemeIconMode(theme, e.target.value)}">
+            ${["theme", "emoji", "entity_icon", "ha", "picture", "image"].map((m) => html`<option value="${m}" ?selected="${im === m}">${this._t("icon_src_" + m)}</option>`)}
+          </select>
+        </div>
+        ${im === "emoji" ? html`<ha-input .label="${this._t("icon_emoji")}" .value="${ts.icon || ""}" placeholder="💠"
+          @change="${(e) => this._setThemeStyle(theme, { icon: e.target.value.trim() || undefined })}"></ha-input>` : ""}
+        ${im === "ha" ? html`<ha-icon-picker .label="${this._t("alert_icon")}" .value="${ts.icon || ""}"
+          @value-changed="${(e) => this._setThemeStyle(theme, { icon: e.detail.value || "mdi:bell" })}"></ha-icon-picker>` : ""}
+        ${im === "entity_icon" ? html`<div class="helper-text">${this._t("icon_src_entity_icon_help")}</div>` : ""}
+        ${im === "picture" ? html`<div class="helper-text">${this._t("icon_src_picture_help")}</div>` : ""}
+        ${im === "image" ? html`<ha-input .label="${this._t("icon_image")}" .value="${ts.icon_image || ""}" placeholder="/local/icons/home.png"
+          @change="${(e) => this._setThemeStyle(theme, { icon_image: e.target.value.trim() || undefined })}"></ha-input>` : ""}
+        ${im === "ha" || im === "entity_icon" ? this._colorControl(this._t("icon_color"), ts.icon_color, set("icon_color"), `t:${theme}:icon`) : ""}
+        ${im !== "theme" && im !== "emoji" ? html`<ha-input .label="${this._t("icon_size")}" .value="${ts.icon_size || ""}" placeholder="${im === "picture" || im === "image" ? "2rem" : "1.6em"}"
+          @change="${(e) => this._setThemeStyle(theme, { icon_size: e.target.value.trim() || undefined })}"></ha-input>` : ""}
 
         <div class="rs-section-title">${this._t("text_style_message")}</div>
         ${this._sizeControl(this._t("text_size"), ts.message_size, 16, 10, 40, set("message_size"))}
@@ -7053,9 +7168,9 @@ class AlertTickerCardEditor extends LitElement {
         ${this._triControl(this._t("severity_border"), ts.severity_border, cfg.severity_border !== false, set("severity_border"))}
 
         <div class="helper-text">${this._t("theme_panel_help")}</div>
-        <button class="atc-btn-reset" ?disabled="${!Object.keys(ts).length}"
-          @click="${() => this._setThemeStyle(theme, Object.fromEntries(Object.keys(ts).map((k) => [k, undefined])))}">
-          <ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_reset")}</button>
+        <button class="atc-btn-reset" ?disabled="${Object.keys(ts).every((k) => k === "base" || k === "name")}"
+          @click="${() => this._setThemeStyle(theme, Object.fromEntries(Object.keys(ts).filter((k) => k !== "base" && k !== "name").map((k) => [k, undefined])))}">
+          <ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_reset_look").replace("{base}", this._themeLabel({ value: ts.base }).replace(/\s*\(.*\)$/, ""))}</button>
       </div>`;
   }
 
@@ -7867,47 +7982,55 @@ class AlertTickerCardEditor extends LitElement {
 
   /** builtin item id → theme it is on now (missing = removed). */
   _presetAssignment() {
-    const styles = this._config?.theme_styles || {};
-    const explicit = (th) => Array.isArray(styles[th]?.preset_items) ? styles[th].preset_items : null;
+    const assoc = this._config?.theme_associations || {};
+    const explicit = (th) => Array.isArray(assoc[th]?.items) ? assoc[th].items : null;
     const map = {};
     for (const it of this._builtinItems()) if (!explicit(it.defaultTheme)) map[it.id] = it.defaultTheme;
-    for (const [th, ts] of Object.entries(styles)) for (const id of explicit(th) || []) if (id.startsWith("builtin:")) map[id] = th;
+    for (const th of Object.keys(assoc)) for (const id of explicit(th) || []) if (id.startsWith("builtin:")) map[id] = th;
     return map;
   }
 
   /** Every item on a theme: built-in ids it holds, then its own "domain:"/"class:" items. */
   _themeItems(theme) {
-    const ts = this._config?.theme_styles?.[theme] || {};
+    const as = this._config?.theme_associations?.[theme] || {};
     const assign = this._presetAssignment();
     const builtin = this._builtinItems().filter((it) => assign[it.id] === theme).map((it) => it.id);
-    const own = Array.isArray(ts.preset_items) ? ts.preset_items.filter((x) => !x.startsWith("builtin:"))
-      : (ts.preset_domains || []).filter(Boolean).map((d) => `domain:${d}`);
+    const own = (as.items || []).filter((x) => !x.startsWith("builtin:"));
     return [...builtin, ...own];
   }
 
-  /** Writes a theme's item list; a built-in item is taken off every other theme. */
+  /** Writes a theme's associations; a built-in item is taken off every other theme. */
   _setThemeItems(theme, items) {
-    const styles = { ...(this._config.theme_styles || {}) };
+    const assoc = { ...(this._config.theme_associations || {}) };
     const assign = this._presetAssignment();
     const write = (th, list) => {
-      const st = { ...(styles[th] || {}) };
-      delete st.preset_domains;
+      const st = { ...(assoc[th] || {}) };
       const dflt = this._builtinItems().filter((it) => it.defaultTheme === th).map((it) => it.id);
       const same = list.length === dflt.length && list.every((x) => dflt.includes(x));
-      if (same) delete st.preset_items; else st.preset_items = list;
-      if (!list.some((x) => !x.startsWith("builtin:"))) delete st.preset_state;
-      if (Object.keys(st).length) styles[th] = st; else delete styles[th];
+      if (same) delete st.items; else st.items = list;
+      if (!list.some((x) => !x.startsWith("builtin:"))) delete st.state;
+      if (Object.keys(st).length) assoc[th] = st; else delete assoc[th];
     };
     for (const id of items.filter((x) => x.startsWith("builtin:"))) {
       const from = assign[id];
       if (from && from !== theme) write(from, this._themeItems(from).filter((x) => x !== id));
     }
-    // other themes were written into `styles`; _themeItems reads this._config, so recompute for `theme` from items
     write(theme, items);
-    const next = { ...this._config, theme_styles: styles };
-    if (!Object.keys(styles).length) delete next.theme_styles;
+    const next = { ...this._config, theme_associations: assoc };
+    if (!Object.keys(assoc).length) delete next.theme_associations;
     this._fireConfig(next);
   }
+
+  _setThemeAssocState(theme, state) {
+    const assoc = { ...(this._config.theme_associations || {}) };
+    const st = { ...(assoc[theme] || {}), state };
+    if (state === undefined) delete st.state;
+    if (Object.keys(st).length) assoc[theme] = st; else delete assoc[theme];
+    const next = { ...this._config, theme_associations: assoc };
+    if (!Object.keys(assoc).length) delete next.theme_associations;
+    this._fireConfig(next);
+  }
+
 
   _presets() {
     const lang = this._lang || "en";
@@ -7923,11 +8046,10 @@ class AlertTickerCardEditor extends LitElement {
       });
       if (alerts.length) out[key] = alerts.length === t.alerts.length && alerts.every((a, i) => a === t.alerts[i]) ? t : { ...t, alerts, edited: true };
     }
-    const themes = new Set([...Object.keys(this._config?.theme_styles || {})]);
-    for (const theme of themes) {
+    for (const theme of Object.keys(this._config?.theme_associations || {})) {
       const own = this._themeItems(theme).filter((x) => !x.startsWith("builtin:"));
       if (!own.length) continue;
-      const ts = this._config.theme_styles[theme] || {};
+      const ts = { preset_state: this._config.theme_associations[theme]?.state };
       const doms = own.filter((x) => x.startsWith("domain:")).map((x) => x.slice(7));
       const classes = own.filter((x) => x.startsWith("class:")).map((x) => x.slice(6));
       const name = this._themeLabel({ value: theme }).replace(/^\S+\s+/, "").replace(/\s*\(.*\)$/, "");
@@ -7940,11 +8062,11 @@ class AlertTickerCardEditor extends LitElement {
       if (state) groups.push({ mode: "include", match: "all", rules: [{ field: "state", op: "eq", value: state }] });
       const what = [...doms, ...classes.map((c) => this._t("scope_class").replace("{v}", c))].join(", ");
       out[`theme:${theme}`] = {
-        icon: (THEME_META[theme] || {}).icon || "🎨",
+        icon: _tmeta(theme).icon || "🎨",
         nameByLang: { en: name },
         descByLang: { en: this._t(state ? "preset_theme_desc_state" : "preset_theme_desc").replace("{domains}", what).replace("{state}", state || "") },
         ruleSets: [{ id, name: `${name} — ${what}`, groups }],
-        alerts: [{ theme, rule_set: id, message: msgs[theme] || "", ...(state ? {} : { on_change: true }) }],
+        alerts: [{ theme, rule_set: id, message: msgs[_tbase(theme)] || "", ...(state ? {} : { on_change: true }) }],
         userPreset: true,
       };
     }
@@ -8029,7 +8151,7 @@ class AlertTickerCardEditor extends LitElement {
     return m.parts.map((p) => {
       const a = p.alert;
       const entity = [...p.active][0] || p.possible[0]?.[0] || a.entity || "";
-      let message = a.message || msgs[a.theme] || DEFAULT_MSG.en[a.theme] || "";
+      let message = a.message || msgs[_tbase(a.theme)] || DEFAULT_MSG.en[_tbase(a.theme)] || "";
       if (m.notify) message = message.replace(/\{title\}/g, this._t("templates_preview_sample_title")).replace(/\{message\}/g, this._t("templates_preview_sample_message"));
       return { ...a, entity, message, _expanded: !!entity && !a.entity };
     });
@@ -8180,6 +8302,9 @@ class AlertTickerCardEditor extends LitElement {
       ${this._renderTemplatesPanel()}
       ${this._migratedCount ? html`<div class="rs-notice">🧩 ${this._t("migration_notice").replace("{n}", this._migratedCount)}
         <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._migratedCount = 0; this.requestUpdate(); }}">${this._t("notify_close")}</a></div>` : ""}
+      ${this._lookMigrated ? html`<div class="rs-notice">🎨 ${this._t("look_migration_notice").replace("{n}", this._lookMigrated.moved).replace("{m}", this._lookMigrated.made)}
+        <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._themeFilter = "custom"; this._lookMigrated = null; this._sectionChanged("layout"); }}">${this._t("look_migration_open")}</a>
+        <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._lookMigrated = null; this.requestUpdate(); }}">${this._t("notify_close")}</a></div>` : ""}
       ${this._priorityMigrated ? html`<div class="rs-notice">↕ ${this._t("priority_migration_notice")}
         <a href="#" class="rs-link" @click="${(e) => { e.preventDefault(); this._priorityMigrated = false; this.requestUpdate(); }}">${this._t("notify_close")}</a></div>` : ""}
       <div class="alerts-header">
@@ -8212,7 +8337,7 @@ class AlertTickerCardEditor extends LitElement {
 
   _renderAlertItem(alert, index) {
     const isEditing = this._editingIndex === index;
-    const rawIcon = alert.icon || (THEME_META[alert.theme] || {}).icon || "🔔";
+    const rawIcon = alert.icon || _tmeta(alert.theme).icon || "🔔";
     const icon = (rawIcon && /^[\w-]+:/.test(rawIcon))
       ? html`<ha-icon icon="${rawIcon}" style="--mdc-icon-size:1.2em;vertical-align:middle;"></ha-icon>`
       : rawIcon;
@@ -8422,7 +8547,7 @@ class AlertTickerCardEditor extends LitElement {
                       <ha-checkbox .checked="${!!alert.show_filter_state}"
                         @change="${(e) => this._updateAlert(index, { show_filter_state: e.target.checked ? true : undefined })}"></ha-checkbox>
                     </ha-formfield>` : ""}
-                    ${alert.theme === "battery" ? html`
+                    ${_tbase(alert.theme) === "battery" ? html`
                     <ha-formfield .label="${this._t("battery_trim_name")}">
                       <ha-checkbox .checked="${!!alert.battery_trim_name}"
                         @change="${(e) => this._updateAlert(index, { battery_trim_name: e.target.checked ? true : undefined })}"></ha-checkbox>
@@ -8432,78 +8557,12 @@ class AlertTickerCardEditor extends LitElement {
                 ` : ""}
 
 
-                <!-- Icon: one choice, only its settings shown -->
-                ${(() => {
-                  const im = this._iconMode(alert);
-                  const size = (ph) => html`
-                    <ha-input .label="${this._t("icon_size")}" .value="${alert.icon_size || ""}" placeholder="${ph}"
-                      @change="${(e) => this._updateAlert(index, { icon_size: e.target.value.trim() || undefined })}"></ha-input>`;
-                  const color = (key, labelKey) => html`
-                    <div class="icon-color-row">
-                      <input type="color" class="icon-color-swatch" .value="${this._cssColorToHex(alert[key])}"
-                        @input="${(e) => this._updateAlert(index, { [key]: e.target.value || undefined })}" title="${this._t(labelKey)}" />
-                      <ha-input .label="${this._t(labelKey)}" .value="${alert[key] || ""}" placeholder="inherit"
-                        @change="${(e) => this._updateAlert(index, { [key]: e.target.value.trim() || undefined })}"></ha-input>
-                    </div>`;
-                  return html`
-                    <div class="native-select-wrap">
-                      <label class="native-select-label">${this._t("icon_source")}</label>
-                      <select class="native-select" @change="${(e) => this._setIconMode(index, e.target.value)}">
-                        ${["theme", "emoji", "entity_icon", "ha", "picture", "image"].map((m) => html`<option value="${m}" ?selected="${im === m}">${this._t("icon_src_" + m)}</option>`)}
-                      </select>
-                    </div>
-                    ${im === "emoji" ? html`
-                      <ha-input .label="${this._t("icon_emoji")}" .value="${alert.icon || ""}" placeholder="💠"
-                        @change="${(e) => this._updateAlert(index, { icon: e.target.value.trim() || undefined })}"></ha-input>` : ""}
-                    ${im === "ha" ? html`
-                      <ha-icon-picker .label="${this._t("alert_icon")}" .value="${alert.icon || ""}"
-                        @value-changed="${(e) => this._updateAlert(index, { icon: e.detail.value || "mdi:bell" })}"></ha-icon-picker>` : ""}
-                    ${im === "entity_icon" ? html`<div class="helper-text">${this._t("icon_src_entity_icon_help")}</div>` : ""}
-                    ${im === "picture" ? html`<div class="helper-text">${this._t("icon_src_picture_help")}</div>` : ""}
-                    ${im === "ha" || im === "entity_icon" ? html`${color("icon_color", "icon_color")}${size("1.6em")}` : ""}
-                    ${im === "image" ? html`
-                      <ha-input .label="${this._t("icon_image")}" .value="${alert.icon_image || ""}" placeholder="/local/icons/home.png"
-                        @change="${(e) => this._updateAlert(index, { icon_image: e.target.value.trim() || undefined })}"></ha-input>
-                      <div class="helper-text">${this._t("icon_image_help")}</div>` : ""}
-                    ${im === "picture" || im === "image" ? size("2rem") : ""}
-
-                    <ha-formfield .label="${this._t("accent_color")}">
-                      <ha-checkbox .checked="${!!alert.color || !!this._accentOn?.has(index)}"
-                        @change="${(e) => {
-                          const n = new Set(this._accentOn || []);
-                          if (e.target.checked) n.add(index); else n.delete(index);
-                          this._accentOn = n;
-                          if (!e.target.checked) this._updateAlert(index, { color: undefined }); else this.requestUpdate();
-                        }}"></ha-checkbox>
-                    </ha-formfield>
-                    ${alert.color || this._accentOn?.has(index) ? html`${color("color", "accent_color")}
-                      <div class="helper-text">${this._t("accent_color_help")}</div>` : ""}
-
-                    ${(() => {
-                      // checkbox showing the inherited (theme) value; stores only a difference from it
-                      const ts = this._themeStyle(alert.theme);
-                      const inh = (k, d) => ts[k] ?? d;
-                      const box = (k, d, labelKey) => html`
-                        <ha-formfield .label="${this._t(labelKey)}">
-                          <ha-checkbox .checked="${alert[k] ?? inh(k, d)}"
-                            @change="${(e) => this._updateAlert(index, { [k]: e.target.checked === inh(k, d) ? undefined : e.target.checked })}"></ha-checkbox>
-                        </ha-formfield>`;
-                      const native = !!globalThis.__alertTickerShared?.nativeFlashThemes?.has(alert.theme);
-                      const animOff = (alert.disable_animation ?? inh("disable_animation", false)) || this._config.disable_animation;
-                      return html`
-                      ${box("disable_animation", false, "disable_animation")}
-                      <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
-                      ${animOff ? "" : html`
-                      ${box("pulse", false, "pulse_card")}
-                      <div class="helper-text">${this._t("pulse_card_help")}</div>
-                      ${box("flash_background", native, "flash_background")}
-                      <div class="helper-text">${this._t(native ? "flash_background_native_help" : "flash_background_help")}</div>`}
-                      ${Object.keys(ts).length ? html`<div class="helper-text">🎨 ${this._t("theme_customized_note")}
-                        <a href="#" @click="${(e) => { e.preventDefault(); this._openTheme(alert.theme); }}">${this._t("theme_customize_link")}</a></div>`
-                        : html`<div class="helper-text"><a href="#" @click="${(e) => { e.preventDefault(); this._openTheme(alert.theme); }}">${this._t("theme_customize_link")}</a></div>`}`;
-                    })()}
-                  `;
-                })()}
+                <!-- Look: comes from the theme (icon, colors, text, label, effects) -->
+                <div class="helper-text atc-look-note">🎨 ${this._t("alert_look_from_theme")}
+                  ${this._isCustomTheme(alert.theme)
+                    ? html`<a href="#" @click="${(e) => { e.preventDefault(); this._openTheme(alert.theme); }}">${this._t("theme_edit_link")}</a>`
+                    : html`<a href="#" @click="${(e) => { e.preventDefault(); const id = this._duplicateTheme(alert.theme || "emergency"); this._updateAlert(index, { theme: id }); this._activeSection = "layout"; }}">${this._t("theme_duplicate_link")}</a>`}
+                </div>
 
                 <!-- Custom card (replaces the alert's look) -->
                 <ha-formfield .label="${this._t("card_override_section")}">
@@ -8529,7 +8588,7 @@ class AlertTickerCardEditor extends LitElement {
                 ></ha-yaml-editor>` : ""}
 
                 <!-- ── MUSIC PLAYER OPTIONS ──────────────────────────────── -->
-                ${alert.theme === 'music' ? html`
+                ${_tbase(alert.theme) === 'music' ? html`
                   <div class="section-divider" data-sec="music">🎵 ${this._t("music_player_controls")}</div>
                   <div>
                     <ha-formfield .label="${this._t("music_player_controls")}">
@@ -8789,7 +8848,7 @@ class AlertTickerCardEditor extends LitElement {
                   <div class="helper-text">${this._t("auto_dismiss_after_help")}</div>
                 </div>
 
-                ${!(alert.theme === 'music' && alert.show_player_controls) ? html`
+                ${!(_tbase(alert.theme) === 'music' && alert.show_player_controls) ? html`
 
                 <!-- ── 4. MESSAGGIO ──────────────────────────────────────── -->
                 <div class="section-divider" data-sec="message">💬 ${this._t("alert_message")}</div>
@@ -8801,33 +8860,7 @@ class AlertTickerCardEditor extends LitElement {
                 ></ha-input>
                 <div class="helper-text">${this._getAlertMode(index, alert) === "rs_notify" ? `💬 ${this._t("notify_placeholders_help")}` : this._t("alert_message_help")}</div>
 
-                <div class="rs-section-title">${this._t("text_style_message")}</div>
-                ${this._sizeControl(this._t("text_size"), alert.message_size, 16, 10, 40, (v) => this._updateAlert(index, { message_size: v }), { inherited: this._themeStyle(alert.theme).message_size })}
-                ${this._colorControl(this._t("text_color"), alert.message_color, (v) => this._updateAlert(index, { message_color: v }), `msg:${index}`, this._themeStyle(alert.theme).message_color)}
-                <div class="rs-section-title">${this._t("text_style_entity")}</div>
-                ${this._sizeControl(this._t("text_size"), alert.entity_size, 12, 8, 30, (v) => this._updateAlert(index, { entity_size: v }), { inherited: this._themeStyle(alert.theme).entity_size })}
-                ${this._colorControl(this._t("text_color"), alert.entity_color, (v) => this._updateAlert(index, { entity_color: v }), `ent:${index}`, this._themeStyle(alert.theme).entity_color)}
-                <div class="helper-text">${this._t("text_style_help")}</div>
 
-
-                <!-- Badge -->
-                <div>
-                  <ha-formfield .label="${this._t("show_badge")}">
-                    <ha-checkbox
-                      .checked="${(alert.show_badge ?? this._themeStyle(alert.theme).show_badge) !== false}"
-                      @change="${(e) => { const inh = this._themeStyle(alert.theme).show_badge !== false; this._updateAlert(index, { show_badge: e.target.checked === inh ? undefined : e.target.checked }); }}"
-                    ></ha-checkbox>
-                  </ha-formfield>
-                  ${(alert.show_badge ?? this._themeStyle(alert.theme).show_badge) !== false ? html`
-                    <ha-input
-                      .label="${this._t("badge_label")}"
-                      .value="${alert.badge_label || ""}"
-                      .placeholder="${this._themeStyle(alert.theme).badge_label || this._getDefaultBadgeLabel(alert)}"
-                      @change="${(e) => this._updateAlert(index, { badge_label: e.target.value.trim() || undefined })}"
-                    ></ha-input>
-                    <div class="helper-text">${this._t("badge_label_help")}</div>
-                  ` : ""}
-                </div>
 
                 <!-- ── 4. VALORI SECONDARI ────────────────────────────────── -->
                 <div class="section-divider" data-sec="secondary">📊 ${this._t("secondary_entity")}</div>
@@ -9187,6 +9220,7 @@ class AlertTickerCardEditor extends LitElement {
     // value-changed events from triggering needless re-renders.
     if (this._config && JSON.stringify(this._config) === JSON.stringify(newConfig)) return;
     this._config = newConfig;
+    _ATC_CUSTOM_THEMES = newConfig.custom_themes || {};
     this._tplPreview = null; // any real change ends a template preview (the new config has none)
     // A theme preview stays on while its theme is being edited: the change is re-sent with it.
     const sent = this._themePreview ? { ...newConfig, _preview_alerts: this._themePreviewAlerts(this._themePreview) } : newConfig;
@@ -10539,7 +10573,7 @@ class AlertTickerCardEditor extends LitElement {
   /** Importance of an alert by its theme's category: critical first, then warning, info, … */
   _importance(alert) {
     const rank = { critical: 0, warning: 1, timer: 2, info: 3, style: 4, ok: 5 };
-    return rank[(THEME_META[alert?.theme] || {}).category] ?? 3;
+    return rank[_tmeta(alert?.theme).category] ?? 3;
   }
 
   /**
@@ -10554,7 +10588,12 @@ class AlertTickerCardEditor extends LitElement {
     this._markTemplateHintSeen(); // remove first-time glow if still on
 
     const currentAlerts = [...(this._config.alerts || [])];
-    const newAlerts = template.alerts.map(({ priority, ...tplAlert }) => ({ ...tplAlert }));
+    const LOOK = globalThis.__alertTickerShared?.themeAlertKeys || [];
+    const newAlerts = template.alerts.map(({ priority, ...tplAlert }) => {
+      const a = { ...tplAlert };
+      for (const k of LOOK) delete a[k];   // the look comes from the theme
+      return a;
+    });
     const rank = Math.min(...newAlerts.map((a) => this._importance(a)));
     let firstNewIndex = currentAlerts.findIndex((a) => this._importance(a) > rank);
     if (firstNewIndex < 0) firstNewIndex = currentAlerts.length;
@@ -10669,7 +10708,7 @@ class AlertTickerCardEditor extends LitElement {
     if (isTimer) {
       changes.state = "active";
       changes.operator = "=";
-      const prevThemeCat = (THEME_META[alert.theme] || {}).category;
+      const prevThemeCat = _tmeta(alert.theme).category;
       if (prevThemeCat !== "timer") {
         changes.theme = "countdown";
         changes.icon = THEME_META.countdown.icon;
@@ -10687,7 +10726,7 @@ class AlertTickerCardEditor extends LitElement {
         { entity: value, operator: "!=", state: "none" },
       ];
       changes.conditions_logic = "and";
-      const prevThemeCat = (THEME_META[alert.theme] || {}).category;
+      const prevThemeCat = _tmeta(alert.theme).category;
       if (prevThemeCat !== "timer") {
         changes.theme = "countdown";
         changes.icon = THEME_META.countdown.icon;
@@ -10699,7 +10738,7 @@ class AlertTickerCardEditor extends LitElement {
     // with fill icon + progress bar + charging support. Other % sensors get the
     // generic countdown progress bar as before.
     if (isPct) {
-      const prevThemeCat = (THEME_META[alert.theme] || {}).category;
+      const prevThemeCat = _tmeta(alert.theme).category;
       if (prevThemeCat !== "timer") {
         const isBattery = this._hass?.states[value]?.attributes?.device_class === "battery";
         if (isBattery) {
@@ -10714,7 +10753,7 @@ class AlertTickerCardEditor extends LitElement {
 
     // Remaining-time sensor (unit: s or min) — auto-switch to countdown theme
     if (isRemaining) {
-      const prevThemeCat = (THEME_META[alert.theme] || {}).category;
+      const prevThemeCat = _tmeta(alert.theme).category;
       if (prevThemeCat !== "timer") {
         changes.theme = "countdown";
         changes.icon = THEME_META.countdown.icon;
@@ -10723,7 +10762,7 @@ class AlertTickerCardEditor extends LitElement {
 
     // Leaving a timer-like entity → reset theme to emergency if it was a timer theme
     if (!isTimer && !isTimestamp && !isPct && !isRemaining && wasTimerLike) {
-      const prevThemeCat = (THEME_META[alert.theme] || {}).category;
+      const prevThemeCat = _tmeta(alert.theme).category;
       if (prevThemeCat === "timer") {
         changes.theme = "emergency";
         changes.icon = THEME_META.emergency.icon;
@@ -10741,7 +10780,7 @@ class AlertTickerCardEditor extends LitElement {
       changes.operator = "=";
     }
     // Leaving a media_player entity → reset theme/controls if it was music
-    if (!isMediaPlayer && wasMediaPlayer && alert.theme === "music") {
+    if (!isMediaPlayer && wasMediaPlayer && _tbase(alert.theme) === "music") {
       changes.theme = "emergency";
       changes.icon = THEME_META.emergency.icon;
       changes.show_player_controls = undefined;
@@ -10750,7 +10789,7 @@ class AlertTickerCardEditor extends LitElement {
     // Auto-fill message with friendly name if message is still empty or the theme default
     if (value && this._hass) {
       const msgs = DEFAULT_MSG[this._lang] || DEFAULT_MSG.en;
-      const currentDefault = msgs[alert.theme] || "";
+      const currentDefault = msgs[_tbase(alert.theme)] || "";
       const isDefaultMsg = !alert.message || alert.message === currentDefault;
       if (isDefaultMsg) {
         const friendlyName = this._hass.states[value]?.attributes?.friendly_name || "";
@@ -10786,11 +10825,24 @@ class AlertTickerCardEditor extends LitElement {
     return "theme";
   }
 
+  /** Icon source on a custom theme (same choices as the old per-alert icon). */
+  _setThemeIconMode(theme, mode) {
+    const ts = this._themeStyle(theme);
+    const clear = { use_ha_icon: undefined, use_entity_picture: undefined, icon_image: undefined, icon_color: undefined, icon: undefined, icon_size: undefined };
+    const set = (ch) => this._setThemeStyle(theme, { ...clear, ...ch });
+    if (mode === "theme") return set({});
+    if (mode === "emoji") return set({ icon: this._iconMode(ts) === "emoji" ? ts.icon : (_tmeta(theme).icon || "🔔") });
+    if (mode === "entity_icon") return set({ use_ha_icon: true, icon_color: ts.icon_color });
+    if (mode === "ha") return set({ use_ha_icon: true, icon_color: ts.icon_color, icon: (ts.icon && /^[\w-]+:/.test(ts.icon)) ? ts.icon : "mdi:bell" });
+    if (mode === "picture") return set({ use_entity_picture: true });
+    if (mode === "image") return set({ icon_image: ts.icon_image || "/local/" });
+  }
+
   _setIconMode(index, mode) {
     const alert = (this._config.alerts || [])[index] || {};
     const clear = { use_ha_icon: undefined, use_entity_picture: undefined, icon_image: undefined, icon_color: undefined };
     if (mode === "theme") return this._updateAlert(index, { ...clear, icon: undefined, icon_size: undefined });
-    if (mode === "emoji") return this._updateAlert(index, { ...clear, icon: this._iconMode(alert) === "emoji" ? alert.icon : ((THEME_META[alert.theme] || {}).icon || "🔔"), icon_size: undefined });
+    if (mode === "emoji") return this._updateAlert(index, { ...clear, icon: this._iconMode(alert) === "emoji" ? alert.icon : (_tmeta(alert.theme).icon || "🔔"), icon_size: undefined });
     // entity's own icon: use_ha_icon without an icon — the card reads it from HA
     if (mode === "entity_icon") return this._updateAlert(index, { ...clear, icon_color: alert.icon_color, use_ha_icon: true, icon: undefined });
     if (mode === "ha") return this._updateAlert(index, { ...clear, icon_color: alert.icon_color, use_ha_icon: true,
@@ -10813,7 +10865,7 @@ class AlertTickerCardEditor extends LitElement {
       this._updateAlert(index, { use_ha_icon: true, icon: entityIcon || undefined });
     } else {
       // Restore the theme default emoji, clear icon_color
-      const themeIcon = (THEME_META[alert.theme] || {}).icon || "";
+      const themeIcon = _tmeta(alert.theme).icon || "";
       this._updateAlert(index, { use_ha_icon: false, icon: themeIcon, icon_color: undefined });
     }
   }
@@ -10864,7 +10916,7 @@ class AlertTickerCardEditor extends LitElement {
 
   /** Returns the default badge label for a given alert based on its theme category */
   _getDefaultBadgeLabel(alert) {
-    const cat = (THEME_META[alert.theme] || {}).category || "info";
+    const cat = _tmeta(alert.theme).category || "info";
     const map = { critical: "critical", warning: "warning_label", info: "info_label", ok: "success_label", timer: "info_label" };
     return this._t(map[cat] || "info_label");
   }
@@ -11191,16 +11243,13 @@ class AlertTickerCardEditor extends LitElement {
     if (!value) return;
     const alert = (this._config.alerts || [])[index] || {};
     const changes = { theme: value };
-    // Auto-update icon if it's still the previous theme's default (or empty)
-    const prevDefaultIcon = (THEME_META[alert.theme] || {}).icon || "";
-    if (!alert.icon || alert.icon === prevDefaultIcon) {
-      changes.icon = (THEME_META[value] || {}).icon || "";
-    }
+    // The icon belongs to the theme now: drop a leftover copy of the old theme's emoji.
+    if (alert.icon && alert.icon === (_tmeta(alert.theme).icon || "")) changes.icon = undefined;
     // Auto-update message if it's still the previous theme's default (or empty)
     const msgs = DEFAULT_MSG[this._lang] || DEFAULT_MSG.en;
-    const prevDefaultMsg = msgs[alert.theme] || "";
+    const prevDefaultMsg = msgs[_tbase(alert.theme)] || "";
     if (!alert.message || alert.message === prevDefaultMsg) {
-      changes.message = msgs[value] || "";
+      changes.message = msgs[_tbase(value)] || "";
     }
     this._updateAlert(index, changes);
   }
@@ -12307,6 +12356,8 @@ class AlertTickerCardEditor extends LitElement {
       .atc-theme-edit { --mdc-icon-size: var(--ltek-icon-sm, 16px); color: var(--secondary-text-color, #aaa); flex-shrink: 0; margin-left: 4px; }
       .atc-theme-edit.is-open, .alert-item:hover .atc-theme-edit { color: var(--primary-color, #03a9f4); }
       .atc-customized { color: var(--accent-color, var(--primary-color, #03a9f4)); }
+      .atc-act--del:hover:not([disabled]) { color: var(--error-color, #f44336) !important; }
+      .atc-look-note a { margin-left: 4px; }
       .atc-preset-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
       .rs-chip--own { background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 18%, transparent);
         color: var(--accent-color, var(--primary-color, #03a9f4)); }
