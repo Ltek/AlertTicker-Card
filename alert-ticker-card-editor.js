@@ -1933,7 +1933,7 @@ const ET = {
     alert_camera_in_card: "Show as background in the alert",
     alert_camera_in_card_help: "The camera appears as a blurred background inside the alert slide itself, visible on every rotation — not just in the overlay.",
     test_mode: "Test mode",
-    test_mode_desc: "Shows all alerts as active, ignoring conditions. Cycling animation is paused — expand an alert in the editor to preview it instantly on the card.",
+    test_mode_desc: "Shows all alerts as active, ignoring conditions, while you edit the dashboard. Cycling is paused — expand an alert in the editor to preview it instantly. Saving with it on is harmless: the live card ignores test mode.",
     test_mode_warning: "Remember to disable test mode before saving!",
     history_max_events: "History — max events to keep",
     history_keep_title: "Stored in this browser",
@@ -6967,9 +6967,10 @@ class AlertTickerCardEditor extends LitElement {
     this._themePreview = theme || null;
     this._tplPreview = null;
     this.dispatchEvent(new CustomEvent("config-changed", {
-      detail: { config: theme ? { ...this._config, _preview_alerts: this._themePreviewAlerts(theme) } : { ...this._config } },
+      detail: { config: { ...this._config } },
       bubbles: true, composed: true,
     }));
+    this._publishPreview(theme ? this._themePreviewAlerts(theme) : null);
   }
 
   _renderThemesList() {
@@ -8185,9 +8186,10 @@ class AlertTickerCardEditor extends LitElement {
     // Sent past _fireConfig on purpose: the editor's own config stays clean, so the
     // next real edit (or Save) carries no preview.
     this.dispatchEvent(new CustomEvent("config-changed", {
-      detail: { config: this._tplPreview ? { ...this._config, _preview_alerts: alerts } : { ...this._config } },
+      detail: { config: { ...this._config } },
       bubbles: true, composed: true,
     }));
+    this._publishPreview(this._tplPreview ? alerts : null);
     this.requestUpdate();
   }
 
@@ -8348,7 +8350,6 @@ class AlertTickerCardEditor extends LitElement {
           ></ha-checkbox>
         </div>
         ${this._config.test_mode ? html`
-          <div class="test-mode-box-warning">⚠ ${this._t("test_mode_warning")}</div>
         ` : ""}
       </div>
     `;
@@ -9234,6 +9235,16 @@ class AlertTickerCardEditor extends LitElement {
   // -------------------------------------------------------------------------
   // Config change helpers
   // -------------------------------------------------------------------------
+  /**
+   * Shows alerts on the preview card without putting them in the config (so a Save
+   * can never store them): see _atcConfigSig in the card. null = stop.
+   */
+  _publishPreview(alerts) {
+    const sig = globalThis.__alertTickerShared?.configSig;
+    globalThis.__atcEditorPreview = alerts && alerts.length && sig ? { sig: sig(this._config), alerts } : null;
+    window.dispatchEvent(new Event("atc-editor-preview"));
+  }
+
   _fireConfig(newConfig) {
     // Skip if config is unchanged — prevents ha-service-control's init
     // value-changed events from triggering needless re-renders.
@@ -9242,7 +9253,7 @@ class AlertTickerCardEditor extends LitElement {
     _ATC_CUSTOM_THEMES = newConfig.custom_themes || {};
     this._tplPreview = null; // any real change ends a template preview (the new config has none)
     // A theme preview stays on while its theme is being edited: the change is re-sent with it.
-    const sent = this._themePreview ? { ...newConfig, _preview_alerts: this._themePreviewAlerts(this._themePreview) } : newConfig;
+    const sent = newConfig;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
         detail: { config: sent },
@@ -9250,6 +9261,8 @@ class AlertTickerCardEditor extends LitElement {
         composed: true,
       })
     );
+    // the template preview ends with any change; a theme preview follows the new config
+    this._publishPreview(this._themePreview ? this._themePreviewAlerts(this._themePreview) : null);
   }
 
   _updateAlert(index, changes) {
@@ -9386,6 +9399,7 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    if (globalThis.__atcEditorPreview) this._publishPreview(null);
     super.disconnectedCallback?.();
     if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
   }

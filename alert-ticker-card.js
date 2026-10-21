@@ -329,7 +329,7 @@ const T = {
     history_empty: "No events recorded yet",
     timer_active: "Running",
     timer_done: "Expired",
-    test_mode_active: "TEST MODE ACTIVE — disable it before saving",
+    test_mode_active: "TEST MODE — only while editing; the live card ignores it",
     "weather.sunny": "Sunny", "weather.clear-night": "Clear Night", "weather.partlycloudy": "Partly Cloudy",
     "weather.cloudy": "Cloudy", "weather.fog": "Foggy", "weather.windy": "Windy", "weather.windy-variant": "Very Windy",
     "weather.rainy": "Rainy", "weather.snowy-rainy": "Sleet", "weather.pouring": "Pouring",
@@ -2279,6 +2279,7 @@ globalThis.__alertTickerShared = Object.freeze({
   applyThemeStyles: _atcApplyThemeStyles,
   layoutFor: _atcLayoutFor,
   migrateLook: _atcMigrateLook,
+  configSig: _atcConfigSig,
   historyKey: _atcHistoryKey,
   isCompanionCommand: _atcIsCompanionCommand,
   possibleEntities: _atcPossibleEntities,
@@ -2312,6 +2313,16 @@ globalThis.__alertTickerShared = Object.freeze({
 //      currently mounted.  Deduplicated so both paths never double-fire.
 // Every code path is wrapped in try/catch — any failure is silent.
 // ---------------------------------------------------------------------------
+/**
+ * Editor preview channel (🔍 on a preset / theme). The editor publishes the alerts to
+ * show in globalThis.__atcEditorPreview with the signature of the config it is
+ * editing; the card whose config matches shows them (only while the dashboard is
+ * being edited). Nothing goes into the card config, so nothing can be saved.
+ */
+function _atcConfigSig(cfg) {
+  return JSON.stringify(cfg?.alerts || []) + "|" + JSON.stringify(cfg?.custom_themes || {});
+}
+
 function _atcPreviewAllowed() {
   return !!globalThis.__atcForceEditMode || _isEditMode(); // the flag is for tests
 }
@@ -3448,6 +3459,7 @@ class AlertTickerCard extends LitElement {
 
   setConfig(config) {
     if (!config) throw new Error("AlertTicker Card: invalid configuration");
+    this._configSig = _atcConfigSig(config);
     this._config = {
       cycle_interval: 5,
       cycle_animation: "fold",
@@ -3465,13 +3477,15 @@ class AlertTickerCard extends LitElement {
     // Re-derive the hass this card sees in case a notification rule set was just added/removed.
     if (this._rawHass) this._hass = _atcHassFor(this._config, this._rawHass);
     // Stop/start cycle timer based on test_mode
-    if (this._config.test_mode) {
+    this._tmCache = null;
+    if (this._testMode) {
       this._stopCycleTimer();
     } else if (this._hass && !this._cycleTimer) {
       this._startCycleTimer();
     }
     // Force full recompute so grouping/config changes take effect immediately
-    this._lastSignature = "";
+    // (null, not "": an empty alert list also has the signature "")
+    this._lastSignature = null;
     this._lastAppliedPreviewIndex = null;
     if (this._hass) {
       this._computeActiveAlerts();
@@ -3493,6 +3507,17 @@ class AlertTickerCard extends LitElement {
     if (this._config._preview_anim) {
       setTimeout(() => this._triggerAnimPreview(), 50);
     }
+  }
+
+  /**
+   * Test mode only applies while the dashboard is being edited, so a config saved with
+   * test_mode: true still behaves normally on the live dashboard.
+   */
+  get _testMode() {
+    if (!this._config?.test_mode) return false;
+    const now = Date.now();
+    if (!this._tmCache || now - this._tmCache.at > 500) this._tmCache = { at: now, v: _atcPreviewAllowed() };
+    return this._tmCache.v;
   }
 
   // ---- Hass setter ---------------------------------------------------------
@@ -3587,10 +3612,10 @@ class AlertTickerCard extends LitElement {
     if (!this._hass || !this._config || !Array.isArray(this._config.alerts)) return;
     _atcWakeReset(); // time-dependent rules note when to re-check (see _scheduleRuleWake)
 
-    // Editor "preview template" (🔍 in Alert Templates): show the template's alerts
-    // instead of this card's, only while the dashboard is being edited. Ephemeral:
-    // the editor strips _preview_alerts on its next config.
-    const pv = this._config._preview_alerts;
+    // Editor preview (🔍 on a preset / theme): show those alerts instead of this card's,
+    // only while the dashboard is being edited (see _atcConfigSig).
+    const ep = globalThis.__atcEditorPreview;
+    const pv = ep && ep.sig === this._configSig ? ep.alerts : null;
     if (Array.isArray(pv) && pv.length && _atcPreviewAllowed()) {
       this._activeAlerts = _atcApplyThemeStyles(pv, this._config).map((a, i) => {
         const st = a.entity && this._hass.states[a.entity];
@@ -3610,18 +3635,18 @@ class AlertTickerCard extends LitElement {
 
     // Test mode: a notification rule set with nothing matching right now gets a
     // sample notification, so its theme / message / placeholders can be previewed.
-    const samples = this._config.test_mode ? this._sampleNotifications() : null;
+    const samples = this._testMode ? this._sampleNotifications() : null;
 
     // Expand entity_filter alerts into one concrete alert per matched entity
     const expandedAlerts = [];
     for (let idx = 0; idx < this._config.alerts.length; idx++) {
       const alert = this._config.alerts[idx];
       // Switched-off alerts (#232) are skipped — except in test mode, which previews everything.
-      if (alert?.enabled === false && !this._config.test_mode) continue;
+      if (alert?.enabled === false && !this._testMode) continue;
       if (_atcIsFilterAlert(alert)) {
         // Test mode previews every entity the alert CAN match (its conditions — now
         // rules in the set — are ignored, as test mode always did); a sample when none exist.
-        let matched = this._config.test_mode && !_atcIsNotificationSet(alert._rule_set_def || alert.rule_set)
+        let matched = this._testMode && !_atcIsNotificationSet(alert._rule_set_def || alert.rule_set)
           ? (_atcPossibleEntities(this._hass, alert) || [])
           : _atcFilterEntities(this._hass, alert);
         if (!matched.length && samples?.has(idx)) matched = [samples.get(idx)];
@@ -3646,7 +3671,7 @@ class AlertTickerCard extends LitElement {
 
     let snoozedCount = 0;
     let dismissedCount = 0;
-    const testMode = !!this._config.test_mode;
+    const testMode = this._testMode;
     let active = expandedAlerts.filter((alert) => {
       const entityState = this._hass.states[alert.entity];
       if (!entityState && !testMode) return false;
@@ -3986,7 +4011,7 @@ class AlertTickerCard extends LitElement {
       // Skip tick if there is nothing to cycle, history is open, or test mode is active
       const _hasWSlide = !!(this._config?.show_widget_in_cycle && this._config?.clear_display_mode && this._config.clear_display_mode !== 'message');
       const _totalSlides = (this._activeAlerts?.length || 0) + (_hasWSlide ? 1 : 0);
-      if (!this._activeAlerts || _totalSlides <= 1 || this._historyOpen || (this._config && this._config.test_mode)) return;
+      if (!this._activeAlerts || _totalSlides <= 1 || this._historyOpen || this._testMode) return;
       // If currently on the weather_forecast widget slide, wait until the forecast panel
       // has been shown at least once before advancing to the next alert
       const _onWidgetSlide = _hasWSlide && this._currentIndex === _totalSlides - 1;
@@ -6144,12 +6169,17 @@ class AlertTickerCard extends LitElement {
     this._subscribeSyncEvents();
     this._startCycleTimer();
     this._startTimerTick();
+    if (!this._previewListener) {
+      this._previewListener = () => { this._lastSignature = null; this._tmCache = null; if (this._hass) this._computeActiveAlerts(); this.requestUpdate(); };
+      window.addEventListener("atc-editor-preview", this._previewListener);
+    }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._mounted = false;
     if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
+    if (this._previewListener) { window.removeEventListener("atc-editor-preview", this._previewListener); this._previewListener = null; }
     if (this._ruleWakeTimer) { clearTimeout(this._ruleWakeTimer); this._ruleWakeTimer = null; this._ruleWakeAt = null; }
     this._stopCycleTimer();
     this._stopTimerTick();
@@ -8222,7 +8252,7 @@ class AlertTickerCard extends LitElement {
       </button>
     ` : "";
 
-    const testModeBanner = this._config.test_mode ? html`
+    const testModeBanner = this._testMode ? html`
       <div class="atc-test-mode-banner">🧪 ${this._t("test_mode_active")}</div>
     ` : "";
 
