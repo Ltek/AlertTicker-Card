@@ -1313,6 +1313,8 @@ Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, 
 
 Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; a green state marks the ones alerting now.
 
+In **Alert Templates**, 🔍 on a template previews it on the card in the editor's preview pane (only while editing; never saved — it stops when you click 🔍 again, close the panel or change anything).
+
 On the main screen, **🚀 Quick Start** (click to open) explains how to get going with Alert Templates.
 
 Each alert row: the theme icon, the name, then **Show in overlay**, on/off, duplicate, delete, and on the far right ▲▼ and the drag handle to reorder (the order decides which alert shows first). **Show in overlay** is greyed until the card's overlay is on. Click a row to open its settings in the same panel. Sections, top to bottom: **Options** (Persistent / Sticky, Show in overlay, per-alert snooze duration, and Trigger on any change for rule-set alerts), **Appearance** (theme, the entity-name line under the message, icon — theme icon, custom emoji, the entity's own HA icon, a custom `mdi:` icon, the entity picture (photo / thumbnail) or an image, accent color, animations, custom card), the alert's source / **Condition**, timing, **Message**, secondary values, sound, TTS, push, camera, visibility, **Tap Actions** (single tap, double tap, hold, snooze) and **Set Entity Value** (`active_state_entity`). Settings are checkboxes. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its **Show in overlay** switch.
@@ -1532,6 +1534,10 @@ The tab shows an **ON** badge when overlay mode is active.
 | `icon_color` | `string` | ❌ | CSS color for the MDI icon (requires `use_ha_icon: true`) |
 | `show_badge` | `boolean` | `true` | Set `false` to hide the category badge |
 | `badge_label` | `string` | ❌ | Custom text for the category badge |
+| `message_size` / `message_color` | `number` / `string` | theme | Message text size (px, 10–40) and color (`var(--…)`, `#rrggbb` or any CSS color) |
+| `entity_size` / `entity_color` | `number` / `string` | theme | Same for the entity info line(s) under the message (entity name / state, secondary value) |
+| `pulse` | `boolean` | `false` | The whole card gently grows and glows in the theme (or accent) color |
+| `flash_background` | `boolean` | on for `alarm` / `intruder`, else off | Flash the card's background in the theme (or accent) color; `false` keeps alarm / intruder steady. Pulse and flash stop with `disable_animation` |
 | `secondary_entity` | `string` | ❌ | Entity whose live value appears below the message |
 | `secondary_attribute` | `string` | ❌ | Attribute of `secondary_entity` to show — supports dot-notation |
 | `show_secondary_name` | `boolean` | `false` | Show the entity friendly name next to the secondary value |

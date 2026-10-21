@@ -1801,6 +1801,34 @@ function _atcExtraConditionResults(hass, alert, ctx) {
  * the matched entity's name, or a notification's message. null for single-entity
  * alerts. (Label- and area-only filters were left out before.)
  */
+/** Themes whose look already flashes the background (flash_background defaults on). */
+const _ATC_NATIVE_FLASH = new Set(["alarm", "intruder"]);
+
+/**
+ * Per-alert look classes / CSS variables on the card's clip box: accent color,
+ * message & entity-info text size / color, pulse, background flash.
+ * Pulse and flash are animations, so Disable animations switches them off too.
+ */
+function _atcAlertLook(alert, config) {
+  const cls = [], sty = [];
+  if (!alert) return { cls: "", sty: "", flash: false };
+  const add = (c, v, val) => { cls.push(c); sty.push(`${v}:${val}`); };
+  if (alert.color) add("atc-has-accent", "--atc-accent-color", alert.color);
+  if (Number(alert.message_size) > 0) add("atc-msg-size", "--atc-msg-size", `${Number(alert.message_size)}px`);
+  if (alert.message_color) add("atc-msg-color", "--atc-msg-color", alert.message_color);
+  if (Number(alert.entity_size) > 0) add("atc-ent-size", "--atc-ent-size", `${Number(alert.entity_size)}px`);
+  if (alert.entity_color) add("atc-ent-color", "--atc-ent-color", alert.entity_color);
+  const anim = !(alert.disable_animation || config?.disable_animation);
+  const themeColor = alert.color || (THEME_META[alert.theme] || {}).color || "#ffffff";
+  if (anim && alert.pulse) add("atc-pulse", "--atc-pulse-color", themeColor);
+  const native = _ATC_NATIVE_FLASH.has(alert.theme);
+  const flashOn = alert.flash_background ?? native;
+  let flash = false;
+  if (native && !flashOn) cls.push("atc-no-flash");
+  else if (!native && flashOn && anim) { add("atc-flash", "--atc-flash-color", themeColor); flash = true; }
+  return { cls: cls.length ? " " + cls.join(" ") : "", sty: sty.join(";"), flash };
+}
+
 function _atcMatchedLine(alert, es) {
   if (!alert?._expanded || alert.show_filter_name === false) return null;
   if (_ATC_NOTIFY.isNotification(alert.entity, es)) return es?.attributes?.message || null;
@@ -2139,6 +2167,7 @@ globalThis.__alertTickerShared = Object.freeze({
   notifications: _ATC_NOTIFY,
   legacyFilterDef: _atcLegacyFilterDef,
   migrateConfig: _atcMigrateConfig,
+  nativeFlashThemes: _ATC_NATIVE_FLASH,
   historyKey: _atcHistoryKey,
   isCompanionCommand: _atcIsCompanionCommand,
   possibleEntities: _atcPossibleEntities,
@@ -2172,6 +2201,10 @@ globalThis.__alertTickerShared = Object.freeze({
 //      currently mounted.  Deduplicated so both paths never double-fire.
 // Every code path is wrapped in try/catch — any failure is silent.
 // ---------------------------------------------------------------------------
+function _atcPreviewAllowed() {
+  return !!globalThis.__atcForceEditMode || _isEditMode(); // the flag is for tests
+}
+
 function _isEditMode() {
   try {
     const ha = document.querySelector("home-assistant");
@@ -3442,6 +3475,27 @@ class AlertTickerCard extends LitElement {
   _computeActiveAlerts() {
     if (!this._hass || !this._config || !Array.isArray(this._config.alerts)) return;
     _atcWakeReset(); // time-dependent rules note when to re-check (see _scheduleRuleWake)
+
+    // Editor "preview template" (🔍 in Alert Templates): show the template's alerts
+    // instead of this card's, only while the dashboard is being edited. Ephemeral:
+    // the editor strips _preview_alerts on its next config.
+    const pv = this._config._preview_alerts;
+    if (Array.isArray(pv) && pv.length && _atcPreviewAllowed()) {
+      this._activeAlerts = pv.map((a, i) => {
+        const st = a.entity && this._hass.states[a.entity];
+        const name = st?.attributes?.friendly_name || a.entity || "";
+        return {
+          ...a, _configIdx: -1 - i, _preview: true,
+          message: String(a.message || "")
+            .replace(/\{entity\}/g, a.entity || "").replace(/\{name\}/g, name)
+            .replace(/\{state\}/g, st ? this._formatStateValue(st, a.attribute) : ""),
+        };
+      });
+      if (this._currentIndex >= this._activeAlerts.length) this._currentIndex = 0;
+      this._lastSignature = "__preview__";
+      this.requestUpdate();
+      return;
+    }
 
     // Test mode: a notification rule set with nothing matching right now gets a
     // sample notification, so its theme / message / placeholders can be previewed.
@@ -8120,8 +8174,10 @@ class AlertTickerCard extends LitElement {
 
     const counterOverlay = this._config.large_buttons ? this._renderCounterOverlay() : "";
 
-    const accentCls = current?.color ? ' atc-has-accent' : '';
-    const accentSty = current?.color ? `--atc-accent-color:${current.color}` : '';
+    const look = _atcAlertLook(isWidgetSlide ? null : current, this._config);
+    const accentCls = isWidgetSlide ? (current?.color ? ' atc-has-accent' : '') : look.cls;
+    const accentSty = isWidgetSlide ? (current?.color ? `--atc-accent-color:${current.color}` : '') : look.sty;
+    const flashLayer = look.flash ? html`<div class="atc-flash-layer"></div>` : "";
 
     // Ticker has its own scroll animation — skip fold wrapper (unless it's the widget slide)
     if (!isWidgetSlide && (current.theme || "").toLowerCase() === "ticker") {
@@ -8132,7 +8188,7 @@ class AlertTickerCard extends LitElement {
               <div class="${hasInteraction ? "atc-clickable" : ""}"
                 @pointerdown="${pdHandler}" @pointerup="${puHandler}"
                 @pointerleave="${plHandler}" @pointercancel="${plHandler}"
-                @touchstart="${swipeStart}" @touchend="${swipeEnd}">${inner}</div>
+                @touchstart="${swipeStart}" @touchend="${swipeEnd}">${inner}</div>${flashLayer}
             </div>
             ${snoozeBtn}${groupBackBtn}${this._renderMusicCornerActions(current)}${historyBtn}${snoozedPill}${counterOverlay}${navButtons}${touchHandle}
           </div>
@@ -8147,7 +8203,7 @@ class AlertTickerCard extends LitElement {
               data-anim="${this._config.cycle_animation || "fold"}"
               @pointerdown="${pdHandler}" @pointerup="${puHandler}"
               @pointerleave="${plHandler}" @pointercancel="${plHandler}"
-              @touchstart="${swipeStart}" @touchend="${swipeEnd}">${inner}</div>
+              @touchstart="${swipeStart}" @touchend="${swipeEnd}">${inner}</div>${flashLayer}
           </div>
           ${snoozeBtn}${groupBackBtn}${this._renderMusicCornerActions(current)}${historyBtn}${snoozedPill}${counterOverlay}${navButtons}${touchHandle}
         </div>
@@ -11412,6 +11468,31 @@ class AlertTickerCard extends LitElement {
         outline-offset: -1px;
         border-radius: var(--ha-card-border-radius, 12px);
       }
+      /* Per-alert text style (Message / Entity info) */
+      .atc-msg-size .at-fold-wrapper [class$="-title"]:not(.atc-history-title),
+      .atc-msg-size .mx-msg { font-size: var(--atc-msg-size) !important; line-height: 1.25 !important; }
+      .atc-msg-color .at-fold-wrapper [class$="-title"]:not(.atc-history-title),
+      .atc-msg-color .mx-msg { color: var(--atc-msg-color) !important; -webkit-text-fill-color: var(--atc-msg-color) !important; }
+      .atc-ent-size .atc-secondary-value { font-size: var(--atc-ent-size) !important; }
+      .atc-ent-color .atc-secondary-value,
+      .atc-ent-color .atc-filter-state { color: var(--atc-ent-color) !important; opacity: 1 !important; }
+      /* Pulse the card */
+      .atc-inner-clip.atc-pulse { animation: atcPulse 1.8s ease-in-out infinite; }
+      @keyframes atcPulse {
+        0%,100% { transform: translateZ(0) scale(1);     filter: drop-shadow(0 0 0 transparent); }
+        50%      { transform: translateZ(0) scale(1.015); filter: drop-shadow(0 0 10px var(--atc-pulse-color, #fff)); }
+      }
+      /* Flash the background (themes that don't flash on their own) */
+      .atc-flash-layer {
+        position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: inherit;
+        background: var(--atc-flash-color, #fff); opacity: 0;
+        animation: atcFlash 1s step-end infinite;
+      }
+      @keyframes atcFlash { 0%,49% { opacity: 0; } 50%,100% { opacity: 0.16; } }
+      /* ... and switched off for themes that do (alarm, intruder) */
+      .atc-no-flash .al-strobe { display: none; }
+      .atc-no-flash .at-intruder { animation: none; }
+
       .atc-inner-clip {
         overflow: hidden;
         height: var(--atc-card-height, auto);

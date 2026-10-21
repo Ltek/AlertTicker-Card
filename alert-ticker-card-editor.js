@@ -1920,6 +1920,25 @@ const ET = {
     test_mode_warning: "Remember to disable test mode before saving!",
     history_max_events: "History — max events to keep",
     history_keep_title: "Stored in this browser",
+    templates_preview: "Preview this template on the card",
+    templates_preview_off: "Stop previewing",
+    templates_previewing: "Previewing \"{name}\" on the card (the pane on the right). Click 🔍 again, close Alert Templates or change anything to stop — it is never saved.",
+    templates_preview_sample_title: "Sample notification",
+    templates_preview_sample_message: "This is how a notification looks",
+    text_style_message: "Message text",
+    text_style_entity: "Entity info text",
+    text_style_help: "Entity info is the line under the message (entity name / state, secondary value). Default = the theme's own size and color.",
+    text_size: "Custom size",
+    text_color: "Color",
+    color_mode_default: "Default",
+    color_mode_theme: "Theme color",
+    color_mode_custom: "Custom",
+    color_mode_css: "CSS value",
+    pulse_card: "Pulse the card",
+    pulse_card_help: "The whole card gently grows and glows in the theme (or accent) color.",
+    flash_background: "Flash the background",
+    flash_background_help: "The card's background flashes in the theme (or accent) color, once a second.",
+    flash_background_native_help: "This theme flashes its background by default; untick to keep it steady.",
     history_keep_help: "Every alert that becomes active is recorded here, in this browser only (each browser / tablet has its own history). Keep up to 5000 alerts or 5 days.",
     history_show_title: "Shown on the card (📋)",
     history_show_help: "How much of the stored history the card's 📋 panel lists: everything stored, the latest alerts (up to 500), or a time window (1 hour to 5 days).",
@@ -6352,9 +6371,9 @@ class AlertTickerCardEditor extends LitElement {
       case "message": {
         const dflt = (DEFAULT_MSG[this._lang] || DEFAULT_MSG.en)[alert.theme] || "";
         const msgChanged = !!alert.message && alert.message !== dflt && !(mode === "rs_notify" && alert.message === "{title}");
-        return msgChanged || any(["badge_label", "history_message", "show_badge"]);
+        return msgChanged || any(["badge_label", "history_message", "show_badge", "message_size", "message_color", "entity_size", "entity_color"]);
       }
-      case "appearance": return any(["disable_animation", "icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "color", "show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
+      case "appearance": return any(["disable_animation", "pulse", "flash_background", "icon", "icon_color", "icon_image", "icon_size", "use_ha_icon", "use_entity_picture", "color", "show_filter_name", "show_filter_state", "battery_trim_name", "card"]);
       case "actions": return ["tap_action", "double_tap_action", "hold_action", "snooze_action"].some((k) => this._actionSet(alert[k]));
       case "secondary": return any(["secondary_entity", "secondary_attribute", "secondary_text", "show_secondary_name", "secondary_value_align"]);
       case "options": return any(["persistent", "overlay", "snooze_duration"]) || (mode === "rs_entity" && !!alert.on_change);
@@ -6464,7 +6483,7 @@ class AlertTickerCardEditor extends LitElement {
     // _preview_index / _preview_anim are ephemeral signals: the card uses them
     // for one render cycle but they must not end up saved in the user's YAML.
     // Leaving them in causes the JSON dedup in _fireConfig to malfunction.
-    const { _preview_index, _preview_anim, ...cleanConfig } = config;
+    const { _preview_index, _preview_anim, _preview_alerts, ...cleanConfig } = config;
     const merged = { ...defaults, ...cleanConfig };
     // Preserve existing alert object references where the content is identical.
     // This prevents unnecessary re-renders caused by new object identity even
@@ -7484,13 +7503,42 @@ class AlertTickerCardEditor extends LitElement {
     return { parts, possible: possible.size, active: active.size, needs, added, notify };
   }
 
+  /** The template's alerts as the card should show them in a preview (one per part). */
+  _templatePreviewAlerts(key) {
+    const m = this._templateMatches(key);
+    if (!m) return [];
+    const lang = this._lang || "en";
+    const msgs = DEFAULT_MSG[lang] || DEFAULT_MSG.en;
+    return m.parts.map((p) => {
+      const a = p.alert;
+      const entity = [...p.active][0] || p.possible[0]?.[0] || a.entity || "";
+      let message = a.message || msgs[a.theme] || DEFAULT_MSG.en[a.theme] || "";
+      if (m.notify) message = message.replace(/\{title\}/g, this._t("templates_preview_sample_title")).replace(/\{message\}/g, this._t("templates_preview_sample_message"));
+      return { ...a, entity, message, _expanded: !!entity && !a.entity };
+    });
+  }
+
+  /** 🔍 on a template: show it on the card in the editor's preview pane (again = off). */
+  _toggleTemplatePreview(key) {
+    const on = this._tplPreview !== key;
+    const alerts = on ? this._templatePreviewAlerts(key) : [];
+    this._tplPreview = on && alerts.length ? key : null;
+    // Sent past _fireConfig on purpose: the editor's own config stays clean, so the
+    // next real edit (or Save) carries no preview.
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._tplPreview ? { ...this._config, _preview_alerts: alerts } : { ...this._config } },
+      bubbles: true, composed: true,
+    }));
+    this.requestUpdate();
+  }
+
   _renderTemplatesPanel() {
     const open = !!this._templatesOpen;
     const lang = this._lang || "en";
     const toast = this._templateToast && Date.now() - this._templateToast.at < 6000 ? this._templateToast : null;
     return html`
       <div class="atc-row ${open ? "is-open" : ""} atc-tpl-panel">
-        <div class="alert-item" @click="${() => { this._templatesOpen = !open; this._markTemplateHintSeen(); this.requestUpdate(); }}">
+        <div class="alert-item" @click="${() => { this._templatesOpen = !open; if (open && this._tplPreview) this._toggleTemplatePreview(this._tplPreview); this._markTemplateHintSeen(); this.requestUpdate(); }}">
           <div class="alert-summary-text">
             <div class="alert-entity-label"><ha-icon class="rs-kind-icon" icon="mdi:shape-plus-outline"></ha-icon> ${this._t("templates_title")}</div>
             <div class="alert-msg-label">${this._t("templates_sub")}</div>
@@ -7499,6 +7547,8 @@ class AlertTickerCardEditor extends LitElement {
         </div>
         ${toast ? html`<div class="rs-notice atc-tpl-toast">✓ ${this._t("templates_added").replace("{name}", toast.name)}</div>` : ""}
         ${open ? html`<div class="atc-tpl-list">
+          ${this._tplPreview && ALERT_TEMPLATES[this._tplPreview] ? html`<div class="rs-notice">🔍 ${this._t("templates_previewing")
+            .replace("{name}", ALERT_TEMPLATES[this._tplPreview].nameByLang[lang] || ALERT_TEMPLATES[this._tplPreview].nameByLang.en)}</div>` : ""}
           ${Object.entries(ALERT_TEMPLATES)
             .sort(([ka, a], [kb, b]) => (ka === "all_notifications" ? -1 : kb === "all_notifications" ? 1
               : (a.nameByLang[lang] || a.nameByLang.en).localeCompare(b.nameByLang[lang] || b.nameByLang.en)))
@@ -7522,6 +7572,8 @@ class AlertTickerCardEditor extends LitElement {
                     </div>
                   </div>
                   <div class="alert-actions">
+                    ${this._iconButton("mdi:magnify", this._t(this._tplPreview === key ? "templates_preview_off" : "templates_preview"),
+                      () => this._toggleTemplatePreview(key), false, this._tplPreview === key ? "atc-act--on" : "")}
                     ${!m.needs ? this._iconButton("mdi:plus", this._t("templates_create"), () => this._addFromTemplate(key, { edit: false })) : ""}
                     ${this._iconButton("mdi:pencil-plus-outline", this._t("templates_create_edit"), () => this._addFromTemplate(key, { edit: true }))}
                   </div>
@@ -7914,6 +7966,20 @@ class AlertTickerCardEditor extends LitElement {
                         @change="${(e) => this._updateAlert(index, { disable_animation: e.target.checked || undefined })}"></ha-checkbox>
                     </ha-formfield>
                     <div class="helper-text">${this._t("disable_animation_alert_help")}</div>
+                    ${alert.disable_animation || this._config.disable_animation ? "" : (() => {
+                      const native = !!globalThis.__alertTickerShared?.nativeFlashThemes?.has(alert.theme);
+                      return html`
+                      <ha-formfield .label="${this._t("pulse_card")}">
+                        <ha-checkbox .checked="${!!alert.pulse}"
+                          @change="${(e) => this._updateAlert(index, { pulse: e.target.checked || undefined })}"></ha-checkbox>
+                      </ha-formfield>
+                      <div class="helper-text">${this._t("pulse_card_help")}</div>
+                      <ha-formfield .label="${this._t("flash_background")}">
+                        <ha-checkbox .checked="${alert.flash_background ?? native}"
+                          @change="${(e) => this._updateAlert(index, { flash_background: e.target.checked === native ? undefined : e.target.checked })}"></ha-checkbox>
+                      </ha-formfield>
+                      <div class="helper-text">${this._t(native ? "flash_background_native_help" : "flash_background_help")}</div>`;
+                    })()}
                   `;
                 })()}
 
@@ -8212,6 +8278,14 @@ class AlertTickerCardEditor extends LitElement {
                   @change="${(e) => this._alertMessageChanged(e.target.value, index)}"
                 ></ha-input>
                 <div class="helper-text">${this._getAlertMode(index, alert) === "rs_notify" ? `💬 ${this._t("notify_placeholders_help")}` : this._t("alert_message_help")}</div>
+
+                <div class="rs-section-title">${this._t("text_style_message")}</div>
+                ${this._sizeControl(this._t("text_size"), alert.message_size, 16, 10, 40, (v) => this._updateAlert(index, { message_size: v }))}
+                ${this._colorControl(this._t("text_color"), alert.message_color, (v) => this._updateAlert(index, { message_color: v }), `msg:${index}`)}
+                <div class="rs-section-title">${this._t("text_style_entity")}</div>
+                ${this._sizeControl(this._t("text_size"), alert.entity_size, 12, 8, 30, (v) => this._updateAlert(index, { entity_size: v }))}
+                ${this._colorControl(this._t("text_color"), alert.entity_color, (v) => this._updateAlert(index, { entity_color: v }), `ent:${index}`)}
+                <div class="helper-text">${this._t("text_style_help")}</div>
 
 
                 <!-- Badge -->
@@ -8591,6 +8665,7 @@ class AlertTickerCardEditor extends LitElement {
     // value-changed events from triggering needless re-renders.
     if (this._config && JSON.stringify(this._config) === JSON.stringify(newConfig)) return;
     this._config = newConfig;
+    this._tplPreview = null; // any real change ends a template preview (the new config has none)
     this.dispatchEvent(
       new CustomEvent("config-changed", {
         detail: { config: newConfig },
@@ -8750,6 +8825,56 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /** A row action icon: neutral, brighter on hover (design system). */
+  /**
+   * Color option — the four-mode control (design guide §3): default (key removed),
+   * theme variable, custom swatch, or any CSS color. A stored value we don't
+   * recognise shows as CSS and is kept as is.
+   */
+  _colorControl(label, value, onChange, stateKey) {
+    const VARS = [["var(--primary-color)", "Primary"], ["var(--accent-color)", "Accent"],
+      ["var(--primary-text-color)", "Primary text"], ["var(--secondary-text-color)", "Secondary text"],
+      ["var(--disabled-text-color)", "Disabled text"], ["var(--state-active-color)", "State active"],
+      ["var(--error-color)", "Error"], ["var(--warning-color)", "Warning"], ["var(--success-color)", "Success"], ["var(--info-color)", "Info"]];
+    this._colorModes = this._colorModes || new Map();
+    const v = value || "";
+    const mode = this._colorModes.get(stateKey) && !v ? this._colorModes.get(stateKey)
+      : !v ? "default" : VARS.some(([x]) => x === v) ? "theme" : /^#[0-9a-f]{6}$/i.test(v) ? "custom" : "css";
+    const setMode = (m) => {
+      this._colorModes.set(stateKey, m);
+      if (m === "default") onChange(undefined);
+      else if (m === "theme") onChange(VARS.some(([x]) => x === v) ? v : VARS[0][0]);
+      else if (m === "custom") onChange(this._cssColorToHex(v) || "#ffffff");
+      else { onChange(v || undefined); this.requestUpdate(); }
+    };
+    return html`
+      <div class="atc-frow">
+        <span class="atc-frow-label">${label}</span>
+        <select class="native-select atc-frow-select" @change="${(e) => setMode(e.target.value)}">
+          ${["default", "theme", "custom", "css"].map((m) => html`<option value="${m}" ?selected="${mode === m}">${this._t("color_mode_" + m)}</option>`)}
+        </select>
+        ${mode === "theme" ? html`<select class="native-select atc-frow-select" @change="${(e) => onChange(e.target.value)}">
+          ${VARS.map(([x, n]) => html`<option value="${x}" ?selected="${v === x}">${n}</option>`)}</select>` : ""}
+        ${mode === "custom" ? html`<input type="color" class="icon-color-swatch" .value="${this._cssColorToHex(v) || "#ffffff"}"
+          @input="${(e) => onChange(e.target.value)}" />` : ""}
+        ${mode === "css" ? html`<input type="text" class="atc-frow-text" .value="${v}" placeholder="tomato, rgba(…), var(--…)"
+          @change="${(e) => onChange(e.target.value.trim() || undefined)}" />` : ""}
+      </div>`;
+  }
+
+  /** Size option — design guide: a slider with a bold px readout, behind an enable checkbox. */
+  _sizeControl(label, value, def, min, max, onChange) {
+    const on = Number(value) > 0;
+    return html`
+      <div class="atc-frow atc-frow--nowrap">
+        <ha-formfield .label="${label}">
+          <ha-checkbox .checked="${on}" @change="${(e) => onChange(e.target.checked ? def : undefined)}"></ha-checkbox>
+        </ha-formfield>
+        ${on ? html`<input type="range" class="atc-slider" min="${min}" max="${max}" step="1" .value="${String(value)}"
+            @input="${(e) => onChange(Number(e.target.value))}" />
+          <span class="atc-slider-val">${value}px</span>` : ""}
+      </div>`;
+  }
+
   _iconButton(icon, title, onClick, disabled = false, extraClass = "") {
     return html`<button class="btn-icon atc-act ${extraClass}" title="${title}" ?disabled="${disabled}"
       @click="${(e) => { e.stopPropagation(); if (!disabled) onClick(); }}"><ha-icon icon="${icon}"></ha-icon></button>`;
@@ -11615,6 +11740,26 @@ class AlertTickerCardEditor extends LitElement {
       .atc-quickstart[open] {
         margin: 6px 0 10px;
         border: 1px dashed var(--primary-color, #03a9f4);
+      }
+      .atc-act--on {
+        color: var(--accent-color, var(--primary-color, #03a9f4));
+        background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 15%, transparent);
+        border-radius: 6px;
+      }
+      .atc-frow {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0;
+      }
+      .atc-frow--nowrap { flex-wrap: nowrap; }
+      .atc-frow-label { white-space: nowrap; font-size: 0.9rem; color: var(--primary-text-color); }
+      .atc-frow-select { width: auto; min-width: 0; flex: 0 1 auto; }
+      .atc-frow-text {
+        flex: 1 1 140px; min-width: 0; padding: 6px 8px; border-radius: 6px; font: inherit;
+        border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color, transparent);
+        color: var(--primary-text-color);
+      }
+      .atc-slider { flex: 1 1 auto; min-width: 60px; accent-color: var(--primary-color, #03a9f4); }
+      .atc-slider-val {
+        width: 44px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
       }
       .rs-chip--accent {
         background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 22%, transparent);
