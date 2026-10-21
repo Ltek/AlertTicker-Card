@@ -1958,7 +1958,14 @@ const ET = {
     theme_preset_state_ph: "e.g. unlocked, open, on",
     theme_preset_help: "This theme is now an Alert Preset (Alerts → Alert Presets): Create builds an alert with this theme for every entity in these domains — when its state is the one above, or on any change when empty. You can edit the alert afterwards.",
     theme_preset_none: "Add a domain to make this theme an Alert Preset.",
-    theme_preset_builtin: "Built-in preset(s) using this theme: {names}.",
+    theme_preset_builtin: "Built-in presets using this theme:",
+    scope_class: "class: {v}",
+    scope_notifications: "notifications",
+    scope_pick: "you pick the entity",
+    scope_title_domain: "Entity domain",
+    scope_title_class: "Device class",
+    scope_title_notify: "Home Assistant notifications",
+    scope_title_pick: "Choose the entity after creating it (Create & edit)",
     preset_from_theme: "from theme",
     preset_theme_desc: "Any change of an entity in: {domains}",
     preset_theme_desc_state: "Entities in {domains} when the state is {state}",
@@ -6918,7 +6925,7 @@ class AlertTickerCardEditor extends LitElement {
       <div class="atc-row ${open ? "is-open" : ""}">
         <div class="alert-item" @click="${() => { this._themeOpen = open ? null : theme; if (!open) this._setThemePreview(theme); else if (previewing) this._setThemePreview(null); this.requestUpdate(); }}">
           <div class="alert-summary-text">
-            <div class="alert-entity-label">${name}${this._presetThemes().has(theme) ? html` <span class="rs-chip rs-chip--static">${this._t("theme_is_preset")}</span>` : ""}</div>
+            <div class="alert-entity-label">${name}${this._presetThemes().has(theme) ? this._scopeChips(this._themeScopes(theme)) : ""}</div>
             <div class="alert-msg-label">${uses ? this._t("theme_used_by").replace("{n}", uses) : this._t("theme_unused")}${isCustom ? html` · <span class="atc-customized">${this._t("theme_customized")}</span>` : ""}</div>
           </div>
           <div class="alert-actions">
@@ -6935,11 +6942,11 @@ class AlertTickerCardEditor extends LitElement {
   _renderPresetDomains(theme, ts) {
     const doms = ts.preset_domains || [];
     const all = [...new Set(Object.keys(this._previewHass()?.states || {}).map((e) => e.split(".")[0]))].sort();
-    const builtIn = Object.values(ALERT_TEMPLATES).filter((t) => t.alerts.some((a) => a.theme === theme))
-      .map((t) => t.nameByLang[this._lang || "en"] || t.nameByLang.en);
+    const builtIn = Object.values(ALERT_TEMPLATES).filter((t) => t.alerts.some((a) => a.theme === theme));
     const setDoms = (list) => this._setThemeStyle(theme, { preset_domains: list.length ? list : undefined, ...(list.length ? {} : { preset_state: undefined }) });
     return html`
-      ${builtIn.length ? html`<div class="helper-text">${this._t("theme_preset_builtin").replace("{names}", builtIn.join(", "))}</div>` : ""}
+      ${builtIn.length ? html`<div class="helper-text">${this._t("theme_preset_builtin")}</div>
+        ${builtIn.map((t) => html`<div class="atc-frow"><span class="atc-frow-label">${t.icon} ${t.nameByLang[this._lang || "en"] || t.nameByLang.en}</span>${this._scopeChips(this._presetScopes(t))}</div>`)}` : ""}
       <div class="atc-frow">
         <span class="atc-frow-label">${this._t("theme_preset_domains")}</span>
         ${doms.map((d) => html`<span class="rs-chip">${d}<button class="rs-chip-x" title="${this._t("remove")}"
@@ -6963,6 +6970,9 @@ class AlertTickerCardEditor extends LitElement {
     const animOff = (ts.disable_animation ?? false) || !!cfg.disable_animation;
     return html`
       <div class="atc-theme-panel">
+        <div class="rs-section-title">${this._t("theme_preset_title")}</div>
+        ${this._renderPresetDomains(theme, ts)}
+
         <div class="rs-section-title">${this._t("text_style_message")}</div>
         ${this._sizeControl(this._t("text_size"), ts.message_size, 16, 10, 40, set("message_size"))}
         ${this._colorControl(this._t("text_color"), ts.message_color, set("message_color"), `t:${theme}:msg`)}
@@ -6987,9 +6997,6 @@ class AlertTickerCardEditor extends LitElement {
           (v) => this._setThemeStyle(theme, { text_align: v === true ? "center" : v === false ? "left" : undefined }))}
         ${this._triControl(this._t("theme_card_border"), ts.card_border, !!cfg.card_border, set("card_border"))}
         ${this._triControl(this._t("severity_border"), ts.severity_border, cfg.severity_border !== false, set("severity_border"))}
-
-        <div class="rs-section-title">${this._t("theme_preset_title")}</div>
-        ${this._renderPresetDomains(theme, ts)}
 
         <div class="helper-text">${this._t("theme_panel_help")}</div>
         <button class="atc-btn-reset" ?disabled="${!Object.keys(ts).length}"
@@ -7815,6 +7822,40 @@ class AlertTickerCardEditor extends LitElement {
     return out;
   }
 
+  /**
+   * What a preset is associated with, as chips: entity domains ("lock"), device
+   * classes ("class: moisture"), "notifications", or "you pick the entity".
+   */
+  _presetScopes(preset) {
+    const out = [];
+    const add = (kind, value) => { if (!out.some((x) => x.kind === kind && x.value === value)) out.push({ kind, value }); };
+    for (const rs of preset?.ruleSets || []) for (const g of rs.groups || []) for (const r of g.rules || [])
+      if (r.field === "domain") (r.values || [r.value]).forEach((v) => add("domain", v));
+    for (const a of preset?.alerts || []) {
+      if (a.device_class) add("class", a.device_class);
+      if (a.entity_filter) add("domain", String(a.entity_filter).replace(/\.\*?$/, "").replace(/\*$/, ""));
+      if (a.rule_set && typeof a.rule_set === "object" && a.rule_set.watch === "notifications") add("notify", "");
+      if (a.entity === "" || a.camera_entity === "") add("pick", "");
+    }
+    return out;
+  }
+
+  _scopeChips(scopes) {
+    if (!scopes.length) return "";
+    const label = (x) => x.kind === "class" ? this._t("scope_class").replace("{v}", x.value)
+      : x.kind === "notify" ? this._t("scope_notifications") : x.kind === "pick" ? this._t("scope_pick") : x.value;
+    return html`<span class="atc-scope-chips">${scopes.map((x) => html`<span class="rs-chip rs-chip--static rs-chip--scope"
+      title="${this._t("scope_title_" + x.kind)}">${label(x)}</span>`)}</span>`;
+  }
+
+  /** Scopes of every preset (built-in or own) that uses a theme. */
+  _themeScopes(theme) {
+    const all = [];
+    for (const p of Object.values(this._presets())) if (p.alerts.some((a) => a.theme === theme))
+      for (const x of this._presetScopes(p)) if (!all.some((y) => y.kind === x.kind && y.value === x.value)) all.push(x);
+    return all;
+  }
+
   /** Config with a preset's rule sets added (kept as they are when the id already exists). */
   _withPresetRuleSets(cfg, preset) {
     if (!preset?.ruleSets?.length) return cfg;
@@ -7905,7 +7946,7 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="atc-tpl-main">
                   <span class="alert-icon-badge">${t.icon}</span>
                   <div class="alert-summary-text">
-                    <div class="alert-entity-label">${t.nameByLang[lang] || t.nameByLang.en}${t.userPreset ? html` <span class="rs-chip rs-chip--static">${this._t("preset_from_theme")}</span>` : ""}</div>
+                    <div class="alert-entity-label">${t.nameByLang[lang] || t.nameByLang.en}${this._scopeChips(this._presetScopes(t))}${t.userPreset ? html` <span class="rs-chip rs-chip--static">${this._t("preset_from_theme")}</span>` : ""}</div>
                     <div class="alert-msg-label">${t.descByLang[lang] || t.descByLang.en}</div>
                     <div class="rs-chips rs-chips--summary">
                       ${m.notify ? html`<span class="rs-chip rs-chip--static">${this._t("templates_any_notification")}</span>` : m.needs ? html`<span class="rs-chip rs-chip--static">${this._t("templates_needs_setup")}</span>` : html`
@@ -12110,43 +12151,6 @@ class AlertTickerCardEditor extends LitElement {
         margin: 6px 0 10px;
         border: 1px dashed var(--primary-color, #03a9f4);
       }
-      /* ── Design guide (CARD_DESIGN_SYSTEM.md): tokens, type scale, headings, icons ── */
-      :host {
-        --ltek-fs-panel-title: 16px; --ltek-fs-header: 15px; --ltek-fs-group: 14px;
-        --ltek-fs-label: 13px; --ltek-fs-body: 12px; --ltek-fs-small: 11px; --ltek-fs-tiny: 10px;
-        --ltek-c-accent: var(--primary-color, #2196F3);
-        --ltek-c-theme-accent: var(--accent-color, var(--ltek-c-accent));
-        --ltek-c-border-soft: var(--divider-color, #333);
-        --ltek-icon-sm: 16px; --ltek-icon-lg: 20px;
-        --mdc-typography-body2-font-size: var(--ltek-fs-label);
-      }
-      .hub-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-      .hub-list .hub-tile--wide, .editor-wrapper > .hub-tile--wide { margin: 0 0 8px; }
-      .hub-list .hub-tile--wide { margin: 0; }
-      .hub-tile--wide .hub-tile-icon { font-size: var(--ltek-icon-lg); width: 24px; text-align: center; }
-      .hub-tile--wide .hub-tile-label { font-size: var(--ltek-fs-header); font-weight: 600; }
-      .hub-tile--wide .hub-tile-desc { font-size: var(--ltek-fs-body); }
-      .section-header-title { font-size: var(--ltek-fs-panel-title); font-weight: 700; }
-      /* subtitles: all caps, theme accent */
-      .section-divider {
-        font-size: var(--ltek-fs-group); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-        color: var(--ltek-c-theme-accent); border-bottom-color: var(--ltek-c-border-soft);
-      }
-      .rs-section-title {
-        font-size: var(--ltek-fs-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-        color: var(--ltek-c-theme-accent); margin-top: 6px;
-      }
-      .atc-subpanel > summary { font-size: var(--ltek-fs-label); }
-      .helper-text { font-size: var(--ltek-fs-small); }
-      .native-select-label { font-size: var(--ltek-fs-body); }
-      .native-select { font-size: var(--ltek-fs-label); }
-      .alert-entity-label { font-size: var(--ltek-fs-label); }
-      .alert-msg-label { font-size: var(--ltek-fs-small); }
-      .alert-icon-badge { font-size: var(--ltek-icon-lg); }
-      .atc-act ha-icon, .btn-icon ha-icon { --mdc-icon-size: var(--ltek-icon-sm); }
-      .form-row-inline, .toggle-row { font-size: var(--ltek-fs-label); }
-      .atc-gd-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-      .atc-gd .atc-subpanel-body .form-row { margin-bottom: 6px; }
       .atc-seg {
         position: sticky; top: 0; z-index: 5;
         display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
@@ -12759,6 +12763,51 @@ class AlertTickerCardEditor extends LitElement {
       }
       .btn-add-small:hover {
         background: rgba(3, 169, 244, 0.16);
+      }
+      /* ── Design guide (CARD_DESIGN_SYSTEM.md): tokens, type scale, headings, icons ── */
+      :host {
+        --ltek-fs-panel-title: 16px; --ltek-fs-header: 15px; --ltek-fs-group: 14px;
+        --ltek-fs-label: 13px; --ltek-fs-body: 12px; --ltek-fs-small: 11px; --ltek-fs-tiny: 10px;
+        --ltek-c-accent: var(--primary-color, #2196F3);
+        --ltek-c-theme-accent: var(--accent-color, var(--ltek-c-accent));
+        --ltek-c-border-soft: var(--divider-color, #333);
+        --ltek-icon-sm: 16px; --ltek-icon-lg: 20px;
+        --mdc-typography-body2-font-size: var(--ltek-fs-label);
+      }
+      .hub-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+      .hub-list .hub-tile--wide, .editor-wrapper > .hub-tile--wide { margin: 0 0 8px; }
+      .hub-list .hub-tile--wide { margin: 0; }
+      .hub-tile--wide .hub-tile-icon { font-size: var(--ltek-icon-lg); width: 24px; text-align: center; }
+      .hub-tile--wide .hub-tile-label { font-size: var(--ltek-fs-header); font-weight: 600; }
+      .hub-tile--wide .hub-tile-desc { font-size: var(--ltek-fs-body); }
+      .section-header-title { font-size: var(--ltek-fs-panel-title); font-weight: 700; }
+      /* subtitles: all caps, theme accent */
+      .section-divider {
+        font-size: var(--ltek-fs-group); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--ltek-c-theme-accent); border-bottom-color: var(--ltek-c-border-soft);
+      }
+      .rs-section-title {
+        font-size: var(--ltek-fs-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--ltek-c-theme-accent);
+        margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--ltek-c-border-soft);
+      }
+      /* first subtitle of a panel body sits right under the panel's own header */
+      .rs-section-title:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+      .atc-subpanel > summary { font-size: var(--ltek-fs-label); }
+      .helper-text { font-size: var(--ltek-fs-small); }
+      .native-select-label { font-size: var(--ltek-fs-body); }
+      .native-select { font-size: var(--ltek-fs-label); }
+      .alert-entity-label { font-size: var(--ltek-fs-label); }
+      .alert-msg-label { font-size: var(--ltek-fs-small); }
+      .alert-icon-badge { font-size: var(--ltek-icon-lg); }
+      .atc-act ha-icon, .btn-icon ha-icon { --mdc-icon-size: var(--ltek-icon-sm); }
+      .form-row-inline, .toggle-row { font-size: var(--ltek-fs-label); }
+      .atc-gd-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+      .atc-gd .atc-subpanel-body .form-row { margin-bottom: 6px; }
+      .atc-scope-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
+      .rs-chip--scope {
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 14%, transparent);
+        color: var(--primary-color, #03a9f4); font-size: var(--ltek-fs-tiny, 10px); font-weight: 600;
       }
     `;
   }
