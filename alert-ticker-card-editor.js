@@ -1954,13 +1954,19 @@ const ET = {
     theme_is_preset: "Preset",
     theme_edit: "Edit this theme",
     theme_preset_title: "Alert Preset",
-    theme_preset_domains: "Associated domains",
-    theme_preset_add_domain: "+ Add domain…",
-    theme_preset_state: "Alert when state is (optional)",
+    theme_preset_add: "+ Add association…",
+    theme_preset_empty: "No associations — this theme is not an Alert Preset.",
+    theme_preset_group_builtin: "Built-in preset associations",
+    theme_preset_group_classes: "Device classes",
+    theme_preset_group_domains: "Domains",
+    theme_preset_now_on: "now on {theme}",
+    theme_preset_removed: "removed",
+    theme_preset_reset: "Reset associations",
+    preset_item_builtin_title: "From the built-in preset {name}",
+    preset_item_own_title: "Your own association",
+    theme_preset_state: "Your own associations: alert when state is (optional)",
     theme_preset_state_ph: "e.g. unlocked, open, on",
-    theme_preset_help: "✕ on a domain chip removes it. This theme is now an Alert Preset (Alerts → Alert Presets): Create builds an alert with this theme for every entity in these domains — when its state is the one above, or on any change when empty. You can edit the alert afterwards.",
-    theme_preset_none: "Add a domain to make this theme an Alert Preset. Each added domain shows as a chip — ✕ on the chip removes it. Built-in presets (above) are fixed and can't be changed here.",
-    theme_preset_builtin: "Built-in presets using this theme:",
+    theme_preset_help: "Each chip is one association: built-in ones (from a built-in preset, e.g. Doors & Windows) and your own domains / device classes are edited the same way — ✕ removes it, + Add brings one in. Picking a built-in association that is on another theme moves it here (that preset then uses this theme for it). Your own domains / classes build one alert with this theme, when the state is the one below — or on any change when empty.",
     scope_class: "class: {v}",
     scope_notifications: "notifications",
     scope_pick: "you pick the entity",
@@ -6912,13 +6918,13 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
-  /** Themes that are an Alert Preset: used by a built-in preset, or given associated domains. */
+  /** Themes that are an Alert Preset: holding any built-in or own item. */
   _presetThemes() {
-    const set = new Set();
-    for (const t of Object.values(ALERT_TEMPLATES)) for (const a of t.alerts) if (a.theme) set.add(a.theme);
-    for (const [th, ts] of Object.entries(this._config?.theme_styles || {})) if ((ts.preset_domains || []).length) set.add(th);
+    const set = new Set(Object.values(this._presetAssignment()));
+    for (const th of Object.keys(this._config?.theme_styles || {})) if (this._themeItems(th).length) set.add(th);
     return set;
   }
+
 
   _renderThemeRow(theme, name, uses, isCustom) {
     const open = this._themeOpen === theme;
@@ -6940,29 +6946,66 @@ class AlertTickerCardEditor extends LitElement {
       </div>`;
   }
 
-  /** Associated domains: picking any makes the theme an Alert Preset. */
+  /**
+   * Alert Preset editor for a theme: every item on it as a removable chip (built-in
+   * and own alike), one "+ Add…" for built-in items from other themes, device
+   * classes and domains, the state for own items, and Reset to Default.
+   */
   _renderPresetDomains(theme, ts) {
-    const doms = ts.preset_domains || [];
-    const all = [...new Set(Object.keys(this._previewHass()?.states || {}).map((e) => e.split(".")[0]))].sort();
-    const builtIn = Object.values(ALERT_TEMPLATES).filter((t) => t.alerts.some((a) => a.theme === theme));
-    const setDoms = (list) => this._setThemeStyle(theme, { preset_domains: list.length ? list : undefined, ...(list.length ? {} : { preset_state: undefined }) });
+    const lang = this._lang || "en";
+    const items = this._themeItems(theme);
+    const bi = this._builtinItems();
+    const byId = Object.fromEntries(bi.map((it) => [it.id, it]));
+    const assign = this._presetAssignment();
+    const presetName = (key) => ALERT_TEMPLATES[key].nameByLang[lang] || ALERT_TEMPLATES[key].nameByLang.en;
+    const themeName = (th) => this._themeLabel({ value: th }).replace(/\s*\(.*\)$/, "");
+    const scopeLabel = (x) => x.kind === "class" ? this._t("scope_class").replace("{v}", x.value)
+      : x.kind === "notify" ? this._t("scope_notifications") : x.kind === "pick" ? this._t("scope_pick") : x.value;
+    const chipLabel = (id) => byId[id] ? `${scopeLabel(byId[id].scope)} · ${presetName(byId[id].key)}`
+      : id.startsWith("class:") ? scopeLabel({ kind: "class", value: id.slice(6) }) : id.slice(7);
+    const h = this._previewHass();
+    const domains = [...new Set(Object.keys(h?.states || {}).map((e) => e.split(".")[0]))].sort();
+    const classes = [...new Set(Object.values(h?.states || {}).map((st) => st.attributes?.device_class).filter(Boolean))].sort();
+    const own = items.filter((x) => !x.startsWith("builtin:"));
+    const dflt = bi.filter((it) => it.defaultTheme === theme).map((it) => it.id);
+    const isDefault = Array.isArray(ts.preset_items) ? false : !ts.preset_domains?.length
+      && items.length === dflt.length && dflt.every((x) => items.includes(x));
+    const add = (v) => { if (v && !items.includes(v)) this._setThemeItems(theme, [...items, v]); };
     return html`
-      ${builtIn.length ? html`<div class="helper-text">${this._t("theme_preset_builtin")}</div>
-        ${builtIn.map((t) => html`<div class="atc-frow"><span class="atc-frow-label">${t.icon} ${t.nameByLang[this._lang || "en"] || t.nameByLang.en}</span>${this._scopeChips(this._presetScopes(t))}</div>`)}` : ""}
-      <div class="atc-frow">
-        <span class="atc-frow-label">${this._t("theme_preset_domains")}</span>
-        ${doms.map((d) => html`<span class="rs-chip">${d}<button class="rs-chip-x" title="${this._t("remove")}"
-          @click="${() => setDoms(doms.filter((x) => x !== d))}">✕</button></span>`)}
-        <select class="native-select atc-frow-select" @change="${(e) => { const v = e.target.value; e.target.value = ""; if (v) setDoms([...doms, v]); }}">
-          <option value="">${this._t("theme_preset_add_domain")}</option>
-          ${all.filter((d) => !doms.includes(d)).map((d) => html`<option value="${d}">${d}</option>`)}
-        </select>
+      <div class="atc-preset-chips">
+        ${items.length ? items.map((id) => html`<span class="rs-chip rs-chip--scope ${byId[id] ? "" : "rs-chip--own"}"
+            title="${byId[id] ? this._t("preset_item_builtin_title").replace("{name}", presetName(byId[id].key)) : this._t("preset_item_own_title")}">
+            ${chipLabel(id)}<button class="rs-chip-x" title="${this._t("remove")}"
+            @click="${() => this._setThemeItems(theme, items.filter((x) => x !== id))}">✕</button></span>`)
+          : html`<span class="helper-text">${this._t("theme_preset_empty")}</span>`}
       </div>
-      ${doms.length ? html`
+      <div class="atc-frow">
+        <select class="native-select atc-frow-select" @change="${(e) => { const v = e.target.value; e.target.value = ""; add(v); }}">
+          <option value="">${this._t("theme_preset_add")}</option>
+          <optgroup label="${this._t("theme_preset_group_builtin")}">
+            ${bi.filter((it) => !items.includes(it.id)).map((it) => html`<option value="${it.id}">${scopeLabel(it.scope)} · ${presetName(it.key)}${assign[it.id] ? ` (${this._t("theme_preset_now_on").replace("{theme}", themeName(assign[it.id]))})` : ` (${this._t("theme_preset_removed")})`}</option>`)}
+          </optgroup>
+          <optgroup label="${this._t("theme_preset_group_classes")}">
+            ${classes.filter((c) => !items.includes(`class:${c}`)).map((c) => html`<option value="class:${c}">${scopeLabel({ kind: "class", value: c })}</option>`)}
+          </optgroup>
+          <optgroup label="${this._t("theme_preset_group_domains")}">
+            ${domains.filter((d) => !items.includes(`domain:${d}`)).map((d) => html`<option value="domain:${d}">${d}</option>`)}
+          </optgroup>
+        </select>
+        ${isDefault ? "" : html`<button class="atc-btn-reset" @click="${() => {
+          const styles = { ...(this._config.theme_styles || {}) };
+          const st = { ...(styles[theme] || {}) }; delete st.preset_items; delete st.preset_domains; delete st.preset_state;
+          if (Object.keys(st).length) styles[theme] = st; else delete styles[theme];
+          const next = { ...this._config, theme_styles: styles }; if (!Object.keys(styles).length) delete next.theme_styles;
+          this._fireConfig(next);
+        }}"><ha-icon icon="mdi:restore"></ha-icon> ${this._t("theme_preset_reset")}</button>`}
+      </div>
+      ${own.length ? html`
         <ha-input .label="${this._t("theme_preset_state")}" .value="${ts.preset_state || ""}" placeholder="${this._t("theme_preset_state_ph")}"
-          @change="${(e) => this._setThemeStyle(theme, { preset_state: e.target.value.trim() || undefined })}"></ha-input>
-        <div class="helper-text">${this._t("theme_preset_help")}</div>` : html`<div class="helper-text">${this._t("theme_preset_none")}</div>`}`;
+          @change="${(e) => this._setThemeStyle(theme, { preset_state: e.target.value.trim() || undefined })}"></ha-input>` : ""}
+      <div class="helper-text">${this._t("theme_preset_help")}</div>`;
   }
+
 
   _renderThemePanel(theme) {
     const ts = this._themeStyle(theme);
@@ -7795,35 +7838,110 @@ class AlertTickerCardEditor extends LitElement {
 
   /** What a template would cover here: possible + active entities per template alert. */
   /**
-   * Alert Presets: the built-in ones plus every theme given "Associated domains" in
-   * Themes (theme_styles.<theme>.preset_domains). A theme preset builds one alert:
-   * a shared rule set "entities in these domains" (+ the state, when set; otherwise
-   * it alerts on any change), with that theme.
+   * Alert Presets — one system for built-in and own associations.
+   * Each built-in preset alert is an "item" (builtin:<preset>:<n>) on a theme: its
+   * default theme, or the theme the user moved it to. Themes can also hold plain
+   * items ("domain:lock", "class:door") — those build one "<theme>" preset with a
+   * shared rule set (+ the theme's preset_state, or on any change).
+   * Stored per theme as theme_styles.<theme>.preset_items once the user edits it
+   * (preset_domains from earlier test builds is still read as domain items).
    */
-  _presets() {
-    const out = { ...ALERT_TEMPLATES };
+  _builtinItems() {
+    const out = [];
+    for (const [key, t] of Object.entries(ALERT_TEMPLATES)) t.alerts.forEach((a, i) => {
+      if (!a.theme) return;
+      out.push({ id: `builtin:${key}:${i}`, key, i, alert: a, defaultTheme: a.theme,
+        scope: this._presetScopes({ alerts: [a] })[0] || { kind: "pick", value: "" } });
+    });
+    return out;
+  }
+
+  /** builtin item id → theme it is on now (missing = removed). */
+  _presetAssignment() {
     const styles = this._config?.theme_styles || {};
+    const explicit = (th) => Array.isArray(styles[th]?.preset_items) ? styles[th].preset_items : null;
+    const map = {};
+    for (const it of this._builtinItems()) if (!explicit(it.defaultTheme)) map[it.id] = it.defaultTheme;
+    for (const [th, ts] of Object.entries(styles)) for (const id of explicit(th) || []) if (id.startsWith("builtin:")) map[id] = th;
+    return map;
+  }
+
+  /** Every item on a theme: built-in ids it holds, then its own "domain:"/"class:" items. */
+  _themeItems(theme) {
+    const ts = this._config?.theme_styles?.[theme] || {};
+    const assign = this._presetAssignment();
+    const builtin = this._builtinItems().filter((it) => assign[it.id] === theme).map((it) => it.id);
+    const own = Array.isArray(ts.preset_items) ? ts.preset_items.filter((x) => !x.startsWith("builtin:"))
+      : (ts.preset_domains || []).filter(Boolean).map((d) => `domain:${d}`);
+    return [...builtin, ...own];
+  }
+
+  /** Writes a theme's item list; a built-in item is taken off every other theme. */
+  _setThemeItems(theme, items) {
+    const styles = { ...(this._config.theme_styles || {}) };
+    const assign = this._presetAssignment();
+    const write = (th, list) => {
+      const st = { ...(styles[th] || {}) };
+      delete st.preset_domains;
+      const dflt = this._builtinItems().filter((it) => it.defaultTheme === th).map((it) => it.id);
+      const same = list.length === dflt.length && list.every((x) => dflt.includes(x));
+      if (same) delete st.preset_items; else st.preset_items = list;
+      if (!list.some((x) => !x.startsWith("builtin:"))) delete st.preset_state;
+      if (Object.keys(st).length) styles[th] = st; else delete styles[th];
+    };
+    for (const id of items.filter((x) => x.startsWith("builtin:"))) {
+      const from = assign[id];
+      if (from && from !== theme) write(from, this._themeItems(from).filter((x) => x !== id));
+    }
+    // other themes were written into `styles`; _themeItems reads this._config, so recompute for `theme` from items
+    write(theme, items);
+    const next = { ...this._config, theme_styles: styles };
+    if (!Object.keys(styles).length) delete next.theme_styles;
+    this._fireConfig(next);
+  }
+
+  _presets() {
     const lang = this._lang || "en";
-    for (const [theme, ts] of Object.entries(styles)) {
-      const doms = (ts.preset_domains || []).filter(Boolean);
-      if (!doms.length) continue;
+    const msgs = DEFAULT_MSG[lang] || DEFAULT_MSG.en;
+    const assign = this._presetAssignment();
+    const out = {};
+    for (const [key, t] of Object.entries(ALERT_TEMPLATES)) {
+      const alerts = [];
+      t.alerts.forEach((a, i) => {
+        if (!a.theme) { alerts.push(a); return; }
+        const th = assign[`builtin:${key}:${i}`];
+        if (th) alerts.push(th === a.theme ? a : { ...a, theme: th });
+      });
+      if (alerts.length) out[key] = alerts.length === t.alerts.length && alerts.every((a, i) => a === t.alerts[i]) ? t : { ...t, alerts, edited: true };
+    }
+    const themes = new Set([...Object.keys(this._config?.theme_styles || {})]);
+    for (const theme of themes) {
+      const own = this._themeItems(theme).filter((x) => !x.startsWith("builtin:"));
+      if (!own.length) continue;
+      const ts = this._config.theme_styles[theme] || {};
+      const doms = own.filter((x) => x.startsWith("domain:")).map((x) => x.slice(7));
+      const classes = own.filter((x) => x.startsWith("class:")).map((x) => x.slice(6));
       const name = this._themeLabel({ value: theme }).replace(/^\S+\s+/, "").replace(/\s*\(.*\)$/, "");
       const id = `preset_${theme}`;
       const state = ts.preset_state != null && String(ts.preset_state).trim() !== "" ? String(ts.preset_state).trim() : null;
-      const groups = [{ mode: "include", match: "all", rules: [{ field: "domain", op: "in", values: doms, case_sensitive: true }] }];
+      const rules = [];
+      if (doms.length) rules.push({ field: "domain", op: "in", values: doms, case_sensitive: true });
+      if (classes.length) rules.push({ field: "device_class", op: "in", values: classes, case_sensitive: true });
+      const groups = [{ mode: "include", match: "any", rules }];
       if (state) groups.push({ mode: "include", match: "all", rules: [{ field: "state", op: "eq", value: state }] });
-      const msgs = DEFAULT_MSG[lang] || DEFAULT_MSG.en;
+      const what = [...doms, ...classes.map((c) => this._t("scope_class").replace("{v}", c))].join(", ");
       out[`theme:${theme}`] = {
         icon: (THEME_META[theme] || {}).icon || "🎨",
         nameByLang: { en: name },
-        descByLang: { en: this._t(state ? "preset_theme_desc_state" : "preset_theme_desc").replace("{domains}", doms.join(", ")).replace("{state}", state || "") },
-        ruleSets: [{ id, name: `${name} — ${doms.join(", ")}`, groups }],
+        descByLang: { en: this._t(state ? "preset_theme_desc_state" : "preset_theme_desc").replace("{domains}", what).replace("{state}", state || "") },
+        ruleSets: [{ id, name: `${name} — ${what}`, groups }],
         alerts: [{ theme, rule_set: id, message: msgs[theme] || "", ...(state ? {} : { on_change: true }) }],
         userPreset: true,
       };
     }
     return out;
   }
+
 
   /**
    * What a preset is associated with, as chips: entity domains ("lock"), device
@@ -7832,8 +7950,10 @@ class AlertTickerCardEditor extends LitElement {
   _presetScopes(preset) {
     const out = [];
     const add = (kind, value) => { if (!out.some((x) => x.kind === kind && x.value === value)) out.push({ kind, value }); };
-    for (const rs of preset?.ruleSets || []) for (const g of rs.groups || []) for (const r of g.rules || [])
+    for (const rs of preset?.ruleSets || []) for (const g of rs.groups || []) for (const r of g.rules || []) {
       if (r.field === "domain") (r.values || [r.value]).forEach((v) => add("domain", v));
+      if (r.field === "device_class") (r.values || [r.value]).forEach((v) => add("class", v));
+    }
     for (const a of preset?.alerts || []) {
       if (a.device_class) add("class", a.device_class);
       if (a.entity_filter) add("domain", String(a.entity_filter).replace(/\.\*?$/, "").replace(/\*$/, ""));
@@ -7843,6 +7963,7 @@ class AlertTickerCardEditor extends LitElement {
     return out;
   }
 
+
   _scopeChips(scopes) {
     if (!scopes.length) return "";
     const label = (x) => x.kind === "class" ? this._t("scope_class").replace("{v}", x.value)
@@ -7851,13 +7972,13 @@ class AlertTickerCardEditor extends LitElement {
       title="${this._t("scope_title_" + x.kind)}">${label(x)}</span>`)}</span>`;
   }
 
-  /** Scopes of every preset (built-in or own) that uses a theme. */
+  /** Chips for every item on a theme. */
   _themeScopes(theme) {
-    const all = [];
-    for (const p of Object.values(this._presets())) if (p.alerts.some((a) => a.theme === theme))
-      for (const x of this._presetScopes(p)) if (!all.some((y) => y.kind === x.kind && y.value === x.value)) all.push(x);
-    return all;
+    const bi = Object.fromEntries(this._builtinItems().map((it) => [it.id, it]));
+    return this._themeItems(theme).map((id) => bi[id] ? { ...bi[id].scope, item: id }
+      : id.startsWith("class:") ? { kind: "class", value: id.slice(6), item: id } : { kind: "domain", value: id.slice(7), item: id });
   }
+
 
   /** Config with a preset's rule sets added (kept as they are when the id already exists). */
   _withPresetRuleSets(cfg, preset) {
@@ -12177,6 +12298,9 @@ class AlertTickerCardEditor extends LitElement {
       .atc-theme-edit { --mdc-icon-size: var(--ltek-icon-sm, 16px); color: var(--secondary-text-color, #aaa); flex-shrink: 0; margin-left: 4px; }
       .atc-theme-edit.is-open, .alert-item:hover .atc-theme-edit { color: var(--primary-color, #03a9f4); }
       .atc-customized { color: var(--accent-color, var(--primary-color, #03a9f4)); }
+      .atc-preset-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+      .rs-chip--own { background: color-mix(in srgb, var(--accent-color, var(--primary-color, #03a9f4)) 18%, transparent);
+        color: var(--accent-color, var(--primary-color, #03a9f4)); }
       .rs-chip-x { border: none; background: none; color: inherit; cursor: pointer; padding: 0 0 0 4px; font-size: 11px; }
       .rs-chip-x:hover { color: var(--error-color, #f44336); }
       .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
