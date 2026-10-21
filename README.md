@@ -1271,7 +1271,7 @@ Force all configured alerts to display as active — useful for previewing the c
 test_mode: true
 ```
 
-> Remember to remove `test_mode` before going live. A yellow banner is shown on the card as a reminder.
+> Test mode only applies while the dashboard is being edited: a config saved with `test_mode: true` behaves normally on the live dashboard (a yellow banner shows it while editing).
 
 In the visual editor, open the **Alerts tab** → enable **Test mode** at the bottom → expand any alert to instantly preview it on the card.
 
@@ -1335,7 +1335,7 @@ alerts:
   - theme: flood_custom
 ```
 
-In **Alert Presets**, 🔍 on a preset previews it on the card in the editor's preview pane (only while editing; never saved — it stops when you click 🔍 again, close the panel or change anything).
+In **Alert Presets**, 🔍 on a preset previews it on the card in the editor's preview pane (only while editing; the preview is passed to the card directly, never through the card config, so saving can't store it — it stops when you click 🔍 again, close the panel or change anything).
 
 On the main screen, **🚀 Quick Start** (click to open) explains how to get going with Alert Presets.
 
