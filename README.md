@@ -1313,17 +1313,26 @@ Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, 
 
 Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; a green state marks the ones alerting now.
 
-**Themes** (main screen): every theme can be customized *in place* — all alerts using it follow. Buttons at the top filter the list: **Used by my alerts**, **Customized**, **Alert Presets**, **All themes**; open a theme with its ✎ pencil. The list shows, each with how many alerts use it, a 🔍 preview on the card (kept on while you edit the theme), and **Reset to Default**. A theme's panel has Message / Entity info text (size, color), Severity label (show / hide, custom text), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border). Settings layer **card → theme → alert**: *Default* means "use the level below", and an alert's own setting still wins (its editor shows what it inherits and links to *Customize theme*). Vertical, large buttons, the counter and the snooze / history buttons stay card-wide. Their defaults are in **Global Defaults → Look**.
+**Themes** (main screen) — all look settings live on themes, so an alert looks exactly like its theme and the editor preview matches the live card. There are two kinds:
 
-Every preset shows what it is associated with as chips in its header — in Alert Presets, in the theme list and in the theme's panel: a domain (`lock`), a device class (`class: moisture`), `notifications`, or *you pick the entity*. **Editing presets** (a theme's *Alert Preset* group) is one system for built-in and own associations. Every association on the theme is a chip with ✕: built-in ones (e.g. `class: door · Doors & Windows`) and your own domains / device classes alike. **+ Add association…** offers built-in associations from other themes (picking one *moves* it here — that built-in preset then uses this theme for it), device classes and domains found in your HA. Removing a built-in association drops it from its preset (a preset with nothing left disappears); **Reset associations** restores the theme's defaults. Your own domains / classes build one alert with the theme — when the state matches the optional *alert when state is*, otherwise on any change.
+- **Built-in themes** are fixed templates. Open one (👁) to see it and its preset associations; **✎+ Duplicate to customize** makes an editable copy.
+- **Custom themes** (*My themes*) are your copies, each marked *based on Flood* etc. — rename, duplicate, delete (its alerts go back to the built-in), 🔍 preview. A custom theme's panel has Icon (theme icon, emoji, the entity's own icon, a custom `mdi:` icon, entity picture, image; color, size), Message / Entity info text (size, color), Severity label (show / hide, text), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border), with **Reset look to <built-in>**. *Default* means the Global Defaults value or the built-in's own look.
+
+Buttons at the top filter the list: **Used by my alerts**, **Custom**, **Alert Presets**, **All themes**. The alert editor has no look settings any more — it picks a theme and links to *Edit theme* or *Duplicate & customize theme*. Vertical, large buttons, the counter and the snooze / history buttons stay card-wide (Global Defaults).
+
+When the editor opens a config with per-alert look settings (`icon`, `color`, `show_badge`, `badge_label`, `disable_animation`, …), it moves them into custom themes — alerts with the same base theme and settings share one — and says so once. The card itself still honours per-alert look keys written in YAML.
+
+**Alert Presets and associations** are separate from the look and can be set on any theme, built-in or custom. Every preset shows what it is associated with as chips: a domain (`lock`), a device class (`class: moisture`), `notifications`, or *you pick the entity*. In a theme's *Alert Preset* group every association is a chip with ✕ — built-in ones (e.g. `class: door · Doors & Windows`) and your own domains / device classes alike. **+ Add association…** offers built-in associations from other themes (picking one *moves* it here), device classes and domains found in your HA. Removing a built-in association drops it from its preset (a preset with nothing left disappears); **Reset associations** restores the defaults. Your own domains / classes build one alert with the theme — when the state matches the optional *alert when state is*, otherwise on any change. Alerts created from a preset are separate copies.
 
 ```yaml
-theme_styles:
-  flood: { message_size: 20, flash_background: true }
-  alarm: { flash_background: false }
-  water: { preset_items: ["domain:valve"], preset_state: open }   # own association → an Alert Preset
-  door:  { preset_items: ["builtin:doors_windows:0"] }            # Doors & Windows' door alert moved to the door theme
-  caution: { preset_items: [] }                                     # caution no longer holds Doors & Windows
+custom_themes:
+  flood_custom: { base: flood, name: "Flood (basement)", message_size: 20, pulse: true, show_badge: false }
+theme_associations:
+  flood_custom: { items: ["domain:valve"], state: open }   # own association → an Alert Preset
+  door:   { items: ["builtin:doors_windows:0"] }            # Doors & Windows' door alert moved to the door theme
+  caution: { items: [] }                                     # caution no longer holds Doors & Windows
+alerts:
+  - theme: flood_custom
 ```
 
 In **Alert Presets**, 🔍 on a preset previews it on the card in the editor's preview pane (only while editing; never saved — it stops when you click 🔍 again, close the panel or change anything).
@@ -1427,7 +1436,7 @@ Card-wide settings, rarely changed, in collapsible groups (closed by default; �
 
 ### 🎨 Themes
 
-Customize each theme in place — see *Themes* above. A theme's *Default* values come from Global Defaults → Look.
+Built-in themes are templates; custom themes hold your look settings — see *Themes* above. A custom theme's *Default* values come from Global Defaults → Look.
 
 ### 🔔 Overlay tab
 
@@ -1489,7 +1498,8 @@ The tab shows an **ON** badge when overlay mode is active.
 | `text_align` | `string` | `left` | `center` to center message text (useful in wide Panel layouts) |
 | `ha_theme` | `boolean` | `false` | Adapt card colors to the active HA global theme |
 | `history_keep_mode` / `history_keep` | `string` / `number` | `count` / `50` | What this browser stores: `count` = up to N alerts (max 5000), `days` = N days (max 5). Replaces `history_max_events` (still read) |
-| `theme_styles` | `object` | — | Per-theme customisation, edited in **Themes** (see below). `preset_items` / `preset_state` hold the theme's preset associations. Other keys per theme: `message_size`, `message_color`, `entity_size`, `entity_color`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `show_badge`, `badge_label`, `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
+| `custom_themes` | `object` | — | Your themes: `{ <id>: { base, name, …look } }`. Look keys: `icon`, `icon_color`, `icon_size`, `icon_image`, `use_ha_icon`, `use_entity_picture`, `message_size`, `message_color`, `entity_size`, `entity_color`, `show_badge`, `badge_label`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
+| `theme_associations` | `object` | — | Alert Preset associations per theme (built-in or custom): `{ <theme>: { items: ["domain:x", "class:y", "builtin:<preset>:<n>"], state } }` |
 | `history_show_mode` / `history_show` | `string` / `number` | all | What the card's 📋 panel lists: `count` = the latest N (max 500), `hours` = the last N hours (1–120); omit = everything stored |
 | `active_state_entity` | `string` | — | **Per-alert.** `input_boolean.*` entity to write `on`/`off` to when this specific alert becomes active or clears. Each alert can target a different boolean. Works only while the browser tab is open. |
 | `card_height` | `number` | *(auto)* | Fixed card height in px — prevents layout shifts when cycling |

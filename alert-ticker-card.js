@@ -1802,36 +1802,109 @@ function _atcExtraConditionResults(hass, alert, ctx) {
  * alerts. (Label- and area-only filters were left out before.)
  */
 /**
- * Per-theme customisation (theme_styles: { <theme>: {...} }), edited in place in the
- * editor's Themes & Layout section. Settings layer card → theme → alert: an alert's
- * own value wins, then its theme's, then the card-wide one.
+ * Custom themes (custom_themes: { <id>: { base, name, ...look } }). Built-in themes
+ * are fixed; a custom theme is a copy of one (base) with its own look. Alerts pick a
+ * theme by id; the card renders the base theme with the custom theme's look merged in.
  *   THEME_ALERT_KEYS  are merged into each alert of that theme (setConfig).
  *   THEME_LAYOUT_KEYS override the card-wide layout while that theme is on screen.
+ * Per-alert values of these keys are still honoured (YAML written for earlier
+ * versions); the editor turns them into custom themes (_atcMigrateLook).
+ * theme_styles (in-place edits from test builds) is still read the same way.
  */
 const _ATC_THEME_ALERT_KEYS = ["message_size", "message_color", "entity_size", "entity_color",
-  "flash_background", "pulse", "disable_animation", "color", "show_badge", "badge_label"];
+  "flash_background", "pulse", "disable_animation", "color", "show_badge", "badge_label",
+  "icon", "icon_color", "icon_size", "icon_image", "use_ha_icon", "use_entity_picture"];
 const _ATC_THEME_LAYOUT_KEYS = ["card_height", "font_scale", "text_align", "card_border", "severity_border", "card_background"];
 
-function _atcApplyThemeStyles(alerts, styles) {
-  if (!styles || typeof styles !== "object" || !Array.isArray(alerts)) return alerts;
+function _atcThemeLook(config, id) {
+  return config?.custom_themes?.[id] || config?.theme_styles?.[id] || null;
+}
+
+function _atcApplyThemeStyles(alerts, config) {
+  if (!Array.isArray(alerts)) return alerts;
+  const customs = config?.custom_themes || {}, styles = config?.theme_styles || {};
   return alerts.map((a) => {
-    const ts = a && styles[a.theme];
+    if (!a) return a;
+    const ct = customs[a.theme];
+    const ts = ct || styles[a.theme];
     if (!ts) return a;
-    let out = null;
-    for (const k of _ATC_THEME_ALERT_KEYS) {
-      if (a[k] === undefined && ts[k] !== undefined) (out = out || { ...a })[k] = ts[k];
-    }
-    return out || a;
+    const out = { ...a };
+    if (ct) { out.theme = ct.base || "emergency"; out._customTheme = a.theme; }
+    for (const k of _ATC_THEME_ALERT_KEYS) if (a[k] === undefined && ts[k] !== undefined) out[k] = ts[k];
+    return out;
   });
 }
 
-/** Card config with the on-screen theme's layout overrides applied. */
-function _atcLayoutFor(config, theme) {
-  const ts = theme && config?.theme_styles?.[theme];
+/** Card config with the on-screen theme's layout overrides applied (alert or theme id). */
+function _atcLayoutFor(config, alertOrTheme) {
+  const id = alertOrTheme && typeof alertOrTheme === "object" ? (alertOrTheme._customTheme || alertOrTheme.theme) : alertOrTheme;
+  const ts = id && _atcThemeLook(config, id);
   if (!ts) return config || {};
   const out = { ...config };
   for (const k of _ATC_THEME_LAYOUT_KEYS) if (ts[k] !== undefined) out[k] = ts[k];
   return out;
+}
+
+/**
+ * Editor migration: per-alert look settings and theme_styles become custom themes, so
+ * every look setting lives on a theme. Alerts with the same base theme and the same
+ * settings share one custom theme. An icon equal to the theme's own emoji is dropped
+ * (the editor used to write it on every theme change). Associations in theme_styles
+ * move to theme_associations. Returns { config, made, moved }.
+ */
+function _atcMigrateLook(config) {
+  if (!config || typeof config !== "object") return { config, made: 0, moved: 0 };
+  const styles = config.theme_styles || {};
+  const customs = { ...(config.custom_themes || {}) };
+  const assoc = { ...(config.theme_associations || {}) };
+  const LOOK = _ATC_THEME_ALERT_KEYS, LAYOUT = _ATC_THEME_LAYOUT_KEYS;
+  const pick = (o, keys) => { const r = {}; for (const k of keys) if (o && o[k] !== undefined) r[k] = o[k]; return r; };
+  for (const [th, ts] of Object.entries(styles)) {
+    if (!ts || assoc[th]) continue;
+    const items = Array.isArray(ts.preset_items) ? ts.preset_items
+      : (ts.preset_domains || []).length ? ts.preset_domains.map((d) => `domain:${d}`) : null;
+    if (items || ts.preset_state) assoc[th] = { ...(items ? { items } : {}), ...(ts.preset_state ? { state: ts.preset_state } : {}) };
+  }
+  const cap = (t) => String(t).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const bySig = new Map();
+  let made = 0, moved = 0, changed = Object.keys(assoc).length !== Object.keys(config.theme_associations || {}).length;
+  const newCustom = (base, look) => {
+    const sig = base + "|" + JSON.stringify(Object.keys(look).sort().map((k) => [k, look[k]]));
+    if (bySig.has(sig)) return bySig.get(sig);
+    let n = 1, id = `${base}_custom`;
+    while (customs[id]) id = `${base}_custom_${++n}`;
+    customs[id] = { base, name: `${cap(base)} (custom${n > 1 ? " " + n : ""})`, ...look };
+    bySig.set(sig, id); made++;
+    return id;
+  };
+  const alerts = (config.alerts || []).map((a) => {
+    if (!a || typeof a !== "object") return a;
+    const theme = a.theme || "emergency";
+    const own = pick(a, LOOK);
+    if (own.icon !== undefined && own.icon === (THEME_META[theme] || {}).icon) delete own.icon;
+    const fromStyles = customs[theme] ? {} : pick(styles[theme], [...LOOK, ...LAYOUT]);
+    const strip = () => { const r = { ...a }; for (const k of LOOK) delete r[k]; return r; };
+    if (!Object.keys(own).length && !Object.keys(fromStyles).length) {
+      if (LOOK.some((k) => a[k] !== undefined)) { changed = true; return strip(); }   // only a redundant default icon
+      return a;
+    }
+    const base = customs[theme] ? (customs[theme].base || "emergency") : theme;
+    const look = customs[theme] ? { ...pick(customs[theme], [...LOOK, ...LAYOUT]), ...own } : { ...fromStyles, ...own };
+    moved++;
+    return { ...strip(), theme: newCustom(base, look) };
+  });
+  // theme_styles entries no alert uses are kept as custom themes too
+  for (const [th, ts] of Object.entries(styles)) {
+    if (customs[th]) continue;
+    const look = pick(ts, [...LOOK, ...LAYOUT]);
+    if (Object.keys(look).length) newCustom(th, look);
+  }
+  if (!made && !moved && !changed && !config.theme_styles) return { config, made: 0, moved: 0 };
+  const out = { ...config, alerts };
+  delete out.theme_styles;
+  if (Object.keys(customs).length) out.custom_themes = customs; else delete out.custom_themes;
+  if (Object.keys(assoc).length) out.theme_associations = assoc; else delete out.theme_associations;
+  return { config: out, made, moved };
 }
 
 /** Themes whose look already flashes the background (flash_background defaults on). */
@@ -2205,6 +2278,7 @@ globalThis.__alertTickerShared = Object.freeze({
   themeLayoutKeys: _ATC_THEME_LAYOUT_KEYS,
   applyThemeStyles: _atcApplyThemeStyles,
   layoutFor: _atcLayoutFor,
+  migrateLook: _atcMigrateLook,
   historyKey: _atcHistoryKey,
   isCompanionCommand: _atcIsCompanionCommand,
   possibleEntities: _atcPossibleEntities,
@@ -3387,7 +3461,7 @@ class AlertTickerCard extends LitElement {
     };
     // Resolve `rule_set: <id>` references once, so the card and the overlay watcher
     // both evaluate the alert's rule set without needing the card config.
-    this._config.alerts = _atcApplyThemeStyles(_atcAttachRuleSets(this._config.alerts, this._config.rule_sets), this._config.theme_styles);
+    this._config.alerts = _atcApplyThemeStyles(_atcAttachRuleSets(this._config.alerts, this._config.rule_sets), this._config);
     // Re-derive the hass this card sees in case a notification rule set was just added/removed.
     if (this._rawHass) this._hass = _atcHassFor(this._config, this._rawHass);
     // Stop/start cycle timer based on test_mode
@@ -3518,7 +3592,7 @@ class AlertTickerCard extends LitElement {
     // the editor strips _preview_alerts on its next config.
     const pv = this._config._preview_alerts;
     if (Array.isArray(pv) && pv.length && _atcPreviewAllowed()) {
-      this._activeAlerts = _atcApplyThemeStyles(pv, this._config.theme_styles).map((a, i) => {
+      this._activeAlerts = _atcApplyThemeStyles(pv, this._config).map((a, i) => {
         const st = a.entity && this._hass.states[a.entity];
         const name = st?.attributes?.friendly_name || a.entity || "";
         return {
@@ -6134,7 +6208,7 @@ class AlertTickerCard extends LitElement {
     this.style.height = this._config?.vertical ? "100%" : "";
     // Layout of the theme on screen (theme_styles overrides the card-wide values)
     const onScreen = this._activeAlerts[this._currentIndex];
-    const L = _atcLayoutFor(this._config, onScreen ? onScreen.theme : (this._config?.show_when_clear ? this._config.clear_theme : null));
+    const L = _atcLayoutFor(this._config, onScreen || (this._config?.show_when_clear ? this._config.clear_theme : null));
     // Fixed card height — prevents layout shifts when cycling between alerts
     const cardHeight = L.card_height;
     this.style.setProperty("--atc-card-height", cardHeight ? `${cardHeight}px` : "");
