@@ -1309,31 +1309,34 @@ Create **entity** and **notification** rule sets: name, include and exclude rule
 
 ### 🔔 Alerts tab
 
-Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, or from **Alert Templates**: each template shows how many entities it can match on your system and how many are active now (click the count for the list), with **Create** (stays on the list) and **Create & edit** (opens the new alert). Template alerts are inserted by importance — critical ones near the top. An alert's type is fixed when it's added.
+Add an alert with **Entity**, **Entity Rule Set** or **Notification Rule Set**, or from **Alert Presets**: each preset shows how many entities it can match on your system and how many are active now (click the count for the list), with **Create** (stays on the list) and **Create & edit** (opens the new alert). Preset alerts are inserted by importance — critical ones near the top. An alert's type is fixed when it's added.
 
 Inside an entity rule-set alert, **Can match N entities** lists every entity it can cover, whatever their state right now; a green state marks the ones alerting now.
 
-**Themes** (main screen): every theme can be customized *in place* — all alerts using it follow. The list shows the themes your alerts use (or customized / all), each with how many alerts use it, a 🔍 preview on the card (kept on while you edit the theme), and **Reset to Default**. A theme's panel has Message / Entity info text (size, color), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border). Settings layer **card → theme → alert**: *Default* means "use the level below", and an alert's own setting still wins (its editor shows what it inherits and links to *Customize theme*). Vertical, large buttons, the counter and the snooze / history buttons stay card-wide. Their defaults are in **Global Defaults → Look**.
+**Themes** (main screen): every theme can be customized *in place* — all alerts using it follow. Buttons at the top filter the list: **Used by my alerts**, **Customized**, **Alert Presets**, **All themes**; open a theme with its ✎ pencil. The list shows, each with how many alerts use it, a 🔍 preview on the card (kept on while you edit the theme), and **Reset to Default**. A theme's panel has Message / Entity info text (size, color), Effects (disable animations, pulse, flash background), Colors (accent, background) and Layout (card height, font scale, centered text, card border, severity border). Settings layer **card → theme → alert**: *Default* means "use the level below", and an alert's own setting still wins (its editor shows what it inherits and links to *Customize theme*). Vertical, large buttons, the counter and the snooze / history buttons stay card-wide. Their defaults are in **Global Defaults → Look**.
+
+**Associated domains** (in a theme's *Alert Preset* group) turn that theme into an Alert Preset: *Create* builds an alert with the theme for every entity in those domains — when its state matches the optional *Alert when state is*, otherwise on any change.
 
 ```yaml
 theme_styles:
   flood: { message_size: 20, flash_background: true }
   alarm: { flash_background: false }
+  water: { preset_domains: [valve], preset_state: open }   # → an Alert Preset
 ```
 
-In **Alert Templates**, 🔍 on a template previews it on the card in the editor's preview pane (only while editing; never saved — it stops when you click 🔍 again, close the panel or change anything).
+In **Alert Presets**, 🔍 on a preset previews it on the card in the editor's preview pane (only while editing; never saved — it stops when you click 🔍 again, close the panel or change anything).
 
-On the main screen, **🚀 Quick Start** (click to open) explains how to get going with Alert Templates.
+On the main screen, **🚀 Quick Start** (click to open) explains how to get going with Alert Presets.
 
 Each alert row: the theme icon, the name, then **Show in overlay**, on/off, duplicate, delete, and on the far right ▲▼ and the drag handle to reorder (the order decides which alert shows first). **Show in overlay** is greyed until the card's overlay is on. Click a row to open its settings in the same panel. Sections, top to bottom: **Options** (Persistent / Sticky, Show in overlay, per-alert snooze duration, and Trigger on any change for rule-set alerts), **Appearance** (theme, the entity-name line under the message, icon — theme icon, custom emoji, the entity's own HA icon, a custom `mdi:` icon, the entity picture (photo / thumbnail) or an image, accent color, animations, custom card), the alert's source / **Condition**, timing, **Message**, secondary values, sound, TTS, push, camera, visibility, **Tap Actions** (single tap, double tap, hold, snooze) and **Set Entity Value** (`active_state_entity`). Settings are checkboxes. Every section collapses; a ✎ marks sections whose settings differ from the defaults (*Expand all / Collapse all* at the top). The Overlay tab lists every alert with its **Show in overlay** switch.
 
-#### 📚 Alert templates *(new in 1.3.9.9.7)*
+#### 📚 Alert Presets *(new in 1.3.9.9.7 as "presets")*
 
-The **Alert Templates** panel (under the Add buttons) gives you one-click access to **twelve curated preset bundles** — *All Notifications* first, the rest alphabetical — each showing how many of your entities it can match (✓ *Added* when you already use it). Each template uses HA `device_class` filters so it auto-matches every pertinent entity on your instance — no per-entity picking required.
+The **Alert Presets** panel (under the Add buttons) — the Alert Themes that have a domain or device class associated with them; using one immediately builds an alert for those entities, which you can still edit. It gives one-click access to **twelve built-in presets** plus any theme you gave **Associated domains** in Themes — *All Notifications* first, the rest alphabetical — each showing how many of your entities it can match (✓ *Added* when you already use it). Each preset uses HA `device_class` filters so it auto-matches every pertinent entity on your instance — no per-entity picking required.
 
-**Basic bundles** (one feature per template):
+**Basic bundles** (one feature per preset):
 
-| Template | What it does | Themes used |
+| Preset | What it does | Themes used |
 |----------|-------------|-------------|
 | 🔋 **Battery Monitor** | Alerts on every battery entity below 20% | `battery3d` |
 | 🚪 **Doors & Windows** | Alerts on any door or window sensor left open | `caution` |
@@ -1344,7 +1347,7 @@ The **Alert Templates** panel (under the Add buttons) gives you one-click access
 
 **Advanced bundles** (multi-feature showcase):
 
-| Template | What it does | Extra card features |
+| Preset | What it does | Extra card features |
 |----------|-------------|---------------------|
 | 🎥 **Security Camera** | Motion → full-screen camera live overlay | `overlay_mode` + `camera_entity` + `camera_live` |
 | 🔔 **Doorbell** | Persistent alert with camera, sound, TTS, push | Full notification stack in one preset |
@@ -1352,13 +1355,13 @@ The **Alert Templates** panel (under the Add buttons) gives you one-click access
 | 🌡 **Climate Comfort** | Alert when temperature exits 18–26°C range | Two numeric-operator alerts + `frost` theme |
 | 📡 **Devices Offline** | Battery sensors going `unavailable` / `unknown` | Array-state match syntax |
 
-Pick one → the template's alerts are **appended** to your current list (you can edit / delete each one individually afterwards). Alert messages are intentionally minimal (`{name}` or `{name} — {state}%`) so the theme's icon and colour palette convey the alert type — no translation needed.
+Pick one → the preset's alerts are **appended** to your current list (you can edit / delete each one individually afterwards). Alert messages are intentionally minimal (`{name}` or `{name} — {state}%`) so the theme's icon and colour palette convey the alert type — no translation needed.
 
 Advanced bundles that require card-level defaults (like `overlay_mode: true` for camera/doorbell) apply those defaults **only if you haven't already set them**, so your existing dashboard config is never overwritten.
 
-Duplicates are allowed on purpose — if you want two Battery Monitor alerts with different thresholds, just pick the template twice and tweak.
+Duplicates are allowed on purpose — if you want two Battery Monitor alerts with different thresholds, just pick the preset twice and tweak.
 
-> ✨ **First-time hint:** the very first time you open the editor after upgrading, the templates dropdown pulses with a soft blue glow and a ✨ sparkle badge to draw your attention. Focus the dropdown once and the hint disappears permanently.
+> ✨ **First-time hint:** the very first time you open the editor after upgrading, the presets panel pulses with a soft blue glow and a ✨ sparkle badge to draw your attention. Focus the dropdown once and the hint disappears permanently.
 
 #### Per-alert fields
 
@@ -1484,7 +1487,7 @@ The tab shows an **ON** badge when overlay mode is active.
 | `text_align` | `string` | `left` | `center` to center message text (useful in wide Panel layouts) |
 | `ha_theme` | `boolean` | `false` | Adapt card colors to the active HA global theme |
 | `history_keep_mode` / `history_keep` | `string` / `number` | `count` / `50` | What this browser stores: `count` = up to N alerts (max 5000), `days` = N days (max 5). Replaces `history_max_events` (still read) |
-| `theme_styles` | `object` | — | Per-theme customisation, edited in **Themes** (see below). Keys per theme: `message_size`, `message_color`, `entity_size`, `entity_color`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
+| `theme_styles` | `object` | — | Per-theme customisation, edited in **Themes** (see below). `preset_domains` / `preset_state` make the theme an Alert Preset. Other keys per theme: `message_size`, `message_color`, `entity_size`, `entity_color`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
 | `history_show_mode` / `history_show` | `string` / `number` | all | What the card's 📋 panel lists: `count` = the latest N (max 500), `hours` = the last N hours (1–120); omit = everything stored |
 | `active_state_entity` | `string` | — | **Per-alert.** `input_boolean.*` entity to write `on`/`off` to when this specific alert becomes active or clears. Each alert can target a different boolean. Works only while the browser tab is open. |
 | `card_height` | `number` | *(auto)* | Fixed card height in px — prevents layout shifts when cycling |

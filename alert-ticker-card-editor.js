@@ -1726,8 +1726,8 @@ const ET = {
     possible_help: "Every entity this alert can cover, whatever its state right now. A green state = alerting now.",
     entity_row_active: "Matching now",
     entity_row_inactive: "Not matching now",
-    templates_title: "Alert Templates",
-    templates_sub: "Ready-made alerts for batteries, doors, leaks, smoke, motion…",
+    templates_title: "Alert Presets",
+    templates_sub: "Alert Presets are the Alert Themes that have a domain (or device class) associated with them. Using one immediately builds an alert for those entities — you can still edit it afterwards.",
     templates_create: "Create",
     templates_create_edit: "Create & edit",
     templates_added: "Added {name}.",
@@ -1928,9 +1928,9 @@ const ET = {
     test_mode_warning: "Remember to disable test mode before saving!",
     history_max_events: "History — max events to keep",
     history_keep_title: "Stored in this browser",
-    templates_preview: "Preview this template on the card",
+    templates_preview: "Preview this preset on the card",
     templates_preview_off: "Stop previewing",
-    templates_previewing: "Previewing \"{name}\" on the card (the pane on the right). Click 🔍 again, close Alert Templates or change anything to stop — it is never saved.",
+    templates_previewing: "Previewing \"{name}\" on the card (the pane on the right). Click 🔍 again, close Alert Presets or change anything to stop — it is never saved.",
     templates_preview_sample_title: "Sample notification",
     templates_preview_sample_message: "This is how a notification looks",
     text_style_message: "Message text",
@@ -1947,6 +1947,21 @@ const ET = {
     themes_show: "Show",
     themes_filter_used: "Used by my alerts",
     themes_filter_customized: "Customized",
+    themes_filter_presets: "Alert Presets",
+    remove: "Remove",
+    theme_is_preset: "Preset",
+    theme_edit: "Edit this theme",
+    theme_preset_title: "Alert Preset",
+    theme_preset_domains: "Associated domains",
+    theme_preset_add_domain: "+ Add domain…",
+    theme_preset_state: "Alert when state is (optional)",
+    theme_preset_state_ph: "e.g. unlocked, open, on",
+    theme_preset_help: "This theme is now an Alert Preset (Alerts → Alert Presets): Create builds an alert with this theme for every entity in these domains — when its state is the one above, or on any change when empty. You can edit the alert afterwards.",
+    theme_preset_none: "Add a domain to make this theme an Alert Preset.",
+    theme_preset_builtin: "Built-in preset(s) using this theme: {names}.",
+    preset_from_theme: "from theme",
+    preset_theme_desc: "Any change of an entity in: {domains}",
+    preset_theme_desc_state: "Entities in {domains} when the state is {state}",
     themes_filter_all: "All themes",
     themes_none: "No themes to show — choose \"All themes\".",
     themes_reset_all: "Reset all ({n})",
@@ -2002,7 +2017,7 @@ const ET = {
     clear_theme: "Theme for 'all clear' state",
     alerts_list: "Configured alerts",
     add_alert: "Add alert",
-    add_from_template: "+ Add from template...",
+    add_from_template: "+ Add from preset...",
     alert_entity: "Entity",
     alert_operator: "Condition",
     alert_state: "Value",
@@ -2120,7 +2135,7 @@ const ET = {
     icon_emoji: "Emoji",
     templates_any_notification: "Any notification",
     quick_start_title: "Quick Start — click here",
-    quick_start_body: "Fastest start: open Alerts and expand Alert Templates. Each template (batteries, doors & windows, water leaks, smoke & CO, motion, updates, all notifications…) shows how many of your entities it can match and how many are alerting now — click the count to see them.\nPress + (Create) to add it, or the pencil (Create & edit) to add it and open it. A template creates a rule set that finds the matching entities for you, and the alert is placed by importance — critical ones near the top.\nThen adjust the alert's theme, message and options, drag alerts to set which shows first, and switch on Test mode to preview each one on the card.\nFor your own alerts use Entity (one entity), Entity Rule Set (many entities by label, area, device class…) or Notification Rule Set (Home Assistant notifications).",
+    quick_start_body: "Fastest start: open Alerts and expand Alert Presets. Each preset (batteries, doors & windows, water leaks, smoke & CO, motion, updates, all notifications…) shows how many of your entities it can match and how many are alerting now — click the count to see them.\nPress + (Create) to add it, or the pencil (Create & edit) to add it and open it. A preset creates a rule set that finds the matching entities for you, and the alert is placed by importance — critical ones near the top.\nThen adjust the alert's theme, message and options, drag alerts to set which shows first, and switch on Test mode to preview each one on the card.\nFor your own alerts use Entity (one entity), Entity Rule Set (many entities by label, area, device class…) or Notification Rule Set (Home Assistant notifications).",
     tap_actions_section: "Tap Actions",
     battery_trim_name: "Strip «Battery» suffix from entity name",
     secondary_attribute: "Secondary value attribute",
@@ -6859,16 +6874,17 @@ class AlertTickerCardEditor extends LitElement {
     (this._config.alerts || []).forEach((a) => a?.theme && used.set(a.theme, (used.get(a.theme) || 0) + 1));
     const filter = this._themeFilter || (used.size ? "used" : "all");
     const GROUPS = [["critical", "🚨"], ["warning", "⚠️"], ["info", "ℹ️"], ["ok", "✅"], ["style", "🎨"], ["timer", "⏱️"]];
-    const show = (v) => filter === "all" || (filter === "used" ? used.has(v) : !!styles[v]);
+    const presetThemes = this._presetThemes();
+    const show = (v) => filter === "all" || (filter === "used" ? used.has(v) : filter === "presets" ? presetThemes.has(v) : !!styles[v]);
     const nameOf = (v) => this._themeLabel({ value: v }).replace(/\s*\(.*\)$/, "");
     const customized = Object.keys(styles).length;
     return html`
       <div class="helper-text">${this._t("themes_help")}</div>
+      <div class="atc-seg atc-seg--4" role="tablist" aria-label="${this._t("themes_show")}">
+        ${["used", "customized", "presets", "all"].map((f) => html`<button role="tab" class="atc-seg-btn ${filter === f ? "is-on" : ""}"
+          aria-selected="${filter === f}" @click="${() => { this._themeFilter = f; this.requestUpdate(); }}">${this._t("themes_filter_" + f)}</button>`)}
+      </div>
       <div class="atc-frow">
-        <span class="atc-frow-label">${this._t("themes_show")}</span>
-        <select class="native-select atc-frow-select" @change="${(e) => { this._themeFilter = e.target.value; this.requestUpdate(); }}">
-          ${["used", "customized", "all"].map((f) => html`<option value="${f}" ?selected="${filter === f}">${this._t("themes_filter_" + f)}</option>`)}
-        </select>
         ${customized ? html`<button class="atc-btn-reset" @click="${() => { const n = { ...this._config }; delete n.theme_styles; this._themeOpen = null; this._fireConfig(n); }}">
           <ha-icon icon="mdi:restore"></ha-icon> ${this._t("themes_reset_all").replace("{n}", customized)}</button>` : ""}
       </div>
@@ -6887,6 +6903,14 @@ class AlertTickerCardEditor extends LitElement {
     `;
   }
 
+  /** Themes that are an Alert Preset: used by a built-in preset, or given associated domains. */
+  _presetThemes() {
+    const set = new Set();
+    for (const t of Object.values(ALERT_TEMPLATES)) for (const a of t.alerts) if (a.theme) set.add(a.theme);
+    for (const [th, ts] of Object.entries(this._config?.theme_styles || {})) if ((ts.preset_domains || []).length) set.add(th);
+    return set;
+  }
+
   _renderThemeRow(theme, name, uses, isCustom) {
     const open = this._themeOpen === theme;
     const previewing = this._themePreview === theme;
@@ -6894,17 +6918,41 @@ class AlertTickerCardEditor extends LitElement {
       <div class="atc-row ${open ? "is-open" : ""}">
         <div class="alert-item" @click="${() => { this._themeOpen = open ? null : theme; if (!open) this._setThemePreview(theme); else if (previewing) this._setThemePreview(null); this.requestUpdate(); }}">
           <div class="alert-summary-text">
-            <div class="alert-entity-label">${name}${isCustom ? html` <ha-icon class="atc-mod-mark" icon="mdi:pencil" title="${this._t("theme_customized")}"></ha-icon>` : ""}</div>
-            <div class="alert-msg-label">${uses ? this._t("theme_used_by").replace("{n}", uses) : this._t("theme_unused")}${isCustom ? ` · ${this._t("theme_customized")}` : ""}</div>
+            <div class="alert-entity-label">${name}${this._presetThemes().has(theme) ? html` <span class="rs-chip rs-chip--static">${this._t("theme_is_preset")}</span>` : ""}</div>
+            <div class="alert-msg-label">${uses ? this._t("theme_used_by").replace("{n}", uses) : this._t("theme_unused")}${isCustom ? html` · <span class="atc-customized">${this._t("theme_customized")}</span>` : ""}</div>
           </div>
           <div class="alert-actions">
             ${this._iconButton("mdi:magnify", this._t(previewing ? "templates_preview_off" : "theme_preview"), () => { this._setThemePreview(previewing ? null : theme); this.requestUpdate(); }, false, previewing ? "atc-act--on" : "")}
             ${isCustom ? this._iconButton("mdi:restore", this._t("theme_reset"), () => this._setThemeStyle(theme, Object.fromEntries(Object.keys(this._themeStyle(theme)).map((k) => [k, undefined])))) : ""}
           </div>
-          <span class="filter-count-chevron">${open ? "▲" : "▼"}</span>
+          <ha-icon class="atc-theme-edit ${open ? "is-open" : ""}" icon="${open ? "mdi:pencil" : "mdi:pencil-outline"}" title="${this._t("theme_edit")}"></ha-icon>
         </div>
         ${open ? this._renderThemePanel(theme) : ""}
       </div>`;
+  }
+
+  /** Associated domains: picking any makes the theme an Alert Preset. */
+  _renderPresetDomains(theme, ts) {
+    const doms = ts.preset_domains || [];
+    const all = [...new Set(Object.keys(this._previewHass()?.states || {}).map((e) => e.split(".")[0]))].sort();
+    const builtIn = Object.values(ALERT_TEMPLATES).filter((t) => t.alerts.some((a) => a.theme === theme))
+      .map((t) => t.nameByLang[this._lang || "en"] || t.nameByLang.en);
+    const setDoms = (list) => this._setThemeStyle(theme, { preset_domains: list.length ? list : undefined, ...(list.length ? {} : { preset_state: undefined }) });
+    return html`
+      ${builtIn.length ? html`<div class="helper-text">${this._t("theme_preset_builtin").replace("{names}", builtIn.join(", "))}</div>` : ""}
+      <div class="atc-frow">
+        <span class="atc-frow-label">${this._t("theme_preset_domains")}</span>
+        ${doms.map((d) => html`<span class="rs-chip">${d}<button class="rs-chip-x" title="${this._t("remove")}"
+          @click="${() => setDoms(doms.filter((x) => x !== d))}">✕</button></span>`)}
+        <select class="native-select atc-frow-select" @change="${(e) => { const v = e.target.value; e.target.value = ""; if (v) setDoms([...doms, v]); }}">
+          <option value="">${this._t("theme_preset_add_domain")}</option>
+          ${all.filter((d) => !doms.includes(d)).map((d) => html`<option value="${d}">${d}</option>`)}
+        </select>
+      </div>
+      ${doms.length ? html`
+        <ha-input .label="${this._t("theme_preset_state")}" .value="${ts.preset_state || ""}" placeholder="${this._t("theme_preset_state_ph")}"
+          @change="${(e) => this._setThemeStyle(theme, { preset_state: e.target.value.trim() || undefined })}"></ha-input>
+        <div class="helper-text">${this._t("theme_preset_help")}</div>` : html`<div class="helper-text">${this._t("theme_preset_none")}</div>`}`;
   }
 
   _renderThemePanel(theme) {
@@ -6939,6 +6987,9 @@ class AlertTickerCardEditor extends LitElement {
           (v) => this._setThemeStyle(theme, { text_align: v === true ? "center" : v === false ? "left" : undefined }))}
         ${this._triControl(this._t("theme_card_border"), ts.card_border, !!cfg.card_border, set("card_border"))}
         ${this._triControl(this._t("severity_border"), ts.severity_border, cfg.severity_border !== false, set("severity_border"))}
+
+        <div class="rs-section-title">${this._t("theme_preset_title")}</div>
+        ${this._renderPresetDomains(theme, ts)}
 
         <div class="helper-text">${this._t("theme_panel_help")}</div>
         <button class="atc-btn-reset" ?disabled="${!Object.keys(ts).length}"
@@ -7733,13 +7784,51 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   /** What a template would cover here: possible + active entities per template alert. */
+  /**
+   * Alert Presets: the built-in ones plus every theme given "Associated domains" in
+   * Themes (theme_styles.<theme>.preset_domains). A theme preset builds one alert:
+   * a shared rule set "entities in these domains" (+ the state, when set; otherwise
+   * it alerts on any change), with that theme.
+   */
+  _presets() {
+    const out = { ...ALERT_TEMPLATES };
+    const styles = this._config?.theme_styles || {};
+    const lang = this._lang || "en";
+    for (const [theme, ts] of Object.entries(styles)) {
+      const doms = (ts.preset_domains || []).filter(Boolean);
+      if (!doms.length) continue;
+      const name = this._themeLabel({ value: theme }).replace(/^\S+\s+/, "").replace(/\s*\(.*\)$/, "");
+      const id = `preset_${theme}`;
+      const state = ts.preset_state != null && String(ts.preset_state).trim() !== "" ? String(ts.preset_state).trim() : null;
+      const groups = [{ mode: "include", match: "all", rules: [{ field: "domain", op: "in", values: doms, case_sensitive: true }] }];
+      if (state) groups.push({ mode: "include", match: "all", rules: [{ field: "state", op: "eq", value: state }] });
+      const msgs = DEFAULT_MSG[lang] || DEFAULT_MSG.en;
+      out[`theme:${theme}`] = {
+        icon: (THEME_META[theme] || {}).icon || "🎨",
+        nameByLang: { en: name },
+        descByLang: { en: this._t(state ? "preset_theme_desc_state" : "preset_theme_desc").replace("{domains}", doms.join(", ")).replace("{state}", state || "") },
+        ruleSets: [{ id, name: `${name} — ${doms.join(", ")}`, groups }],
+        alerts: [{ theme, rule_set: id, message: msgs[theme] || "", ...(state ? {} : { on_change: true }) }],
+        userPreset: true,
+      };
+    }
+    return out;
+  }
+
+  /** Config with a preset's rule sets added (kept as they are when the id already exists). */
+  _withPresetRuleSets(cfg, preset) {
+    if (!preset?.ruleSets?.length) return cfg;
+    const have = new Set((cfg.rule_sets || []).map((r) => r.id));
+    return { ...cfg, rule_sets: [...(cfg.rule_sets || []), ...preset.ruleSets.filter((r) => !have.has(r.id))] };
+  }
+
   _templateMatches(key) {
     const shared = globalThis.__alertTickerShared;
-    const t = ALERT_TEMPLATES[key];
+    const t = this._presets()[key];
     if (!this._hass || !shared?.migrateConfig || !t) return null;
     const alerts = t.alerts.map(({ priority, ...a }) => a);
     const needs = alerts.some((a) => a.camera_entity === "" || (!a.entity && !shared.isFilterAlert(a)));
-    const m = shared.migrateConfig({ alerts, rule_sets: this._ruleSets() }).config;
+    const m = shared.migrateConfig(this._withPresetRuleSets({ alerts, rule_sets: this._ruleSets() }, t)).config;
     const resolved = shared.attachRuleSets(m.alerts, m.rule_sets);
     const h = this._previewHass();
     const parts = resolved.map((a) => ({
@@ -7802,9 +7891,9 @@ class AlertTickerCardEditor extends LitElement {
         </div>
         ${toast ? html`<div class="rs-notice atc-tpl-toast">✓ ${this._t("templates_added").replace("{name}", toast.name)}</div>` : ""}
         ${open ? html`<div class="atc-tpl-list">
-          ${this._tplPreview && ALERT_TEMPLATES[this._tplPreview] ? html`<div class="rs-notice">🔍 ${this._t("templates_previewing")
-            .replace("{name}", ALERT_TEMPLATES[this._tplPreview].nameByLang[lang] || ALERT_TEMPLATES[this._tplPreview].nameByLang.en)}</div>` : ""}
-          ${Object.entries(ALERT_TEMPLATES)
+          ${this._tplPreview && this._presets()[this._tplPreview] ? html`<div class="rs-notice">🔍 ${this._t("templates_previewing")
+            .replace("{name}", this._presets()[this._tplPreview].nameByLang[lang] || this._presets()[this._tplPreview].nameByLang.en)}</div>` : ""}
+          ${Object.entries(this._presets())
             .sort(([ka, a], [kb, b]) => (ka === "all_notifications" ? -1 : kb === "all_notifications" ? 1
               : (a.nameByLang[lang] || a.nameByLang.en).localeCompare(b.nameByLang[lang] || b.nameByLang.en)))
             .map(([key, t]) => {
@@ -7816,7 +7905,7 @@ class AlertTickerCardEditor extends LitElement {
                 <div class="atc-tpl-main">
                   <span class="alert-icon-badge">${t.icon}</span>
                   <div class="alert-summary-text">
-                    <div class="alert-entity-label">${t.nameByLang[lang] || t.nameByLang.en}</div>
+                    <div class="alert-entity-label">${t.nameByLang[lang] || t.nameByLang.en}${t.userPreset ? html` <span class="rs-chip rs-chip--static">${this._t("preset_from_theme")}</span>` : ""}</div>
                     <div class="alert-msg-label">${t.descByLang[lang] || t.descByLang.en}</div>
                     <div class="rs-chips rs-chips--summary">
                       ${m.notify ? html`<span class="rs-chip rs-chip--static">${this._t("templates_any_notification")}</span>` : m.needs ? html`<span class="rs-chip rs-chip--static">${this._t("templates_needs_setup")}</span>` : html`
@@ -10286,7 +10375,7 @@ class AlertTickerCardEditor extends LitElement {
    */
   _addFromTemplate(templateKey, { edit = true } = {}) {
     if (!templateKey) return;
-    const template = ALERT_TEMPLATES[templateKey];
+    const template = this._presets()[templateKey];
     if (!template) return;
     this._markTemplateHintSeen(); // remove first-time glow if still on
 
@@ -10314,7 +10403,7 @@ class AlertTickerCardEditor extends LitElement {
     const lang = this._lang || "en";
     this._templateToast = { name: template.nameByLang[lang] || template.nameByLang.en, at: Date.now() };
     const merged = [...currentAlerts.slice(0, firstNewIndex), ...newAlerts, ...currentAlerts.slice(firstNewIndex)];
-    let nextConfig = { ...this._config, ...mergedCardCfg, alerts: merged };
+    let nextConfig = this._withPresetRuleSets({ ...this._config, ...mergedCardCfg, alerts: merged }, template);
     // Template alerts use device_class filters: store them as shared rule sets, like every other rule.
     const migrate = globalThis.__alertTickerShared?.migrateConfig;
     if (migrate) nextConfig = migrate(nextConfig).config;
@@ -12058,6 +12147,30 @@ class AlertTickerCardEditor extends LitElement {
       .form-row-inline, .toggle-row { font-size: var(--ltek-fs-label); }
       .atc-gd-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
       .atc-gd .atc-subpanel-body .form-row { margin-bottom: 6px; }
+      .atc-seg {
+        position: sticky; top: 0; z-index: 5;
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+        padding: 8px 0; margin-bottom: 4px;
+        background: var(--card-background-color, var(--primary-background-color, #1c1c1c));
+      }
+      .atc-seg--4 { grid-template-columns: repeat(4, 1fr); }
+      @media (max-width: 460px) { .atc-seg--4 { grid-template-columns: repeat(2, 1fr); } }
+      .atc-seg-btn {
+        padding: 7px 6px; border-radius: var(--ltek-r-ctrl, 6px); cursor: pointer; font: inherit;
+        font-weight: 600; font-size: var(--ltek-fs-body, 12px);
+        border: 1px solid var(--divider-color, #444); background: transparent; color: var(--primary-text-color);
+        transition: border-color .15s, box-shadow .15s, background .15s;
+      }
+      .atc-seg-btn:hover { border-color: var(--primary-color, #03a9f4); }
+      .atc-seg-btn.is-on {
+        border-color: var(--primary-color, #03a9f4); color: var(--primary-color, #03a9f4);
+        background: color-mix(in srgb, var(--primary-color, #03a9f4) 12%, transparent);
+        box-shadow: 0 0 0 1px var(--primary-color, #03a9f4), 0 0 10px color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
+      }
+      .atc-theme-edit { --mdc-icon-size: var(--ltek-icon-sm, 16px); color: var(--secondary-text-color, #aaa); flex-shrink: 0; margin-left: 4px; }
+      .atc-theme-edit.is-open, .alert-item:hover .atc-theme-edit { color: var(--primary-color, #03a9f4); }
+      .atc-customized { color: var(--accent-color, var(--primary-color, #03a9f4)); }
+      .rs-chip-x { border: none; background: none; color: inherit; cursor: pointer; padding: 0 0 0 4px; font-size: 11px; }
       .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
       .atc-theme-panel { padding: 4px 10px 10px; }
       .atc-inherit { opacity: 0.65; font-size: 0.85rem; white-space: nowrap; }
