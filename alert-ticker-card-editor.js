@@ -1557,7 +1557,7 @@ const ET = {
     music_compact_show_badge: "Badge NOW PLAYING (layout compatto)",
   },
   en: {
-    tab_general: "General",
+    tab_general: "Global Defaults",
     tab_alerts: "Alerts",
     tab_overlay: "Overlay",
     tab_allclear: "All Clear",
@@ -1769,9 +1769,9 @@ const ET = {
     alert_rule_set_missing: "This rule set no longer exists — the alert matches nothing until you pick another.",
     back: "Back",
     all_clear_disabled_help: "Enable 'All Clear' to configure the no-alerts message.",
-    tab_layout: "Themes & Layout",
-    hub_desc_general: "Snooze, voice (TTS) & push",
-    hub_desc_layout: "Customize themes; card height & visual appearance",
+    tab_layout: "Themes",
+    hub_desc_general: "Card-wide look, cycling, controls, snooze, voice & push",
+    hub_desc_layout: "Customize each theme: text, effects, colors, layout",
     hub_desc_overlay: "Global banner across all dashboards",
     hub_desc_alerts: "Manage alert conditions",
     hub_desc_allclear: "Message when no alerts are active",
@@ -1826,6 +1826,9 @@ const ET = {
     section_layout: "Layout Defaults - All Themes",
     layout_defaults_help: "Card-wide settings every theme starts from. A theme can override the look settings in Themes; an alert can override its own.",
     layout_defaults_look: "Look",
+    global_defaults_help: "Card-wide settings — rarely changed. Themes can override the Look settings per theme; an alert can override its own.",
+    themes_defaults_from: "A theme's Default values come from",
+    section_voice_push: "Voice & Push",
     section_card_controls: "Card controls",
     tab_history: "History",
     hub_desc_history: "What is recorded and shown",
@@ -1940,7 +1943,7 @@ const ET = {
     color_mode_custom: "Custom",
     color_mode_css: "CSS value",
     themes_title: "Themes",
-    themes_help: "Customize any theme in place: every alert using it follows. An alert's own setting still wins; Default means \"use Layout Defaults - All Themes\" (or the theme's own look).",
+    themes_help: "Customize any theme in place: every alert using it follows. An alert's own setting still wins; Default means \"use Global Defaults\" (or the theme's own look).",
     themes_show: "Show",
     themes_filter_used: "Used by my alerts",
     themes_filter_customized: "Customized",
@@ -1961,7 +1964,7 @@ const ET = {
     theme_card_border: "Card border",
     theme_colors: "Colors",
     theme_layout: "Layout",
-    theme_panel_help: "Default = the value in Layout Defaults - All Themes, or the theme's own look.",
+    theme_panel_help: "Default = the value in Global Defaults, or the theme's own look.",
     theme_customized_note: "This alert's theme is customized.",
     theme_customize_link: "Customize theme →",
     inherited_value: "Default: {v}",
@@ -6686,35 +6689,47 @@ class AlertTickerCardEditor extends LitElement {
         ${ruleSetCount > 0 ? html`<span class="hub-badge hub-badge--alerts">${ruleSetCount}</span>` : ""}
       </button>
 
-      <!-- 2×2 grid -->
-      <div class="hub-grid">
-        <button class="hub-tile" @click="${() => this._sectionChanged("general")}">
-          <span class="hub-tile-icon">⚙️</span>
-          <span class="hub-tile-label">${this._t("tab_general")}</span>
-          <span class="hub-tile-desc">${this._t("hub_desc_general")}</span>
-        </button>
-        <button class="hub-tile" @click="${() => this._sectionChanged("layout")}">
-          <span class="hub-tile-icon">🖼️</span>
+      <div class="hub-list">
+      <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("layout")}">
+        <span class="hub-tile-icon">🎨</span>
+        <div class="hub-tile-text">
           <span class="hub-tile-label">${this._t("tab_layout")}</span>
           <span class="hub-tile-desc">${this._t("hub_desc_layout")}</span>
-        </button>
-        <button class="hub-tile" @click="${() => this._sectionChanged("history")}">
-          <span class="hub-tile-icon">📋</span>
+        </div>
+        ${Object.keys(cfg.theme_styles || {}).length ? html`<span class="hub-badge hub-badge--alerts">${Object.keys(cfg.theme_styles).length}</span>` : ""}
+      </button>
+      <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("general")}">
+        <span class="hub-tile-icon">⚙️</span>
+        <div class="hub-tile-text">
+          <span class="hub-tile-label">${this._t("tab_general")}</span>
+          <span class="hub-tile-desc">${this._t("hub_desc_general")}</span>
+        </div>
+        
+      </button>
+      <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("history")}">
+        <span class="hub-tile-icon">📋</span>
+        <div class="hub-tile-text">
           <span class="hub-tile-label">${this._t("tab_history")}</span>
           <span class="hub-tile-desc">${this._t("hub_desc_history")}</span>
-        </button>
-        <button class="hub-tile" @click="${() => this._sectionChanged("overlay")}">
-          <span class="hub-tile-icon">🔔</span>
+        </div>
+        
+      </button>
+      <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("overlay")}">
+        <span class="hub-tile-icon">🔔</span>
+        <div class="hub-tile-text">
           <span class="hub-tile-label">${this._t("tab_overlay")}</span>
           <span class="hub-tile-desc">${this._t("hub_desc_overlay")}</span>
-          ${overlayOn ? html`<span class="hub-badge hub-badge--on">ON</span>` : ""}
-        </button>
-<button class="hub-tile" @click="${() => this._sectionChanged("allclear")}">
-          <span class="hub-tile-icon">✅</span>
+        </div>
+        ${overlayOn ? html`<span class="hub-badge hub-badge--on">ON</span>` : ""}
+      </button>
+      <button class="hub-tile hub-tile--wide" @click="${() => this._sectionChanged("allclear")}">
+        <span class="hub-tile-icon">✅</span>
+        <div class="hub-tile-text">
           <span class="hub-tile-label">${this._t("tab_allclear")}</span>
           <span class="hub-tile-desc">${this._t("hub_desc_allclear")}</span>
-          ${clearOn ? html`<span class="hub-badge hub-badge--on">ON</span>` : ""}
-        </button>
+        </div>
+        ${clearOn ? html`<span class="hub-badge hub-badge--on">ON</span>` : ""}
+      </button>
       </div>
 
       <div class="hub-footer">
@@ -6933,64 +6948,80 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   _renderLayoutTab() {
-    const view = this._layoutView === "defaults" ? "defaults" : "themes";
-    const pick = (v) => {
-      this._layoutView = v;
-      if (v !== "themes" && this._themePreview) this._setThemePreview(null);
-      this.requestUpdate();
-    };
     return html`
       ${this._renderSectionHeader("tab_layout")}
-      <div class="atc-seg" role="tablist">
-        <button role="tab" class="atc-seg-btn ${view === "themes" ? "is-on" : ""}" aria-selected="${view === "themes"}"
-          @click="${() => pick("themes")}">🎨 ${this._t("themes_title")}</button>
-        <button role="tab" class="atc-seg-btn ${view === "defaults" ? "is-on" : ""}" aria-selected="${view === "defaults"}"
-          @click="${() => pick("defaults")}">🖼️ ${this._t("section_layout")}</button>
-      </div>
-      ${view === "themes" ? this._renderThemesList() : this._renderLayoutDefaults()}
+      <div class="helper-text">${this._t("themes_defaults_from")}
+        <a href="#" @click="${(e) => { e.preventDefault(); this._gdOpen = new Set(["look"]); this._sectionChanged("general"); }}">${this._t("tab_general")} →</a></div>
+      ${this._renderThemesList()}
     `;
   }
 
   /** Card-wide look & display settings — the defaults every theme starts from. */
-  _renderLayoutDefaults() {
+  /**
+   * Global Defaults — every card-wide setting, in collapsible groups (closed by
+   * default; they are rarely changed). Themes override the Look group per theme,
+   * alerts override their own settings.
+   */
+  _renderGeneralTab() {
     const cfg = this._config;
+    const open = this._gdOpen || (this._gdOpen = new Set());
+    const isSet = (k, dflt) => cfg[k] !== undefined && cfg[k] !== dflt;
+    const MOD = {
+      look: ["ha_theme", "vertical", "text_align", "large_buttons", "card_height", "font_scale", "card_border", "card_background"].some((k) => isSet(k)) || cfg.severity_border === false,
+      cycling: isSet("cycle_interval", 5) || isSet("cycle_animation", "fold") || !!cfg.disable_animation,
+      controls: ["show_snooze_bar", "show_snooze_button", "show_history_button", "show_counter", "show_dismiss_bar"].some((k) => cfg[k] === false),
+      snooze: !!cfg.snooze_default_duration || !!cfg.swipe_to_snooze,
+      voice: cfg.tts_enabled === false || cfg.push_notify_enabled === false,
+    };
+    const group = (id, icon, titleKey, content) => html`
+      <details class="atc-subpanel atc-gd" ?open="${open.has(id)}"
+        @toggle="${(e) => { if (e.target.open) open.add(id); else open.delete(id); }}">
+        <summary>${icon} ${this._t(titleKey)}${MOD[id] ? html`<ha-icon class="sec-changed" icon="mdi:pencil" title="${this._t("theme_customized")}"></ha-icon>` : ""}</summary>
+        <div class="atc-subpanel-body">${content}</div>
+      </details>`;
     return html`
-      <div class="helper-text">${this._t("layout_defaults_help")}</div>
-      <div class="section-divider">🖼️ ${this._t("layout_defaults_look")}</div>
+      ${this._renderSectionHeader("tab_general")}
+      <div class="helper-text">${this._t("global_defaults_help")}</div>
+      <div class="atc-gd-list">
+        ${group("look", "🖼️", "layout_defaults_look", html`
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("ha_theme")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("ha_theme")}">
+          <ha-checkbox
             .checked="${!!cfg.ha_theme}"
             @change="${(e) => this._fireConfig({ ...this._config, ha_theme: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("vertical")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("vertical")}">
+          <ha-checkbox
             .checked="${!!cfg.vertical}"
             @change="${(e) => this._fireConfig({ ...this._config, vertical: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("text_align_center")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("text_align_center")}">
+          <ha-checkbox
             .checked="${cfg.text_align === 'center'}"
             @change="${(e) => this._fireConfig({ ...this._config, text_align: e.target.checked ? 'center' : undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("large_buttons")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("large_buttons")}">
+          <ha-checkbox
             .checked="${!!cfg.large_buttons}"
             @change="${(e) => this._fireConfig({ ...this._config, large_buttons: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
@@ -7026,28 +7057,30 @@ class AlertTickerCardEditor extends LitElement {
       </div>
       <div class="form-row">
         <div class="toggle-row">
-          <span>${this._t("card_border")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("card_border")}">
+          <ha-checkbox
             .checked="${!!cfg.card_border}"
             @change="${(e) => this._fireConfig({ ...this._config, card_border: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
         <div class="helper-text">${this._t("card_border_help")}</div>
       </div>
       <div class="form-row">
         <div class="toggle-row">
-          <span>${this._t("severity_border")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("severity_border")}">
+          <ha-checkbox
             .checked="${cfg.severity_border !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, severity_border: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
         <div class="helper-text">${this._t("severity_border_help")}</div>
       </div>
       <div class="form-row">
         <div class="toggle-row">
-          <span>${this._t("card_background")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("card_background")}">
+          <ha-checkbox
             .checked="${!!cfg.card_background}"
             @change="${(e) => {
               if (e.target.checked) {
@@ -7057,7 +7090,8 @@ class AlertTickerCardEditor extends LitElement {
                 this._fireConfig(rest);
               }
             }}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
         ${cfg.card_background ? (() => {
           const { hex, alpha } = this._parseBgValue(cfg.card_background);
@@ -7101,8 +7135,8 @@ class AlertTickerCardEditor extends LitElement {
         <div class="helper-text">${this._t("card_background_help")}</div>
       </div>
 
-      <!-- ── CYCLING & ANIMATION ───────────────────────────────────────── -->
-      <div class="section-divider">🔄 ${this._t("section_cycling")}</div>
+        `)}
+        ${group("cycling", "🔄", "section_cycling", html`
       <div class="form-row">
         <ha-input
           .label="${this._t("cycle_interval")}"
@@ -7128,74 +7162,71 @@ class AlertTickerCardEditor extends LitElement {
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("disable_animation")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("disable_animation")}">
+          <ha-checkbox
             .checked="${!!cfg.disable_animation}"
             @change="${(e) => this._fireConfig({ ...this._config, disable_animation: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
         <div class="helper-text">${this._t("disable_animation_help")}</div>
       </div>
 
-      <!-- ── CARD CONTROLS (moved from General) ── -->
-      <div class="section-divider">🎛️ ${this._t("section_card_controls")}</div>
+        `)}
+        ${group("controls", "🎛️", "section_card_controls", html`
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("show_snooze_bar")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_snooze_bar")}">
+          <ha-checkbox
             .checked="${cfg.show_snooze_bar !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, show_snooze_bar: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("show_snooze_button")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_snooze_button")}">
+          <ha-checkbox
             .checked="${cfg.show_snooze_button !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, show_snooze_button: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("show_history_button")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_history_button")}">
+          <ha-checkbox
             .checked="${cfg.show_history_button !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, show_history_button: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("show_counter")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_counter")}">
+          <ha-checkbox
             .checked="${cfg.show_counter !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, show_counter: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("show_dismiss_bar")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_dismiss_bar")}">
+          <ha-checkbox
             .checked="${cfg.show_dismiss_bar !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, show_dismiss_bar: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
 
-    `;
-  }
-
-  _renderGeneralTab() {
-    const cfg = this._config;
-
-    return html`
-      ${this._renderSectionHeader("tab_general")}
-
-      <!-- ── SNOOZE ────────────────────────────────────────────────────── -->
-      <div class="section-divider">💤 ${this._t("section_snooze")}</div>
+        `)}
+        ${group("snooze", "💤", "section_snooze", html`
       <div class="form-row">
         <div class="native-select-wrap">
           <label class="native-select-label">${this._t("snooze_default_duration")}</label>
@@ -7212,41 +7243,46 @@ class AlertTickerCardEditor extends LitElement {
       </div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("swipe_to_snooze")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("swipe_to_snooze")}">
+          <ha-checkbox
             .checked="${!!cfg.swipe_to_snooze}"
             @change="${(e) => this._fireConfig({ ...this._config, swipe_to_snooze: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
-      <!-- ── TTS MASTER ───────────────────────────────────────────────── -->
-      <div class="section-divider">${this._t("section_tts")}</div>
+        `)}
+        ${group("voice", "🗣️", "section_voice_push", html`
+          <div class="rs-section-title">${this._t("section_tts")}</div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("tts_master_toggle")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("tts_master_toggle")}">
+          <ha-checkbox
             .checked="${cfg.tts_enabled !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, tts_enabled: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
         <div class="helper-text">${this._t("tts_master_toggle_help")}</div>
         <div class="helper-text" style="color:var(--warning-color,#f4a835);margin-top:4px">${this._t("client_side_warning")}</div>
       </div>
 
-      <!-- ── PUSH NOTIFY MASTER ─────────────────────────────────────────── -->
-      <div class="section-divider">${this._t("section_push_notify")}</div>
+          <div class="rs-section-title">${this._t("section_push_notify")}</div>
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("push_notify_master_toggle")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("push_notify_master_toggle")}">
+          <ha-checkbox
             .checked="${cfg.push_notify_enabled !== false}"
             @change="${(e) => this._fireConfig({ ...this._config, push_notify_enabled: e.target.checked ? undefined : false })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
         <div class="helper-text">${this._t("push_notify_master_toggle_help")}</div>
         <div class="helper-text" style="color:var(--warning-color,#f4a835);margin-top:4px">${this._t("client_side_warning")}</div>
       </div>
 
+        `)}
+      </div>
     `;
   }
 
@@ -7263,11 +7299,12 @@ class AlertTickerCardEditor extends LitElement {
       ${this._renderSectionHeader("tab_allclear")}
       <div class="form-row">
         <div class="form-row-inline">
-          <span>${this._t("show_when_clear")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_when_clear")}">
+          <ha-checkbox
             .checked="${cfg.show_when_clear === true}"
             @change="${(e) => this._showWhenClearChanged(e.target.checked)}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>
       </div>
       ${cfg.show_when_clear ? html`
@@ -7335,11 +7372,12 @@ class AlertTickerCardEditor extends LitElement {
         ${(cfg.clear_display_mode === 'clock' || cfg.clear_display_mode === 'weather_clock' || cfg.clear_display_mode === 'weather_forecast') ? html`
           <div class="form-row">
             <div class="switch-row">
-              <span class="switch-label">${this._t("clear_clock_show_date")}</span>
-              <ha-switch
+              <ha-formfield .label="${this._t("clear_clock_show_date")}">
+              <ha-checkbox
                 .checked="${cfg.clear_clock_show_date !== false}"
                 @change="${(e) => this._fireConfig({ ...this._config, clear_clock_show_date: e.target.checked })}"
-              ></ha-switch>
+              ></ha-checkbox>
+</ha-formfield>
             </div>
           </div>
           ${cfg.clear_clock_show_date !== false ? html`
@@ -7357,20 +7395,22 @@ class AlertTickerCardEditor extends LitElement {
           ` : ''}
           <div class="form-row">
             <div class="switch-row">
-              <span class="switch-label">${this._t("clear_clock_12h")}</span>
-              <ha-switch
+              <ha-formfield .label="${this._t("clear_clock_12h")}">
+              <ha-checkbox
                 .checked="${!!cfg.clear_clock_12h}"
                 @change="${(e) => this._fireConfig({ ...this._config, clear_clock_12h: e.target.checked })}"
-              ></ha-switch>
+              ></ha-checkbox>
+</ha-formfield>
             </div>
           </div>
           <div class="form-row">
             <div class="switch-row">
-              <span class="switch-label">${this._t("clear_clock_show_seconds")}</span>
-              <ha-switch
+              <ha-formfield .label="${this._t("clear_clock_show_seconds")}">
+              <ha-checkbox
                 .checked="${cfg.clear_clock_show_seconds !== false}"
                 @change="${(e) => this._fireConfig({ ...this._config, clear_clock_show_seconds: e.target.checked })}"
-              ></ha-switch>
+              ></ha-checkbox>
+</ha-formfield>
             </div>
           </div>
 
@@ -7448,11 +7488,12 @@ class AlertTickerCardEditor extends LitElement {
           </div>
           <div class="form-row">
             <div class="form-row-inline">
-              <span>${this._t("clear_disable_animation")}</span>
-              <ha-switch
+              <ha-formfield .label="${this._t("clear_disable_animation")}">
+              <ha-checkbox
                 .checked="${!!cfg.clear_disable_animation}"
                 @change="${(e) => this._fireConfig({ ...this._config, clear_disable_animation: e.target.checked || undefined })}"
-              ></ha-switch>
+              ></ha-checkbox>
+</ha-formfield>
             </div>
             <div class="helper-text">${this._t("clear_disable_animation_help")}</div>
           </div>
@@ -7479,11 +7520,12 @@ class AlertTickerCardEditor extends LitElement {
         <!-- Show widget in alert cycle -->
         ${(cfg.clear_display_mode && cfg.clear_display_mode !== 'message') ? html`
         <div class="form-row toggle-row">
-          <span class="toggle-label">${this._t("show_widget_in_cycle")}</span>
-          <ha-switch
+          <ha-formfield .label="${this._t("show_widget_in_cycle")}">
+          <ha-checkbox
             ?checked="${!!cfg.show_widget_in_cycle}"
             @change="${(e) => this._fireConfig({ ...this._config, show_widget_in_cycle: e.target.checked })}"
-          ></ha-switch>
+          ></ha-checkbox>
+</ha-formfield>
         </div>` : ''}
 
         <!-- Message fields (only for message mode) -->
@@ -7504,10 +7546,10 @@ class AlertTickerCardEditor extends LitElement {
         </div>
         <div class="form-row">
           <ha-formfield .label="${this._t("use_ha_icon")}">
-            <ha-switch
-              ?checked="${!!cfg.clear_use_ha_icon}"
+            <ha-checkbox
+              .checked="${!!cfg.clear_use_ha_icon}"
               @change="${(e) => this._clearUseHaIconToggled(e.target.checked)}"
-            ></ha-switch>
+            ></ha-checkbox>
           </ha-formfield>
           ${cfg.clear_use_ha_icon ? html`
             <ha-icon-picker
@@ -7577,10 +7619,10 @@ class AlertTickerCardEditor extends LitElement {
               </div>
               <div class="overlay-box-desc">${this._t("overlay_mode_help")}</div>
             </div>
-            <ha-switch
-              ?checked="${!!cfg.overlay_mode}"
+            <ha-checkbox
+              .checked="${!!cfg.overlay_mode}"
               @change="${(e) => this._fireConfig({ ...this._config, overlay_mode: e.target.checked })}"
-            ></ha-switch>
+            ></ha-checkbox>
           </div>
           ${cfg.overlay_mode ? html`
           <div class="overlay-preview-wrap">
@@ -7635,10 +7677,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div style="font-weight:500">${this._t("overlay_dismissible")}</div>
                 <div class="helper-text">${this._t("overlay_dismissible_help")}</div>
               </div>
-              <ha-switch
-                ?checked="${cfg.overlay_dismissible !== false}"
+              <ha-checkbox
+                .checked="${cfg.overlay_dismissible !== false}"
                 @change="${(e) => this._fireConfig({ ...this._config, overlay_dismissible: e.target.checked ? undefined : false })}"
-              ></ha-switch>
+              ></ha-checkbox>
             </div>
 
             <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
@@ -7646,10 +7688,10 @@ class AlertTickerCardEditor extends LitElement {
                 <div style="font-weight:500">${this._t("overlay_rotation")}</div>
                 <div class="helper-text">${this._t("overlay_rotation_help")}</div>
               </div>
-              <ha-switch
-                ?checked="${!!cfg.overlay_rotation}"
+              <ha-checkbox
+                .checked="${!!cfg.overlay_rotation}"
                 @change="${(e) => this._fireConfig({ ...this._config, overlay_rotation: e.target.checked || undefined })}"
-              ></ha-switch>
+              ></ha-checkbox>
             </div>
 
             ${cfg.overlay_rotation ? html`
@@ -7682,9 +7724,10 @@ class AlertTickerCardEditor extends LitElement {
       <div class="atc-ov-list">
         ${alerts.map((a, i) => html`
           <div class="form-row-inline atc-ov-row ${a.enabled === false ? "atc-row--off" : ""}">
-            <span>${this._modeIcon(this._getAlertMode(i, a))} ${a.name || `${this._t("alert_num")} ${i + 1}`}</span>
-            <ha-switch .checked="${a.overlay !== false}"
-              @change="${(e) => this._updateAlert(i, { overlay: e.target.checked ? undefined : false })}"></ha-switch>
+            <ha-formfield .label="${this._modeIcon(this._getAlertMode(i, a))} ${a.name || `${this._t("alert_num")} ${i + 1}`}">
+            <ha-checkbox .checked="${a.overlay !== false}"
+              @change="${(e) => this._updateAlert(i, { overlay: e.target.checked ? undefined : false })}"></ha-checkbox>
+</ha-formfield>
           </div>`)}
       </div>`;
   }
@@ -7892,10 +7935,10 @@ class AlertTickerCardEditor extends LitElement {
             <div class="test-mode-box-title">${this._t("test_mode")}</div>
             <div class="test-mode-box-desc">${this._t("test_mode_desc")}</div>
           </div>
-          <ha-switch
+          <ha-checkbox
             .checked="${!!this._config.test_mode}"
             @change="${(e) => this._fireConfig({ ...this._config, test_mode: e.target.checked || undefined })}"
-          ></ha-switch>
+          ></ha-checkbox>
         </div>
         ${this._config.test_mode ? html`
           <div class="test-mode-box-warning">⚠ ${this._t("test_mode_warning")}</div>
@@ -10800,22 +10843,24 @@ class AlertTickerCardEditor extends LitElement {
         <div class="helper-text">${this._t("action_pipeline_id_help")}</div>
         <div class="form-row">
           <div class="form-row-inline">
-            <span>${this._t("action_start_listening")}</span>
-            <ha-switch
+            <ha-formfield .label="${this._t("action_start_listening")}">
+            <ha-checkbox
               .checked="${cfg.start_listening ?? false}"
               @change="${(e) => this._setCardActionConfig(configKey, "start_listening", e.target.checked)}"
-            ></ha-switch>
+            ></ha-checkbox>
+</ha-formfield>
           </div>
         </div>
       ` : ""}
       ${type !== "none" ? html`
         <div class="form-row" style="margin-top:10px">
           <div class="form-row-inline">
-            <span>${this._t("action_confirmation")}</span>
-            <ha-switch
+            <ha-formfield .label="${this._t("action_confirmation")}">
+            <ha-checkbox
               .checked="${!!cfg.confirmation}"
               @change="${(e) => this._setCardActionConfirmation(configKey, e.target.checked)}"
-            ></ha-switch>
+            ></ha-checkbox>
+</ha-formfield>
           </div>
           <div class="helper-text">${this._t("action_confirmation_help")}</div>
           ${cfg.confirmation ? html`
@@ -11976,23 +12021,43 @@ class AlertTickerCardEditor extends LitElement {
         margin: 6px 0 10px;
         border: 1px dashed var(--primary-color, #03a9f4);
       }
-      .atc-seg {
-        position: sticky; top: 0; z-index: 5;
-        display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-        padding: 8px 0 10px; margin-bottom: 4px;
-        background: var(--card-background-color, var(--primary-background-color, #1c1c1c));
+      /* ── Design guide (CARD_DESIGN_SYSTEM.md): tokens, type scale, headings, icons ── */
+      :host {
+        --ltek-fs-panel-title: 16px; --ltek-fs-header: 15px; --ltek-fs-group: 14px;
+        --ltek-fs-label: 13px; --ltek-fs-body: 12px; --ltek-fs-small: 11px; --ltek-fs-tiny: 10px;
+        --ltek-c-accent: var(--primary-color, #2196F3);
+        --ltek-c-theme-accent: var(--accent-color, var(--ltek-c-accent));
+        --ltek-c-border-soft: var(--divider-color, #333);
+        --ltek-icon-sm: 16px; --ltek-icon-lg: 20px;
+        --mdc-typography-body2-font-size: var(--ltek-fs-label);
       }
-      .atc-seg-btn {
-        padding: 9px 10px; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 600; font-size: 0.9rem;
-        border: 1px solid var(--divider-color, #444); background: transparent; color: var(--primary-text-color);
-        transition: border-color .15s, box-shadow .15s, background .15s;
+      .hub-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+      .hub-list .hub-tile--wide, .editor-wrapper > .hub-tile--wide { margin: 0 0 8px; }
+      .hub-list .hub-tile--wide { margin: 0; }
+      .hub-tile--wide .hub-tile-icon { font-size: var(--ltek-icon-lg); width: 24px; text-align: center; }
+      .hub-tile--wide .hub-tile-label { font-size: var(--ltek-fs-header); font-weight: 600; }
+      .hub-tile--wide .hub-tile-desc { font-size: var(--ltek-fs-body); }
+      .section-header-title { font-size: var(--ltek-fs-panel-title); font-weight: 700; }
+      /* subtitles: all caps, theme accent */
+      .section-divider {
+        font-size: var(--ltek-fs-group); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--ltek-c-theme-accent); border-bottom-color: var(--ltek-c-border-soft);
       }
-      .atc-seg-btn:hover { border-color: var(--primary-color, #03a9f4); }
-      .atc-seg-btn.is-on {
-        border-color: var(--primary-color, #03a9f4); color: var(--primary-color, #03a9f4);
-        background: color-mix(in srgb, var(--primary-color, #03a9f4) 12%, transparent);
-        box-shadow: 0 0 0 1px var(--primary-color, #03a9f4), 0 0 12px color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
+      .rs-section-title {
+        font-size: var(--ltek-fs-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--ltek-c-theme-accent); margin-top: 6px;
       }
+      .atc-subpanel > summary { font-size: var(--ltek-fs-label); }
+      .helper-text { font-size: var(--ltek-fs-small); }
+      .native-select-label { font-size: var(--ltek-fs-body); }
+      .native-select { font-size: var(--ltek-fs-label); }
+      .alert-entity-label { font-size: var(--ltek-fs-label); }
+      .alert-msg-label { font-size: var(--ltek-fs-small); }
+      .alert-icon-badge { font-size: var(--ltek-icon-lg); }
+      .atc-act ha-icon, .btn-icon ha-icon { --mdc-icon-size: var(--ltek-icon-sm); }
+      .form-row-inline, .toggle-row { font-size: var(--ltek-fs-label); }
+      .atc-gd-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+      .atc-gd .atc-subpanel-body .form-row { margin-bottom: 6px; }
       .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
       .atc-theme-panel { padding: 4px 10px 10px; }
       .atc-inherit { opacity: 0.65; font-size: 0.85rem; white-space: nowrap; }
