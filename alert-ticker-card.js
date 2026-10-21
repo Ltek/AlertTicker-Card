@@ -1809,7 +1809,7 @@ function _atcExtraConditionResults(hass, alert, ctx) {
  *   THEME_LAYOUT_KEYS override the card-wide layout while that theme is on screen.
  */
 const _ATC_THEME_ALERT_KEYS = ["message_size", "message_color", "entity_size", "entity_color",
-  "flash_background", "pulse", "disable_animation", "color"];
+  "flash_background", "pulse", "disable_animation", "color", "show_badge", "badge_label"];
 const _ATC_THEME_LAYOUT_KEYS = ["card_height", "font_scale", "text_align", "card_border", "severity_border", "card_background"];
 
 function _atcApplyThemeStyles(alerts, styles) {

@@ -1966,7 +1966,7 @@ const ET = {
     preset_item_own_title: "Your own association",
     theme_preset_state: "Your own associations: alert when state is (optional)",
     theme_preset_state_ph: "e.g. unlocked, open, on",
-    theme_preset_help: "Each chip is one association: built-in ones (from a built-in preset, e.g. Doors & Windows) and your own domains / device classes are edited the same way — ✕ removes it, + Add brings one in. Picking a built-in association that is on another theme moves it here (that preset then uses this theme for it). Your own domains / classes build one alert with this theme, when the state is the one below — or on any change when empty.",
+    theme_preset_help: "✕ removes an association, + Add brings one in. Adding a built-in one moves it to this theme. Your own domains and classes alert on the state above, or on any change if it's empty.",
     scope_class: "class: {v}",
     scope_notifications: "notifications",
     scope_pick: "you pick the entity",
@@ -1987,6 +1987,8 @@ const ET = {
     theme_previewing: "Previewing {name} on the card while you edit it. Click 🔍 again or close the theme to stop — it is never saved.",
     theme_reset: "Reset to Default",
     theme_effects: "Effects",
+    theme_badge: "Severity label",
+    theme_show_badge: "Show the severity label (Critical, Warning…)",
     theme_accent: "Accent color",
     theme_background: "Background",
     theme_card_height: "Card height",
@@ -2000,6 +2002,7 @@ const ET = {
     inherited_value: "Default: {v}",
     inherited_theme: "theme",
     tri_default: "Default ({v})",
+    tri_default_note: "Default: {v}",
     tri_on: "On",
     tri_off: "Off",
     pulse_card: "Pulse the card",
@@ -7025,6 +7028,12 @@ class AlertTickerCardEditor extends LitElement {
         ${this._sizeControl(this._t("text_size"), ts.entity_size, 12, 8, 30, set("entity_size"))}
         ${this._colorControl(this._t("text_color"), ts.entity_color, set("entity_color"), `t:${theme}:ent`)}
 
+        <div class="rs-section-title">${this._t("theme_badge")}</div>
+        ${this._triControl(this._t("theme_show_badge"), ts.show_badge, true, set("show_badge"))}
+        ${ts.show_badge === false ? "" : html`
+          <ha-input .label="${this._t("badge_label")}" .value="${ts.badge_label || ""}" .placeholder="${this._getDefaultBadgeLabel({ theme })}"
+            @change="${(e) => this._setThemeStyle(theme, { badge_label: e.target.value.trim() || undefined })}"></ha-input>`}
+
         <div class="rs-section-title">${this._t("theme_effects")}</div>
         ${this._triControl(this._t("disable_animation"), ts.disable_animation, !!cfg.disable_animation, set("disable_animation"))}
         ${animOff ? "" : html`
@@ -8805,15 +8814,15 @@ class AlertTickerCardEditor extends LitElement {
                 <div>
                   <ha-formfield .label="${this._t("show_badge")}">
                     <ha-checkbox
-                      .checked="${alert.show_badge !== false}"
-                      @change="${(e) => this._updateAlert(index, { show_badge: e.target.checked ? undefined : false })}"
+                      .checked="${(alert.show_badge ?? this._themeStyle(alert.theme).show_badge) !== false}"
+                      @change="${(e) => { const inh = this._themeStyle(alert.theme).show_badge !== false; this._updateAlert(index, { show_badge: e.target.checked === inh ? undefined : e.target.checked }); }}"
                     ></ha-checkbox>
                   </ha-formfield>
-                  ${alert.show_badge !== false ? html`
+                  ${(alert.show_badge ?? this._themeStyle(alert.theme).show_badge) !== false ? html`
                     <ha-input
                       .label="${this._t("badge_label")}"
                       .value="${alert.badge_label || ""}"
-                      .placeholder="${this._getDefaultBadgeLabel(alert)}"
+                      .placeholder="${this._themeStyle(alert.theme).badge_label || this._getDefaultBadgeLabel(alert)}"
                       @change="${(e) => this._updateAlert(index, { badge_label: e.target.value.trim() || undefined })}"
                     ></ha-input>
                     <div class="helper-text">${this._t("badge_label_help")}</div>
@@ -9394,17 +9403,17 @@ class AlertTickerCardEditor extends LitElement {
 
   /** On / off setting that can also inherit: Default (shows what it inherits) / On / Off. */
   _triControl(label, value, inheritedOn, onChange) {
-    const cur = value === true ? "on" : value === false ? "off" : "default";
+    const on = value ?? !!inheritedOn;
+    const changed = value !== undefined && value !== !!inheritedOn;
     return html`
       <div class="atc-frow">
-        <span class="atc-frow-label">${label}</span>
-        <select class="native-select atc-frow-select" @change="${(e) => onChange(e.target.value === "on" ? true : e.target.value === "off" ? false : undefined)}">
-          <option value="default" ?selected="${cur === "default"}">${this._t("tri_default").replace("{v}", this._t(inheritedOn ? "tri_on" : "tri_off"))}</option>
-          <option value="on" ?selected="${cur === "on"}">${this._t("tri_on")}</option>
-          <option value="off" ?selected="${cur === "off"}">${this._t("tri_off")}</option>
-        </select>
+        <ha-formfield .label="${label}">
+          <ha-checkbox .checked="${on}" @change="${(e) => onChange(e.target.checked === !!inheritedOn ? undefined : e.target.checked)}"></ha-checkbox>
+        </ha-formfield>
+        <span class="atc-inherit ${changed ? "atc-inherit--changed" : ""}">${this._t("tri_default_note").replace("{v}", this._t(inheritedOn ? "tri_on" : "tri_off"))}</span>
       </div>`;
   }
+
 
   _iconButton(icon, title, onClick, disabled = false, extraClass = "") {
     return html`<button class="btn-icon atc-act ${extraClass}" title="${title}" ?disabled="${disabled}"
@@ -12305,7 +12314,8 @@ class AlertTickerCardEditor extends LitElement {
       .rs-chip-x:hover { color: var(--error-color, #f44336); }
       .atc-theme-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
       .atc-theme-panel { padding: 4px 10px 10px; }
-      .atc-inherit { opacity: 0.65; font-size: 0.85rem; white-space: nowrap; }
+      .atc-inherit { opacity: 0.65; font-size: var(--ltek-fs-small, 11px); white-space: nowrap; }
+      .atc-inherit--changed { opacity: 1; color: var(--accent-color, var(--primary-color, #03a9f4)); }
       .atc-mod-mark { --mdc-icon-size: 14px; color: var(--primary-color, #03a9f4); vertical-align: middle; }
       .atc-btn-reset {
         display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 10px;
