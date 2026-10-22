@@ -2323,8 +2323,15 @@ function _atcConfigSig(cfg) {
   return JSON.stringify(cfg?.alerts || []) + "|" + JSON.stringify(cfg?.custom_themes || {});
 }
 
+/**
+ * Test mode and editor previews apply only while an Alert Ticker card editor is open
+ * (the editor counts itself in globalThis.__atcEditorsOpen and fires
+ * "atc-editor-preview" when it opens or closes). Closing the card editor ends them,
+ * even while the dashboard itself stays in edit mode.
+ */
 function _atcPreviewAllowed() {
-  return !!globalThis.__atcForceEditMode || _isEditMode(); // the flag is for tests
+  if (globalThis.__atcForceEditMode) return true; // tests
+  return (globalThis.__atcEditorsOpen || 0) > 0 && _isEditMode();
 }
 
 function _isEditMode() {

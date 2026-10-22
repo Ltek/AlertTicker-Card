@@ -1271,7 +1271,7 @@ Force all configured alerts to display as active — useful for previewing the c
 test_mode: true
 ```
 
-> Test mode only applies while the dashboard is being edited: a config saved with `test_mode: true` behaves normally on the live dashboard (a yellow banner shows it while editing).
+> Test mode only applies while this card's editor is open: a config saved with `test_mode: true` behaves normally once the editor is closed (a yellow banner shows it while editing).
 
 In the visual editor, open the **Alerts tab** → enable **Test mode** at the bottom → expand any alert to instantly preview it on the card.
 
@@ -1411,6 +1411,8 @@ For each alert:
 | **Snooze action** | Action executed when 💤 is tapped |
 
 You can **reorder** alerts with ↑ / ↓ buttons.
+
+Every editor page has a **💾 Save** button in its header: it saves the card and keeps the editor open (HA's own Save closes it). It uses the edit dialog's internal save, so on a Home Assistant version where that isn't available the button is hidden.
 
 The main screen lists every page as a full-width tile: Alerts, Rule Sets, Themes, Global Defaults, History, Overlay, All Clear. All on/off settings are checkboxes.
 

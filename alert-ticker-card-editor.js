@@ -1962,6 +1962,11 @@ const ET = {
     themes_none_builtin: "No built-in themes.",
     reset_confirm: "{what}?",
     reset_yes: "Yes, reset",
+    save_now: "Save",
+    save_now_saving: "Saving…",
+    save_now_saved: "Saved",
+    save_now_error: "Not saved",
+    save_now_help: "Save the card now and keep editing (the dialog's Save also closes the editor)",
     reset_cancel: "Cancel",
     themes_mine: "My themes",
     themes_mine_none: "No custom themes yet — use ✎+ on any built-in theme to make an editable copy.",
@@ -6633,6 +6638,7 @@ class AlertTickerCardEditor extends LitElement {
   }
 
   async connectedCallback() {
+    this._markEditorOpen(true);
     super.connectedCallback();
     // Suppress ha-service-control's spurious value-changed fired during willUpdate
     // on first render (confirmed HA bug: oldValue is undefined on first render so
@@ -6833,8 +6839,55 @@ class AlertTickerCardEditor extends LitElement {
           &#8592; <span>${this._t("back")}</span>
         </button>
         <span class="section-header-title">${this._t(titleKey)}</span>
+        ${this._renderSaveNow()}
       </div>
     `;
+  }
+
+  /**
+   * HA's card dialog (hui-dialog-edit-card) — its Save closes the editor, but it keeps
+   * the save function in _params.saveCardConfig. Not public API: found by walking up
+   * the DOM and feature-checked, so the button simply doesn't show if HA changes it.
+   */
+  _findEditDialog() {
+    let n = this;
+    for (let i = 0; n && i < 40; i++) {
+      if (n.tagName === "HUI-DIALOG-EDIT-CARD") return n;
+      n = n.parentNode || n.host || (n.getRootNode && n.getRootNode() !== n ? n.getRootNode().host : null);
+    }
+    return null;
+  }
+
+  _canSaveNow() {
+    return typeof this._findEditDialog()?._params?.saveCardConfig === "function";
+  }
+
+  /** Saves the card (the whole card config) and keeps the editor open. */
+  async _saveNow() {
+    const dlg = this._findEditDialog();
+    const save = dlg?._params?.saveCardConfig;
+    if (typeof save !== "function" || this._saveState === "saving") return;
+    this._saveState = "saving"; this.requestUpdate();
+    try {
+      await save(dlg._cardConfig || this._config);
+      dlg._markDirtyStateClean?.();
+      this._saveState = "saved";
+    } catch (err) {
+      this._saveState = "error"; this._saveError = err?.message || String(err);
+    }
+    this.requestUpdate();
+    clearTimeout(this._saveStateTimer);
+    this._saveStateTimer = setTimeout(() => { this._saveState = null; this.requestUpdate(); }, 4000);
+  }
+
+  _renderSaveNow() {
+    if (!this._canSaveNow()) return "";
+    const st = this._saveState;
+    return html`<button class="atc-save-now ${st ? "is-" + st : ""}" ?disabled="${st === "saving"}"
+      title="${st === "error" ? this._saveError : this._t("save_now_help")}"
+      @click="${(e) => { e.stopPropagation(); this._saveNow(); }}">
+      <ha-icon icon="${st === "saved" ? "mdi:check" : st === "error" ? "mdi:alert-circle-outline" : "mdi:content-save-outline"}"></ha-icon>
+      ${this._t(st === "saving" ? "save_now_saving" : st === "saved" ? "save_now_saved" : st === "error" ? "save_now_error" : "save_now")}</button>`;
   }
 
   /**
@@ -9398,8 +9451,18 @@ class AlertTickerCardEditor extends LitElement {
     return shared.hassFor(this._config, this._hass);
   }
 
+  /** Counts open editors: test mode and previews only apply while one is open. */
+  _markEditorOpen(open) {
+    if (open === !!this._countedOpen) return;
+    this._countedOpen = open;
+    globalThis.__atcEditorsOpen = Math.max(0, (globalThis.__atcEditorsOpen || 0) + (open ? 1 : -1));
+    // cards re-check test mode / previews on this event
+    if (!open && globalThis.__atcEditorPreview) this._publishPreview(null);
+    else window.dispatchEvent(new Event("atc-editor-preview"));
+  }
+
   disconnectedCallback() {
-    if (globalThis.__atcEditorPreview) this._publishPreview(null);
+    this._markEditorOpen(false);
     super.disconnectedCallback?.();
     if (this._notifyUnsub) { this._notifyUnsub(); this._notifyUnsub = null; }
   }
@@ -11569,6 +11632,16 @@ class AlertTickerCardEditor extends LitElement {
       }
 
       /* ---- Section header (back button) ---- */
+      .atc-save-now {
+        margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 10px; border-radius: var(--ltek-r-ctrl, 6px); cursor: pointer; font: inherit;
+        font-size: var(--ltek-fs-body, 12px); font-weight: 600; --mdc-icon-size: 16px;
+        border: 1px solid var(--primary-color, #03a9f4); background: transparent; color: var(--primary-color, #03a9f4);
+      }
+      .atc-save-now:hover:not([disabled]) { background: color-mix(in srgb, var(--primary-color, #03a9f4) 12%, transparent); }
+      .atc-save-now.is-saved { border-color: var(--success-color, #4caf50); color: var(--success-color, #4caf50); }
+      .atc-save-now.is-error { border-color: var(--error-color, #f44336); color: var(--error-color, #f44336); }
+      .atc-save-now[disabled] { opacity: 0.6; cursor: default; }
       .section-header {
         display: flex;
         align-items: center;
