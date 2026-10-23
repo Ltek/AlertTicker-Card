@@ -1115,11 +1115,17 @@ function _atcCompileRuleSet(def) {
     ? new Set(def.notification_source.map(String)) : null;
   const dests = Array.isArray(def.notification_destination) && def.notification_destination.length
     ? def.notification_destination.map(String) : null;
+  // merge_duplicates (default on): the same notification sent separately to several
+  // destinations is one alert — its first copy, with every copy's destinations / senders.
+  const merge = def.merge_duplicates !== false;
   return (hass, eid, es, ctx) => {
     if (!_ATC_NOTIFY.isNotification(eid, es)) return false;
     const at = es.attributes;
-    if (sources && !(at.sent_by || []).some(s => sources.has(s))) return false;
-    if (dests && !_atcDestinationMatches(hass, dests, at.sent_to || [])) return false;
+    if (merge && at.duplicate_of && hass.states?.[at.duplicate_of]) return false;
+    const by = merge ? (at.all_sent_by || at.sent_by) : at.sent_by;
+    const to = merge ? (at.all_sent_to || at.sent_to) : at.sent_to;
+    if (sources && !(by || []).some(s => sources.has(s))) return false;
+    if (dests && !_atcDestinationMatches(hass, dests, to || [])) return false;
     return rulesPass(hass, eid, es, ctx);
   };
 }
@@ -1468,16 +1474,26 @@ const _ATC_NOTIFY = (() => {
     }
     // Same context + text = the same notification reaching another target
     // (a notify group's members, or a repeat over several phones).
-    const same = ctx.id && _items.find(n => n.ctx === ctx.id && n.title === title && n.message === message && now - n.at < MERGE_WINDOW_MS);
+    // Related = the same context, or parent / child / sibling contexts (a notify group
+    // calling its members gives each member call a child context of the group call).
+    const related = (n) => !!ctx.id && (n.ctx === ctx.id || (ctx.parent_id && (n.ctx === ctx.parent_id || n.parent === ctx.parent_id))
+      || (n.parent && n.parent === ctx.id));
+    const sameText = (n) => n.title === title && n.message === message && n.tag === tag && now - n.at < MERGE_WINDOW_MS;
+    const same = _items.find(n => sameText(n) && related(n));
     if (same) {
       dest.forEach(x => { if (!same.dest.includes(x)) same.dest.push(x); });
     } else {
-      _items.push({
+      const item = {
         id: `${slug(dest[0].replace(/^notify\./, ""))}_${++_seq}`,
         ctx: ctx.id || null, parent: ctx.parent_id || null,
         title, message, tag,
-        dest, at: now,
-      });
+        dest, at: now, dups: [],
+      };
+      // Same text from an unrelated send (e.g. one automation per phone): kept as its
+      // own entry, linked to the first one — rule sets merge them unless merge_duplicates: false.
+      const first = _items.find(n => !n.dupOf && sameText(n));
+      if (first) { item.dupOf = first.id; first.dups.push(item.id); }
+      _items.push(item);
     }
     _prune();
     _changed();
@@ -1555,6 +1571,8 @@ const _ATC_NOTIFY = (() => {
           title: n.title, message: n.message, notification_type: "notify", tag: n.tag,
           sent_by: senders, sent_to: n.dest.slice(), context_id: n.ctx,
           created_at: at, icon: "mdi:message-badge",
+          duplicate_of: n.dupOf && _items.some(x => x.id === n.dupOf) ? `notification.${n.dupOf}` : null,
+          duplicates: (n.dups || []).filter(d => _items.some(x => x.id === d)).map(d => `notification.${d}`),
         },
         last_changed: at, last_updated: at,
       };
@@ -1574,8 +1592,14 @@ const _ATC_NOTIFY = (() => {
     const hit = _cache.get(hass.states);
     if (hit && hit.version === _version) return hit.merged;
     for (const es of Object.values(extra)) {
-      es.attributes.sent_by_names = es.attributes.sent_by.map(e => hass.states[e]?.attributes?.friendly_name || e);
-      es.attributes.sent_to_names = es.attributes.sent_to.map(d => _atcDestinationName(hass, d));
+      const at = es.attributes;
+      const dups = (at.duplicates || []).map(d => extra[d]).filter(Boolean);
+      at.all_sent_to = [...new Set([...at.sent_to, ...dups.flatMap(d => d.attributes.sent_to)])];
+      at.all_sent_by = [...new Set([...at.sent_by, ...dups.flatMap(d => d.attributes.sent_by)])];
+      at.sent_by_names = at.sent_by.map(e => hass.states[e]?.attributes?.friendly_name || e);
+      at.sent_to_names = at.sent_to.map(d => _atcDestinationName(hass, d));
+      at.all_sent_by_names = at.all_sent_by.map(e => hass.states[e]?.attributes?.friendly_name || e);
+      at.all_sent_to_names = at.all_sent_to.map(d => _atcDestinationName(hass, d));
     }
     const merged = Object.create(hass);
     merged.states = { ...hass.states, ...extra };
@@ -1590,7 +1614,8 @@ const _ATC_NOTIFY = (() => {
     if (es.attributes.notification_type === "persistent") {
       hass.callService?.("persistent_notification", "dismiss", { notification_id: es.attributes.notification_id });
     } else {
-      _items = _items.filter(n => `notification.${n.id}` !== entityId);
+      const gone = new Set([entityId, ...(es.attributes.duplicates || [])]);
+      _items = _items.filter(n => !gone.has(`notification.${n.id}`));
       _changed();
     }
   }
@@ -1703,8 +1728,8 @@ function _atcNotificationPlaceholders(msg, es) {
   return msg
     .replace(/\{title\}/g, () => at.title || "")
     .replace(/\{message\}/g, () => at.message || "")
-    .replace(/\{sent_by\}/g, () => list(at.sent_by_names || at.sent_by))
-    .replace(/\{sent_to\}/g, () => list(at.sent_to_names || at.sent_to));
+    .replace(/\{sent_by\}/g, () => list(at.all_sent_by_names || at.sent_by_names || at.sent_by))
+    .replace(/\{sent_to\}/g, () => list(at.all_sent_to_names || at.sent_to_names || at.sent_to));
 }
 
 /** True for a rule-set definition that watches notifications. */
