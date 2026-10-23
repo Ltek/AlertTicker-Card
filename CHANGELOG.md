@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Docs: README gets a short **What's new** section, the missing 3D / weather themes in the theme tables (64 in all) and a current alert-editor section list; every YAML option, snippet and example moved to **[YAML.md](YAML.md)** (with undocumented options added and the push keys corrected to `push_notify*`).
 - **Rule Sets** — named, reusable filters (`rule_sets:`, `rule_set:` on alerts) with include and exclude rules on the fields `entity_id`, `name`, `domain`, `device_class`, `area`, `floor`, `label`, `integration`, `state`, `attribute`, `last_changed_ago`, `other_entity`, `time` and `weekday`; operators `eq` `ne` `in` `not_in` `contains` `not_contains` `regex` `gt` `lt` `ge` `le` `between` `older` `newer`; `{{ template }}` values. Editor: a 🧩 Rule Sets section with HA pickers, a live match list with Exclude / Include per entity, "used by" links and *Create alert from this rule set*.
 - **Notification alerts** — `watch: notifications` rule sets raise alerts from Home Assistant notifications, by Notification Source (automation / script, via context ids), Notification Destination (phones, notify groups and entities, the bell) and text; placeholders `{title}` `{message}` `{sent_by}` `{sent_to}`; tap dismisses. Editor: a scan for automations that send notifications and a *Recent notifications* list. `notifications_retention` card option.
 - **Inline rules on single-entity alerts** — extra conditions with other entities, time of day, weekday and "unchanged for".

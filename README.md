@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>The most complete alert & notification card for Home Assistant Lovelace dashboards</strong><br>
-  53 visual themes, TTS voice announcements, push notifications, global overlay banner, media player mode, weather forecast widget, and a full visual editor. Zero YAML required.
+  64 visual themes, TTS voice announcements, push notifications, global overlay banner, media player mode, weather forecast widget, and a full visual editor. Zero YAML required.
 </p>
 
 <p align="center">
@@ -28,13 +28,13 @@
 
 ### ✨ What makes AlertTicker different
 
-- 🎨 **53 visual themes** — from subtle `info` to cinematic 3D, timer countdowns, weather badges, and a full music-player mode with album art
+- 🎨 **64 visual themes** — from subtle `info` to cinematic 3D, timer countdowns, weather badges, and a full music-player mode with album art
 - ⚡ **Trigger on anything** — entity state, attribute, template, device class, entity filter with wildcards, AND/OR logic
 - 🧩 **Rule Sets** — reusable, named filters by label, area, floor, device class, integration, state, other entities, time of day and weekday; edit once, every alert using it follows
 - 📨 **Notification alerts** — raise an alert when Home Assistant sends a notification: by sender (automation / script), destination (phone, notify group, the 🔔 bell) and text
 - 📢 **Notify everywhere** — in-dashboard cycling ticker, **global overlay banner** visible from any view, **TTS** (Alexa / Google / any speaker), **push notifications**, **camera snapshots & live streams**
 - 🌍 **12 languages** — IT, EN, FR, DE, NL, VI, RU, DA, CS, PT-BR, ES, TR
-- 🎯 **Per-alert control** — themes, time windows, user visibility, snooze, priority, actions, group/collapse, `active_state_entity` for HA automations
+- 🎯 **Per-alert control** — themes, time windows, user visibility, snooze, order, actions, group/collapse, `active_state_entity` for HA automations
 - 🖼️ **Full visual editor** — configure every option in the GUI, no YAML needed
 - 📱 **Mobile-first UX** — swipe to snooze, invisible touch zones, HA Companion push support
 
@@ -48,6 +48,7 @@
 
 ## 📚 Table of Contents
 
+- [What's new](#-whats-new) — the main improvements, briefly
 - [Community Contributors](#community-contributors)
 - [Join the Community](#-join-the-community) — HA forum thread, issues, discussions
 - [Video Tutorial](#-video-tutorial)
@@ -59,17 +60,34 @@
 - [Rule Sets](#-rule-sets) — reusable entity filters and conditions
 - [Notification alerts](#-notification-alerts) — alerts from Home Assistant notifications
 - [Upgrading: filters & conditions become rules](#upgrading-filters--conditions-become-rules)
-- [Themes](#themes) — all 53 themes explained
+- [Themes](#themes) — all 64 themes explained
 - [How It Works](#how-it-works)
 - [Installation](#installation) — HACS + manual
 - [Visual Editor](#visual-editor)
-- [YAML Configuration](#yaml-configuration) — all options reference
-- [Examples](#examples) — real-world configs
+- [YAML reference](YAML.md) — every option, snippets and real-world examples (separate file)
 - [Languages](#languages) — 12 supported languages
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
 - [Support the Project](#support)
+
+---
+
+## 🆕 What's new
+
+The main improvements since 1.3.17, briefly — full details in the [CHANGELOG](CHANGELOG.md).
+
+- 🧩 **Rule Sets** — one rule engine for every filter and condition: named, reusable sets of include / exclude rules on entity id, name, domain, device class, integration, area, floor, label, state, attribute, age, another entity, time, weekday, sun and visibility, with a live "can match N entities" list. Old filters and conditions convert automatically.
+- 📨 **Notification alerts** — alert on Home Assistant notifications by sender, destination and text; Companion app commands are ignored and `clear_notification` clears the alert.
+- 🎨 **Themes page & custom themes** — built-in themes are templates; duplicate one to set its icon, text size and color, severity label, pulse / flash effects, colors and layout. Every alert using it looks the same, and the preview matches the live card.
+- 📚 **Alert Presets** — ready-made alerts by domain or device class (batteries, doors, leaks, all notifications…), with match counts, a 🔍 preview, and editable associations on any theme.
+- ⚙️ **Reorganized editor** — full-width page tiles (Alerts, Rule Sets, Themes, Global Defaults, History, Overlay, All Clear), collapsible sections, checkboxes instead of toggles, drag to reorder, duplicate / enable / disable alerts, and a 💾 **Save** that keeps the editor open.
+- ↕ **Order replaces priority** — the list order decides which alert shows first; **Show in overlay** is per alert.
+- 📋 **History** — keep up to 5000 alerts or 5 days; choose separately what the card's 📋 panel shows.
+- 🌊 **New `water` theme**, **pulse** and **background flash** for any theme.
+- 🧪 **Safer test mode & previews** — they only apply while the editor is open, so nothing leaks onto the live dashboard.
+- ⚡ **Faster** — card updates take about 40% less time.
+- 📄 **YAML reference moved** to its own file, [YAML.md](YAML.md).
 
 ---
 
@@ -125,9 +143,9 @@ A big thank you to **[SmartHomeJunkie](https://www.youtube.com/@SmartHomeJunkie)
 
 | Feature | Details |
 |---------|---------|
-| **Themes** | **50** visual themes in 6 categories (including 4 timer themes and 8 new 3D spectacular themes) |
+| **Themes** | **64** visual themes in 6 categories (including 4 timer themes and the 3D spectacular themes), plus your own **custom themes** |
 | **Animations** | **12** selectable transition animations between alerts |
-| **Per-alert theme** | Each alert has its own independent theme |
+| **Per-alert theme** | Each alert picks a theme — built-in or your own custom theme, where all look settings live |
 | **Multiple entities** | Unlimited alerts per card |
 | **Order** | The list order decides which active alert shows first — drag to reorder (replaces the old 4-level priority) |
 | **tap / hold / double-tap** | Standard Lovelace card interactions per alert |
@@ -165,13 +183,13 @@ A big thank you to **[SmartHomeJunkie](https://www.youtube.com/@SmartHomeJunkie)
 | **Persistent alerts** | `persistent: true` — alert stays visible after sensor clears, requires manual ✕ dismiss |
 | **Swipe to snooze** | Swipe left on the card to snooze (or dismiss if `persistent: true`) — no conflict with `tap_action` |
 | **Invisible touch zone** | Right-side tap zone shows action buttons on mobile without interfering with `tap_action` |
-| **Vertical layout** | Stack icon on top, message below, centered — all 50 themes |
+| **Vertical layout** | Stack icon on top, message below, centered — all themes |
 | **HA theme adaptation** | `ha_theme: true` adapts colors to any active HA global theme |
 | **Overlay notification** | Global floating banner — fires from any dashboard view, with top / center / bottom position and auto-dismiss |
 | **Clear widget** | Animated clock or weather display (condition + temp + wind + humidity) when no alerts are active |
 | **6 new clear styles** | Clock: `aurora`, `gold`, `matrix` — Weather badge: `stage`, `split`, `cinematic` |
 | **Card border** | Toggle to show the standard HA border around the card — always visible, off by default |
-| **Test mode** | Force-preview all alerts in the editor regardless of conditions |
+| **Test mode** | Force-preview all alerts while the editor is open, regardless of conditions (the live card ignores it) |
 | **Visual editor** | Full GUI — no YAML required |
 | **Languages** | Italian, English, French, German, Dutch, Vietnamese, Russian, Danish, Czech, Portuguese (pt-BR), Spanish, Turkish — **12 languages** |
 | **🔗 active_state_entity** | Per-alert option — write `on`/`off` to any `input_boolean` when that specific alert becomes active or clears. Each alert can target a different boolean, wiring them to independent HA automations (lamp, script, push notification…) |
@@ -185,28 +203,7 @@ Make Home Assistant read your alerts aloud the moment they trigger — on any sp
 
 > ⚠️ **Client-side limitation:** TTS is fired by the card itself, which runs in the browser. It works **only while at least one browser tab has Home Assistant open** (desktop, wall tablet, or the HA Companion app running in the foreground). For 24/7 unattended TTS announcements on critical events, use a **server-side HA automation** with the same `notify.alexa_media_*` / `tts.speak` service call.
 
-```yaml
-# Standard HA TTS (media_player + TTS engine)
-alerts:
-  - entity: binary_sensor.smoke_detector
-    state: "on"
-    message: "Smoke detected!"
-    theme: fire
-    tts: true                            # enable TTS for this alert
-    tts_entity: media_player.living_room # speaker to use
-    # tts_engine: tts.google_en_com      # auto-detected if omitted
-```
-
-```yaml
-# Alexa Echo (via notify service)
-alerts:
-  - entity: binary_sensor.front_door
-    state: "on"
-    message: "Front door open"
-    tts: true
-    tts_notify_service: alexa_media_echo_dot_kitchen
-    tts_message: "Attention — the front door is open"   # optional custom sentence
-```
+> 📄 YAML: [Text-to-Speech Announcements](YAML.md#text-to-speech-announcements)
 
 ### How it works
 
@@ -224,45 +221,13 @@ alerts:
 
 Per-alert fields override global card-level defaults, so you can have one speaker for most alerts and a different one for critical alerts.
 
-### Card-level TTS options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `tts_enabled` | `boolean` | `true` | Master toggle — set `false` to silence all TTS globally |
-| `tts_entity` | `string` | — | Default `media_player.*` speaker entity |
-| `tts_engine` | `string` | *(auto)* | TTS engine entity (auto-detected from first `tts.*` state) |
-| `tts_notify_service` | `string` | — | Default notify service for Alexa / push |
-| `tts_language` | `string` | — | Language code passed to `tts.speak` (e.g. `it-IT`) |
-
-### Per-alert TTS options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `tts` | `boolean` | Enable TTS for this alert |
-| `tts_entity` | `string` | Override the global speaker for this alert |
-| `tts_engine` | `string` | Override the global TTS engine |
-| `tts_notify_service` | `string` | Override the global notify service |
-| `tts_message` | `string` | Custom spoken text (supports `{name}`, `{state}`, Jinja2) |
-
----
-
 ## 📱 Mobile Push Notifications *(new in 1.3)*
 
 Send a push notification to any Home Assistant `notify.*` service the moment an alert fires — works with the HA Companion App, Telegram, Pushover, and any other notify integration.
 
 > ⚠️ **Client-side limitation:** push notifications are fired by the card, which runs in the browser. They work **only while at least one browser tab has Home Assistant open** (desktop, wall tablet, or the HA Companion app running in the foreground). If nobody is looking at HA at 3 am, no push will be sent even if a sensor triggers. For 24/7 critical alerts (smoke, security, water leak, …), always create a **server-side HA automation** that calls the same `notify.*` service — the card push is best used as a convenience layer on top.
 
-```yaml
-alerts:
-  - entity: binary_sensor.front_door
-    state: "on"
-    theme: door
-    message: "Front door open"
-    push_notify: true
-    push_notify_service: mobile_app_my_phone         # required
-    push_notify_title: "🚪 Door Alert"               # optional, Jinja2
-    push_notify_message: "Door opened — {state}"     # optional, Jinja2
-```
+> 📄 YAML: [Mobile Push Notifications](YAML.md#mobile-push-notifications)
 
 ### How it works
 
@@ -272,59 +237,15 @@ alerts:
 - Both fields support `{state}`, `{name}`, `{entity}`, `{device}` placeholders and full Jinja2 templates.
 - Set a global **master toggle** (`push_notify_enabled: false`) in Global Defaults → Voice & Push to disable all push notifications at once without touching individual alerts.
 
-### Per-alert push notification options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `push_notify` | `boolean` | Enable push notification for this alert |
-| `push_notify_service` | `string` | `notify.*` service name (e.g. `mobile_app_my_phone`, `notify.telegram`) |
-| `push_notify_title` | `string` | Notification title — Jinja2, defaults to badge label |
-| `push_notify_message` | `string` | Notification message — Jinja2, defaults to alert message |
-| `push_notify_data` | `object` | **New in 1.3.9.9.4** — arbitrary payload passed through to the `notify.*` service under the `data` key. Enables actionable notifications, critical alerts (bypass DND), custom push sounds, attachments, tag/group. String values are template-resolved (see example below). |
-
 ### Actionable & critical push notifications *(new in 1.3.9.9.4)*
 
 Use `push_notify_data` to unlock every feature the HA Companion apps and other notify integrations support:
 
-```yaml
-- entity: switch.master_ensuite_fan
-  state: 'on'
-  push_notify: true
-  push_notify_service: mobile_app_john
-  push_notify_title: '💨 Master en-suite fan'
-  push_notify_message: 'Fan left running in {area}'
-  push_notify_data:
-    push:
-      sound:
-        name: Bloom.caf
-        volume: 1
-      interruption-level: time-sensitive   # iOS: bypass focus modes
-    actions:
-      - action: TURN_OFF_MASTER_ENSUITE_FAN
-        title: Turn Off Fan
-        destructive: true
-      - action: URI
-        title: Open Camera
-        uri: /lovelace/cameras
-    tag: alert_master_ensuite_fan          # replace previous notification with same tag
-    group: bathroom                        # Android: notification group
-```
+> 📄 YAML: [Actionable & critical push notifications](YAML.md#actionable--critical-push-notifications)
 
 String values inside `push_notify_data` are template-resolved by the card's usual renderer, so `{state}`, `{name}`, `{area}`, `{trigger_state}` and full Jinja2 `{{ ... }}` work inside actions/titles/URIs.
 
 Handle the `action` returned by the user in a server-side automation:
-
-```yaml
-- alias: 'Turn off master en-suite fan from push action'
-  trigger:
-    platform: event
-    event_type: mobile_app_notification_action_received
-    event_data:
-      action: TURN_OFF_MASTER_ENSUITE_FAN
-  action:
-    service: switch.turn_off
-    target: { entity_id: switch.master_ensuite_fan }
-```
 
 ---
 
@@ -332,13 +253,7 @@ Handle the `action` returned by the user in a server-side automation:
 
 Turn any `media_player.*` entity into a full graphical player card. When `show_player_controls: true` is set and the entity is a media player, the `music` theme renders a cinematic player UI instead of the default floating notes.
 
-```yaml
-alerts:
-  - entity: media_player.spotify_davide
-    theme: music
-    show_player_controls: true
-    music_player_color: "#e040fb"   # optional accent color
-```
+> 📄 YAML: [Music Player Mode](YAML.md#music-player-mode)
 
 ### What the player shows
 
@@ -357,11 +272,7 @@ alerts:
 
 All colors in the player UI (buttons, glow, equalizer, vinyl ring, accent line) are driven by a single **`--mu-accent` CSS custom property**, set from `music_player_color`. Change it from the editor's color picker to instantly retheme the entire player:
 
-```yaml
-music_player_color: "#00e5ff"   # cyan
-music_player_color: "#69f0ae"   # green
-music_player_color: "#ff4081"   # pink
-```
+> 📄 YAML: [Accent color](YAML.md#accent-color)
 
 ### Auto-setup in the editor
 
@@ -372,37 +283,11 @@ Selecting a `media_player.*` entity in the visual editor automatically:
 
 Switching back to a non-media-player entity reverts to `emergency`.
 
-### Player-mode options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `show_player_controls` | `boolean` | `false` | Enable the graphical player UI (requires `media_player.*` entity) |
-| `music_player_color` | `string` | `#e040fb` | Accent color for all player UI elements — any CSS color |
-| `music_show_art` | `boolean` | `true` | Show album artwork (background blur + thumbnail) |
-| `music_show_title` | `boolean` | `true` | Show track title (with marquee scroll for long titles) |
-| `music_show_artist` | `boolean` | `true` | Show artist name |
-| `music_show_controls` | `boolean` | `true` | Show previous / play-pause / next / mute buttons and volume slider |
-| `music_show_power` | `boolean` | `false` | Add a power icon (bottom-right corner) — calls `media_player.turn_off` |
-| `music_show_player_picker` | `boolean` | `false` | Add a cast icon (bottom-right corner) — opens a dropdown to switch the active player for this session |
-| `music_compact_layout` | `boolean` | `false` | Compact layout: track title and artist move to the top-right column, controls stay left — ideal for small/narrow displays |
-
----
-
 ## 📷 Camera in Overlay Banner & Card Background *(snapshot: 1.2.2 · live stream + card bg: 1.3.1)*
 
 Attach a **camera image** to an alert — either as a snapshot in the overlay banner, a live stream in the banner, or a background layer behind the alert card slide.
 
-```yaml
-alerts:
-  - entity: binary_sensor.front_door_motion
-    state: "on"
-    message: "Motion at front door"
-    theme: intruder
-    camera_entity: camera.front_door     # required for all camera features
-    overlay_mode: true                   # show overlay banner at card level
-    camera_live: true                    # live stream in banner (default: false = snapshot)
-    camera_in_card: true                 # camera background in the card slide
-```
+> 📄 YAML: [Camera in Overlay Banner & Card Background](YAML.md#camera-in-overlay-banner--card-background)
 
 | Option | Description |
 |--------|-------------|
@@ -411,7 +296,7 @@ alerts:
 | `camera_in_card` | `true` = camera image shown as a background layer behind the alert card slide on every rotation |
 
 - The snapshot/stream appears **below the alert header row** inside the overlay toast. Its height scales proportionally with `overlay_scale`.
-- `camera_in_card` uses the entity's `entity_picture` attribute as a CSS background image, visible across the full card behind a semi-transparent overlay. Works with all 50 themes.
+- `camera_in_card` uses the entity's `entity_picture` attribute as a CSS background image, visible across the full card behind a semi-transparent overlay. Works with all themes.
 - If a snapshot fails to load, the image is silently removed and the banner stays intact.
 - `camera_live` requires a camera entity with HLS or WebRTC stream support. Falls back to static snapshot when the `<ha-camera-stream>` component is not yet loaded.
 
@@ -421,73 +306,15 @@ alerts:
 
 A **rule set** is a named, reusable filter. Define it once in the editor's **🧩 Rule Sets** section (or under `rule_sets:` in YAML) and use it in any number of alerts: an alert that uses a rule set shows once for every entity that matches. Edit the set and every alert using it follows.
 
-```yaml
-type: custom:alert-ticker-card
-rule_sets:
-  - id: entry_open
-    name: Entry open at night
-    groups:
-      - mode: include          # include = must match · exclude = drops what matches
-        match: all             # all | any — how these rules combine
-        rules:
-          - { field: label, op: in, values: [security] }
-          - { field: area,  op: eq, value: entry }
-          - { field: state, op: in, values: ["on", open, unlocked] }
-          - { field: time,  op: between, value: "21:00", value2: "06:00" }
-      - mode: exclude
-        match: any
-        rules:
-          - { field: label, op: in, values: [ignore_alerts] }
-alerts:
-  - rule_set: entry_open
-    theme: intruder
-    message: "{name} open"
-```
+> 📄 YAML: [Rule Sets](YAML.md#rule-sets)
 
 An entity matches when **all its include rules** hold and **no exclude rule** does. Each `groups:` entry is a list of rules that are either included or excluded, matching **all** or **any** of them. A set with no include rule matches nothing — never "every entity in Home Assistant".
 
-`rules:` works as an alias for `groups:`, and a plain list of rules means "all of these":
-
-```yaml
-- id: open_locks
-  rules:
-    - { field: domain, op: eq, value: lock }
-    - { field: state,  op: eq, value: unlocked }
-```
-
 Any rule can be switched off with `enabled: false` (the eye icon in the editor) — it's ignored without deleting it.
-
-| Field | Matches |
-|---|---|
-| `entity_id`, `name`, `domain` | The entity's id, friendly name, domain |
-| `device_class`, `integration` | Its device class, the integration it comes from |
-| `area`, `floor` | Its area (else its device's area) / that area's floor — by id or name |
-| `label` | Its labels (any of them) |
-| `state`, `attribute` | Its state, or an attribute (`attribute: battery_level`, dot paths and `[n]` work) |
-| `last_changed_ago` | Seconds since it last changed — "unchanged for at least N seconds" |
-| `other_entity` | **Another** entity's state or attribute (`entity:`, optional `attribute:`) — e.g. *only while the alarm is armed*. `{entity}` means the matched entity |
-| `time` | Time of day, `"HH:MM"` — `between` crosses midnight |
-| `weekday` | `mon` … `sun` (or 1–7) |
-| `visibility` | `shown` / `hidden` — whether the entity is hidden in Settings → Entities |
-| `sun` | `above_horizon` / `below_horizon` (from `sun.sun`) |
-
-Operators: `eq`, `ne`, `in`, `not_in`, `contains`, `not_contains`, `regex`, `gt`, `lt`, `ge`, `le`, `between`, `older` / `newer` (age of a timestamp, in seconds). Text compares ignore upper/lower case unless the rule has `case_sensitive: true` (*Match upper / lower case* in the editor). Values may be `{{ templates }}`, e.g. `value: "{{ states('input_number.battery_threshold') }}"`.
 
 In the editor, **Can match N entities · M active now** sits under every set's ID: every entity the set can cover, whatever its state right now (a green state = matching now). **Exclude** leaves an entity out, **Include** brings it back. **Export** (on the set's row) gives the set as JSON with how many entities each rule matches on its own — handy for troubleshooting. **+ Create alert from this rule set** adds an alert that uses it, and *Alerts using this rule set* links to each one.
 
 **Single-entity alerts** have a **Condition** section: *When this entity…* (an operator + value, or *changes (any value)*), *…and also* optional rules on the alert itself — the same rule editor, with *Another entity*, *Time of day*, *Day of week*, *Sun* and *Unchanged for*:
-
-```yaml
-- entity: binary_sensor.front_door
-  state: "on"
-  rule_set:                      # inline: rules for this alert only
-    groups:
-      - mode: include
-        match: all
-        rules:
-          - { field: other_entity, entity: alarm_control_panel.home, op: in, values: [armed_away, armed_night] }
-          - { field: time, op: between, value: "22:00", value2: "07:00" }
-```
 
 ---
 
@@ -495,23 +322,7 @@ In the editor, **Can match N entities · M active now** sits under every set's I
 
 A **notification rule set** (`watch: notifications`) raises an alert for each Home Assistant notification that matches — mobile app pushes, persistent notifications (the 🔔 bell) and any other notify service.
 
-```yaml
-rule_sets:
-  - id: bypass_to_phones
-    name: Bypass notifications
-    watch: notifications
-    notification_source: [automation.alarm_bypass_watchdog]        # omit = any sender
-    notification_destination: [mobile_app, notify.parent_phones]    # omit = anywhere
-    groups:                                                         # optional conditions
-      - mode: include
-        match: all
-        rules:
-          - { field: notification_text, op: contains, value: bypass }
-alerts:
-  - rule_set: bypass_to_phones
-    theme: notification
-    message: "{title}"
-```
+> 📄 YAML: [Notification alerts](YAML.md#notification-rule-sets)
 
 - **Notification Source** — which automation or script sent it, traced through Home Assistant's context ids (a script called by an automation counts for both). Notifications from no automation (integrations, Developer Tools) match only *any sender*.
 - **Notification Destination** — `mobile_app` (any phone), `persistent` (the bell), a phone (`notify.mobile_app_pixel_7` or its notify entity), a notify service or group (`notify.parent_phones`), or a notify entity. A phone also matches notifications sent to a group it belongs to; a group send counts as **one** notification.
@@ -555,6 +366,8 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 | `motion` | 👁️ | Dark green night-vision infrared scan effect |
 | `intruder` | 🚷 | Black card with red siren flash and rotating warning icon |
 | `toxic` | ☠️ | Black/green card with rising poison bubbles |
+| `portal` | 🌀 | 3D spinning crimson vortex |
+| `void` | ⚫ | 3D black hole |
 
 ### ⚠️ Warning
 
@@ -571,6 +384,9 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 | `smoke` | 🌫️ | Dark grey card with drifting smoke puff animation |
 | `wind` | 💨 | Dark card with fast horizontal streak lines |
 | `leak` | 💧 | Dark blue card with animated drip effect |
+| `nebula` | 🌌 | 3D gas clouds |
+| `volt` | ⚡ | Electric discharge |
+| `storm` | ⛈️ | Lightning storm |
 
 ### ℹ️ Info
 
@@ -587,6 +403,9 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 | `tips` | 💡 | Amber lightbulb glow |
 | `light` | 🔆 | Warm incandescent glow with conical light beam fanning out from icon; bulb flares on pulse |
 | `music` | 🎵 | Dark purple/magenta card with musical notes (♪ ♫ ♩ ♬) floating upward and pulsing icon glow |
+| `arcade` | 🕹️ | 3D Tron grid |
+| `prism` | 💎 | Prismatic spectrum |
+| `frost` | ❄️ | Snow & frost |
 
 ### ✅ OK / All Clear
 
@@ -601,6 +420,8 @@ Alerts written with `entity_filter`, `device_class`, `label_filter`, `area_filte
 | `sunrise` | 🌅 | Warm golden rising light |
 | `plant` | 🌱 | Green growing pulse |
 | `lock` | 🔒 | Deep blue secure pulse |
+| `diamond` | 💠 | Crystal shimmer |
+| `quantum` | ⚛️ | 3D atomic orbitals |
 
 ### 🎨 Style
 
@@ -637,7 +458,7 @@ All timer themes transition green → orange → red as the remaining time decre
 
 1. Configure one or more **alerts**, each linked to an entity + condition
 2. When an entity matches the condition (and any extra `conditions` rules), the alert becomes **active**
-3. Active alerts are **sorted by priority** (1=most critical)
+3. Active alerts are shown **in list order** (drag to reorder in the editor)
 4. The card **displays** the current alert and **auto-cycles** through multiple active alerts
 5. Use ◀ / ▶ buttons (or swipe) to jump between alerts manually
 6. **Tap** or **hold** the card to execute configured actions
@@ -672,35 +493,13 @@ When 2 or more alerts are active, **◀** and **▶** buttons appear on the left
 
 Display a live entity value as a second line below the alert message:
 
-```yaml
-- entity: sensor.open_zones
-  operator: "!="
-  state: "0"
-  message: "Zones open"
-  secondary_entity: sensor.open_zones_list
-  secondary_attribute: zone_names   # optional — read an attribute instead of state
-```
+> 📄 YAML: [Secondary entity value](YAML.md#secondary-entity-value)
 
 ### tap_action / hold_action / double_tap_action
 
 Standard Lovelace interactions — tap, hold (500 ms), or double-tap the whole card to trigger any action:
 
-```yaml
-- entity: binary_sensor.front_door
-  state: "on"
-  message: "Front door open"
-  tap_action:
-    action: more-info
-    entity_id: binary_sensor.front_door
-  hold_action:
-    action: navigate
-    navigation_path: /lovelace/security
-  double_tap_action:
-    action: call-service
-    service: lock.lock
-    target:
-      entity_id: lock.front_door
-```
+> 📄 YAML: [tap_action / hold_action / double_tap_action](YAML.md#tap_action--hold_action--double_tap_action)
 
 > When `double_tap_action` is set, a single tap waits 300 ms to distinguish the two gestures.
 
@@ -710,33 +509,11 @@ Supported action types: `call-service`, `navigate`, `more-info`, `url`, `none`.
 
 Any of the action fields (`tap_action`, `hold_action`, `double_tap_action`, `snooze_action`, and the card-level `clear_*_action`) now support the HA-native `confirmation` field. When set, a confirmation dialog appears before the action fires — perfect for destructive operations:
 
-```yaml
-- entity: alarm_control_panel.home
-  state: "triggered"
-  message: "Disarm alarm"
-  tap_action:
-    action: call-service
-    service: alarm_control_panel.alarm_disarm
-    target:
-      entity_id: alarm_control_panel.home
-    confirmation:
-      text: "Are you sure you want to disarm the alarm?"
-```
+> 📄 YAML: [confirmation — ask before executing](YAML.md#confirmation--ask-before-executing)
 
 **Short form** — reuse the default text:
 
-```yaml
-confirmation: true
-```
-
 **Full form** with per-user exemptions:
-
-```yaml
-confirmation:
-  text: "Are you sure you want to unlock the door?"
-  exemptions:
-    - user: "<HA_USER_ID>"   # Devs → Persons → Users → copy the User ID
-```
 
 Any user listed under `exemptions` skips the prompt — useful when you want the owner to bypass while guests must confirm.
 
@@ -746,13 +523,7 @@ Fully editable in the visual editor: every action section now has an **Ask for c
 
 Fire an alert whenever an entity changes state, regardless of the `operator`/`state` condition. The alert stays visible until the next state change, or auto-dismisses after `auto_dismiss_after` seconds:
 
-```yaml
-- entity: media_player.living_room
-  on_change: true
-  auto_dismiss_after: 15
-  message: "Now playing: {state}"
-  theme: notification
-```
+> 📄 YAML: [on_change — trigger on any state change](YAML.md#on_change--trigger-on-any-state-change)
 
 ### time_range — restrict to a time window
 
@@ -760,15 +531,7 @@ Fire an alert whenever an entity changes state, regardless of the `operator`/`st
 
 Show an alert only within a specific time window. Supports midnight crossing:
 
-```yaml
-- entity: binary_sensor.front_door
-  state: "on"
-  message: "Door open at night!"
-  time_range:
-    from: "22:00"
-    to: "07:00"
-  theme: intruder
-```
+> 📄 YAML: [time_range — restrict to a time window](YAML.md#time_range--restrict-to-a-time-window)
 
 The card re-evaluates at each minute boundary so alerts appear and disappear on time without any entity state change. Leave both fields empty for always-active.
 
@@ -776,12 +539,7 @@ The card re-evaluates at each minute boundary so alerts appear and disappear on 
 
 Restrict an alert to specific Home Assistant users without separate cards or conditional wrappers:
 
-```yaml
-- entity: sensor.server_load
-  state: "high"
-  message: "Server load critical"
-  visible_to: admin          # admin | non_admin | "John" | ["John", "Maria"]
-```
+> 📄 YAML: [visible_to — per-alert user filter](YAML.md#visible_to--per-alert-user-filter)
 
 | Value | Effect |
 |-------|--------|
@@ -797,22 +555,7 @@ Restrict an alert to specific Home Assistant users without separate cards or con
 
 Instead of listing individual entities or writing a text filter, specify a HA device class. The card auto-discovers every entity with that class and creates one alert per match:
 
-```yaml
-- device_class: smoke
-  state: "on"
-  message: "Smoke detected: {name}"
-  theme: fire
-  priority: 1
-
-- device_class: battery
-  attribute: battery_level
-  operator: "<="
-  state: "15"
-  message: "Low battery: {name} ({state}%)"
-  theme: battery
-  entity_filter_exclude:
-    - sensor.battery_test_device
-```
+> 📄 YAML: [device_class — auto-discover by device class](YAML.md#device_class--auto-discover-by-device-class)
 
 Supports the same `include`/`exclude` panel as `entity_filter` and all the same message placeholders (`{name}`, `{state}`, `{entity}`, `{device}`).
 
@@ -820,12 +563,7 @@ Supports the same `include`/`exclude` panel as `entity_filter` and all the same 
 
 The trigger threshold itself can be a Jinja2 template — useful when the threshold is stored in a helper entity:
 
-```yaml
-- entity: sensor.outdoor_temperature
-  operator: ">"
-  state: "{{ states('input_number.temp_alert_threshold') }}"
-  message: "Temperature too high: {state}°"
-```
+> 📄 YAML: [Jinja2 in the state trigger field](YAML.md#jinja2-in-the-state-trigger-field)
 
 Any HA template that evaluates to a string or number works here.
 
@@ -833,11 +571,7 @@ Any HA template that evaluates to a string or number works here.
 
 When `show_when_clear: true` is set and no alerts are active, the card can show an animated clock, live weather display, or 7-day forecast instead of a plain text message:
 
-```yaml
-show_when_clear: true
-clear_display_mode: weather_forecast   # see modes below
-clear_weather_entity: weather.home
-```
+> 📄 YAML: [All-clear widget (clock / weather / forecast)](YAML.md#all-clear-widget-clock--weather--forecast)
 
 | Mode | Display |
 |------|---------|
@@ -889,11 +623,7 @@ Configure these in the editor (All Clear tab). Use `clear_clock_show_date` to to
 
 Insert the configured clear widget (clock / weather / weather+clock) as an extra slide in the alert rotation — displayed between alerts like any other:
 
-```yaml
-show_widget_in_cycle: true
-clear_display_mode: weather_clock
-clear_weather_entity: weather.home
-```
+> 📄 YAML: [Weather/time as a slide in the alert cycle](YAML.md#weathertime-as-a-slide-in-the-alert-cycle)
 
 The widget uses the same `cycle_animation` and `cycle_interval` as alerts. Enable this in the editor (Cycling & Animation section), visible only when `clear_display_mode` is already configured.
 
@@ -901,12 +631,7 @@ The widget uses the same `cycle_animation` and `cycle_interval` as alerts. Enabl
 
 Enable a global floating banner that fires when a new alert triggers — **visible from any dashboard view**, not just the one where the card lives:
 
-```yaml
-overlay_mode: true
-overlay_position: top     # top | center | bottom
-overlay_duration: 8       # seconds before auto-dismiss (0 = manual close only)
-overlay_scale: 1.5        # 1 | 1.5 | 2 | 3 — enlarge for wall displays
-```
+> 📄 YAML: [Overlay / toast notification](YAML.md#overlay--toast-notification)
 
 How it works:
 - When the card's view is **currently visible**, the banner is suppressed (no redundant notification — the card itself already shows the alert).
@@ -960,16 +685,7 @@ Works for all state transitions:
 
 Execute a Lovelace action when the 💤 button is tapped, in addition to snoozing. Useful for resetting sensors:
 
-```yaml
-- entity: binary_sensor.mailbox
-  state: "on"
-  message: "Mail arrived"
-  snooze_action:
-    action: call-service
-    service: input_boolean.turn_off
-    target:
-      entity_id: input_boolean.mailbox_flag
-```
+> 📄 YAML: [snooze_action](YAML.md#snooze_action)
 
 ### Alert history
 
@@ -981,16 +697,7 @@ Tap 📋 to flip the card and view a timestamped log of every alert that became 
 
 Instead of specifying a single entity, write a text filter. The card finds all entities whose ID or friendly name contains the filter text and creates one alert per match:
 
-```yaml
-- entity_filter: "battery"
-  attribute: battery_level
-  operator: "<="
-  state: "20"
-  message: "Low battery: {name} ({state}%)"
-  theme: battery
-  entity_filter_exclude:
-    - sensor.battery_test_device
-```
+> 📄 YAML: [entity_filter](YAML.md#entity_filter)
 
 **Message placeholders:**
 
@@ -1012,40 +719,7 @@ The matched entity's friendly name is also automatically shown below the message
 
 The `message` field (and `secondary_text`) supports **full Jinja2 template syntax** — rendered server-side by Home Assistant via the WebSocket API, with live updates whenever entities change.
 
-```yaml
-# Simple sensor value
-- entity: sensor.co2_ppm
-  operator: ">"
-  state: "1000"
-  message: "CO₂: {{ states('sensor.co2_ppm') }} ppm"
-
-# Attribute value
-- entity: climate.hvac
-  state: heating
-  message: "Heating — room: {{ state_attr('climate.hvac', 'current_temperature') }}°"
-
-# Conditional logic
-- entity: sensor.battery_phone
-  operator: "<"
-  state: "20"
-  message: >
-    {% if states('sensor.battery_phone') | int < 10 %}
-      Critical: {{ states('sensor.battery_phone') }}%
-    {% else %}
-      Low battery: {{ states('sensor.battery_phone') }}%
-    {% endif %}
-
-# Time / date
-- entity: binary_sensor.night_mode
-  state: "on"
-  message: "Night mode active since {{ now().strftime('%H:%M') }}"
-
-# Math / unit conversion
-- entity: sensor.power_consumption
-  operator: ">"
-  state: "2000"
-  message: "High consumption: {{ (states('sensor.power_consumption') | float / 1000) | round(2) }} kW"
-```
+> 📄 YAML: [HA template syntax in messages](YAML.md#ha-template-syntax-in-messages)
 
 Any template that works in HA automations and template sensors works here too.
 
@@ -1055,12 +729,7 @@ Any template that works in HA automations and template sensors works here too.
 
 Select a `timer.*` entity and use one of the 4 dedicated timer themes. The card reads `finishes_at` from the timer attributes and updates the display every second:
 
-```yaml
-- entity: timer.ad_blocker_paused
-  state: active
-  message: "Ad blocking disabled for {timer}"
-  theme: countdown
-```
+> 📄 YAML: [Timer themes](YAML.md#timer-themes)
 
 Use `{timer}` in the message to display the live countdown (`mm:ss` or `h:mm:ss`).
 
@@ -1068,46 +737,26 @@ When a timer entity is selected in the editor, `state` is automatically set to `
 
 ### Numeric / comparison conditions
 
-```yaml
-- entity: sensor.co2_ppm
-  operator: ">"
-  state: "1000"
-  message: "CO₂ level critical!"
-```
+> 📄 YAML: [Numeric / comparison conditions](YAML.md#numeric--comparison-conditions)
 
 Supported operators: `=` (default), `!=`, `>`, `<`, `>=`, `<=`, `contains`, `not_contains`.
 
 ### Attribute-based triggers
 
-```yaml
-- entity: sensor.phone
-  attribute: battery_level
-  operator: "<"
-  state: "20"
-  message: "Phone battery critical"
-  theme: battery
-```
+> 📄 YAML: [Attribute-based triggers](YAML.md#attribute-based-triggers)
 
 ### AND / OR multi-entity conditions
 
 > 🧩 Still supported in YAML. The visual editor stores this as a [rule set](#-rule-sets).
 
-```yaml
-- entity: binary_sensor.front_door
-  state: "on"
-  conditions_logic: "and"
-  conditions:
-    - entity: input_boolean.night_mode
-      operator: "="
-      state: "on"
-  message: "Door open at night"
-  theme: intruder
-```
+> 📄 YAML: [AND / OR multi-entity conditions](YAML.md#and--or-multi-entity-conditions)
 
 - `and` — all conditions must match (default)
 - `or` — at least one must match: the alert's own condition **or** any extra condition (an alert without its own condition shows when any extra condition matches)
 
 ### HA icons (mdi:)
+
+> 🎨 In the visual editor this is set on a **custom theme** (Themes → Icon); every alert using the theme follows.
 
 Enable the `use_ha_icon` toggle per alert to use a native HA icon instead of an emoji. When enabled, the card first reads the entity's icon from the HA entity registry — so you get the correct icon automatically without setting it manually. You can also pick any `mdi:` or `hass:` icon from the native HA icon picker in the editor. Combine with `icon_color` to tint the icon with any CSS color.
 
@@ -1115,29 +764,15 @@ Any icon namespace is accepted — not just `mdi:` and `hass:`. Icons from `hue:
 
 ### Entity picture / custom image as icon *(new in 1.3.9.8)*
 
+> 🎨 In the visual editor this is set on a **custom theme** (Themes → Icon); every alert using the theme follows.
+
 Two new options let you use an image instead of an emoji or MDI icon.
 
 **`use_entity_picture`** — pulls the image HA shows for the entity (`entity_picture` attribute). Works with any entity that exposes a picture: bin/waste sensors, person trackers, camera thumbnails, weather entities, etc.
 
-```yaml
-alerts:
-  - entity: sensor.bin_collection
-    state: "on"
-    message: 🗑️ Bin day!
-    use_entity_picture: true
-    icon_size: 2rem   # optional, default 2rem
-```
+> 📄 YAML: [Entity picture / custom image as icon](YAML.md#entity-picture--custom-image-as-icon)
 
 **`icon_image`** — point directly to any image by path or URL, without needing an entity with `entity_picture`. Takes priority over `use_entity_picture` if both are set.
-
-```yaml
-alerts:
-  - entity: binary_sensor.front_door
-    state: "on"
-    message: Porta aperta
-    icon_image: /local/immagini/porta.png
-    icon_size: 3rem
-```
 
 Both options render a small rounded square image. `icon_size` accepts any CSS length (`2rem`, `48px`, etc.) and its field appears automatically in the visual editor when either option is active.
 
@@ -1145,42 +780,27 @@ Both options render a small rounded square image. `icon_size` accepts any CSS le
 
 `{state}`, `{name}`, `{entity}`, and `{device}` work in the `message` field of **any** alert that has an entity set — not just `entity_filter` alerts:
 
-```yaml
-- entity: sensor.meter_abe4
-  operator: "<="
-  state: "20"
-  message: "Battery low: {state}%"
-  secondary_text: "Device: {device}"
-```
+> 📄 YAML: [Message placeholders](YAML.md#message-placeholders)
 
 ### secondary_text
 
 A static second line displayed below the message. Supports placeholders. Does not require a secondary entity:
 
-```yaml
-secondary_text: "Zone: {name} — Current: {state}"
-```
+> 📄 YAML: [secondary_text](YAML.md#secondary_text)
 
 ### Badge customization
 
+> 🎨 In the visual editor this is set on a **custom theme** (Themes → Severity label); every alert using the theme follows.
+
 Hide the category badge or replace its text:
 
-```yaml
-show_badge: false        # hide completely
-badge_label: "URGENT"   # or use a custom label
-```
+> 📄 YAML: [Badge customization](YAML.md#badge-customization)
 
 ### Sound notifications
 
 Play an audio tone when an alert becomes active. Uses the Web Audio API — no files required for the default tones:
 
-```yaml
-- entity: binary_sensor.smoke_detector
-  state: "on"
-  message: "Smoke detected!"
-  sound: true
-  sound_url: "https://example.com/alarm.mp3"  # optional custom sound
-```
+> 📄 YAML: [Sound notifications](YAML.md#sound-notifications)
 
 Default tones by category: Critical = double high beep · Warning = medium beep · Info = soft beep · OK = rising chime.
 
@@ -1190,17 +810,13 @@ Default tones by category: Critical = double high beep · Warning = medium beep 
 
 Always-visible pill-shaped 💤 and 📋 buttons — useful for wall-mounted tablets where hover is not available:
 
-```yaml
-large_buttons: true
-```
+> 📄 YAML: [Large buttons](YAML.md#large-buttons)
 
 ### Swipe to snooze
 
 Enable a left-swipe gesture to snooze the current alert on touch devices. Works independently of `tap_action` and `hold_action` — no conflict:
 
-```yaml
-swipe_to_snooze: true
-```
+> 📄 YAML: [Swipe to snooze](YAML.md#swipe-to-snooze)
 
 Swipe at least 60 px horizontally to trigger. Uses the configured `snooze_duration` (or 1 h if none is set).
 
@@ -1212,9 +828,7 @@ A 22%-wide invisible zone on the right side of the card reveals the action butto
 
 Stack the icon on top and the message below, centered — useful for narrow columns or square card grids:
 
-```yaml
-vertical: true
-```
+> 📄 YAML: [Vertical layout](YAML.md#vertical-layout)
 
 Works with all 50 themes. The **Ticker** theme keeps its horizontal scrolling. Can be combined with `ha_theme: true` and `large_buttons: true`.
 
@@ -1222,9 +836,7 @@ Works with all 50 themes. The **Ticker** theme keeps its horizontal scrolling. C
 
 Adapt the card's color palette to the active Home Assistant global theme:
 
-```yaml
-ha_theme: true
-```
+> 📄 YAML: [HA theme adaptation](YAML.md#ha-theme-adaptation)
 
 When enabled:
 - Card background → `--card-background-color`
@@ -1240,16 +852,9 @@ All 50 visual themes retain their animations and layouts — only the color pale
 
 Each alert block also gets a 1px border in its severity color (critical/warning/info/OK), separate from the badge/text colors above. Turn it off per-card while keeping the color-coded badges and icons:
 
-```yaml
-severity_border: false
-```
+> 📄 YAML: [Severity border](YAML.md#severity-border)
 
 Default: `true` (on) — existing dashboards are unaffected. The border width is also exposed as the `--atc-severity-border-width` CSS custom property (default `1px`) if you'd rather control it theme-wide instead of per-card:
-
-```yaml
-your-theme-name:
-  atc-severity-border-width: "0px"
-```
 
 `severity_border: false` on the card always wins over the theme variable.
 
@@ -1257,9 +862,7 @@ your-theme-name:
 
 Enable a persistent visible border around the card using the standard HA border style:
 
-```yaml
-card_border: true
-```
+> 📄 YAML: [Card border](YAML.md#card-border)
 
 Default: `false` (off). Uses `--ha-card-border-width` and `--ha-card-border-color` from the active HA theme. When `card_border` is on and the card is otherwise hidden (no alerts, `show_when_clear` off), a subtle dashed placeholder with a 🔔 icon is shown so the card remains discoverable and editable.
 
@@ -1267,9 +870,7 @@ Default: `false` (off). Uses `--ha-card-border-width` and `--ha-card-border-colo
 
 Force all configured alerts to display as active — useful for previewing the card appearance without waiting for real conditions:
 
-```yaml
-test_mode: true
-```
+> 📄 YAML: [Test mode](YAML.md#test-mode)
 
 > Test mode only applies while this card's editor is open: a config saved with `test_mode: true` behaves normally once the editor is closed (a yellow banner shows it while editing).
 
@@ -1324,16 +925,7 @@ When the editor opens a config with per-alert look settings (`icon`, `color`, `s
 
 **Alert Presets and associations** are separate from the look and can be set on any theme, built-in or custom. Every preset shows what it is associated with as chips: a domain (`lock`), a device class (`class: moisture`), `notifications`, or *you pick the entity*. In a theme's *Alert Preset* group every association is a chip with ✕ — built-in ones (e.g. `class: door · Doors & Windows`) and your own domains / device classes alike. **+ Add association…** offers built-in associations from other themes (picking one *moves* it here), device classes and domains found in your HA. Removing a built-in association drops it from its preset (a preset with nothing left disappears); **Reset associations** restores the defaults. Your own domains / classes build one alert with the theme — when the state matches the optional *alert when state is*, otherwise on any change. Alerts created from a preset are separate copies.
 
-```yaml
-custom_themes:
-  flood_custom: { base: flood, name: "Flood (basement)", message_size: 20, pulse: true, show_badge: false }
-theme_associations:
-  flood_custom: { items: ["domain:valve"], state: open }   # own association → an Alert Preset
-  door:   { items: ["builtin:doors_windows:0"] }            # Doors & Windows' door alert moved to the door theme
-  caution: { items: [] }                                     # caution no longer holds Doors & Windows
-alerts:
-  - theme: flood_custom
-```
+> 📄 YAML: [Custom themes & Alert Preset associations](YAML.md#custom-themes--alert-preset-associations)
 
 In **Alert Presets**, 🔍 on a preset previews it on the card in the editor's preview pane (only while editing; the preview is passed to the card directly, never through the card config, so saving can't store it — it stops when you click 🔍 again, close the panel or change anything).
 
@@ -1374,43 +966,22 @@ Duplicates are allowed on purpose — if you want two Battery Monitor alerts wit
 
 > ✨ **First-time hint:** the very first time you open the editor after upgrading, the presets panel pulses with a soft blue glow and a ✨ sparkle badge to draw your attention. Focus the dropdown once and the hint disappears permanently.
 
-#### Per-alert fields
+#### Alert editor sections
 
-For each alert:
+| Section | What's in it |
+|---------|--------------|
+| **Options** | Persistent / Sticky, Show in overlay, snooze duration, trigger on any change (rule-set alerts) |
+| **Appearance** | Theme (built-in or *My themes*), the entity-name line under the message, custom card. Icon, colors, text, severity label and effects come from the theme — *Edit theme* / *Duplicate & customize theme* |
+| **Condition** | Single-entity alerts: *When this entity…* (operator + value, or *changes*), then *…and also* inline rules |
+| **Message** | Message (placeholders, Jinja2), history message |
+| **Secondary value** | Secondary entity / attribute / text and its position |
+| **Timing** | Trigger delay, auto-dismiss |
+| **Alert Grouping** | Group many matches into one summary slide, with its own tap / hold |
+| **Tap Actions** | Single tap, double tap, hold (500 ms), snooze |
+| **Sound / Audio**, **TTS**, **Push**, **Camera** | Per-alert notifications and camera |
+| **Visibility**, **Set Entity Value** | `visible_to`, `active_state_entity` |
 
-| Field | Description |
-|-------|-------------|
-| **Name** | Optional display label for this alert in the editor panel (e.g. "Motion sensor floor 1") |
-| **Entity filter** | Text filter with wildcard `*` — auto-expands to one alert per matched entity |
-| **Device class** | Auto-discover all entities with a given HA device class |
-| **Entity** | Single entity from your HA instance (hidden when filter is active) |
-| **Attribute** | Optional — check attribute instead of entity state (dot-notation supported) |
-| **Condition** | Operator + trigger value (supports Jinja2 templates) |
-| **on_change** | Trigger on any state change (ignores condition fields) |
-| **auto_dismiss_after** | Auto-hide the alert N seconds after it fires |
-| **time_range** | Show alert only within a time window (`from`/`to` in HH:MM) |
-| **visible_to** | Restrict visibility to specific HA users |
-| **Priority** | 1 (Critical) → 4 (Low) |
-| **Message** | Text shown when active — supports `{name}`, `{entity}`, `{state}`, `{timer}`, `{device}` |
-| **Secondary text** | Static second line — supports placeholders, no entity required |
-| **Secondary entity** | Live value shown below the message |
-| **Theme** | Visual theme — timer entities see only timer themes |
-| **Icon** | Emoji override, or native `mdi:` icon picker via toggle |
-| **Icon color** | CSS color for the MDI icon (hex, named, or variable) |
-| **Badge** | Show/hide category badge or set a custom label |
-| **Snooze duration** | Per-alert override of global snooze setting |
-| **Sound** | Enable audio notification + optional custom URL |
-| **TTS** | Enable voice announcement — speaker, engine, notify service, custom message |
-| **Camera** | Camera entity; toggle `camera_live` for live stream in overlay; toggle `camera_in_card` for camera background in the card slide |
-| **Secondary value position** | `below` (default) or `right` — position the secondary value on the same row as the title |
-| **History message** | Custom text recorded in the history log (overrides `message` for history entries) |
-| **Extra conditions** | AND/OR additional entity conditions |
-| **Tap action** | Action executed on tap (native service control) |
-| **Hold action** | Action executed on hold (500 ms) |
-| **Double-tap action** | Action executed on double-tap (single tap waits 300 ms) |
-| **Snooze action** | Action executed when 💤 is tapped |
-
-You can **reorder** alerts with ↑ / ↓ buttons.
+Reorder alerts by dragging the handle or with ▲ / ▼; each row also has Show in overlay, on / off, duplicate and delete.
 
 Every editor page has a **💾 Save** button in its header: it saves the card and keeps the editor open (HA's own Save closes it). It uses the edit dialog's internal save, so on a Home Assistant version where that isn't available the button is hidden.
 
@@ -1471,424 +1042,7 @@ The tab shows an **ON** badge when overlay mode is active.
 
 ## YAML Configuration
 
-### Card-level options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `cycle_interval` | `number` | `5` | Seconds between alerts when cycling |
-| `cycle_animation` | `string` | `fold` | Transition animation |
-| `show_when_clear` | `boolean` | `false` | Show card when no alerts are active |
-| `clear_message` | `string` | `""` | Message shown in all-clear state (message mode) |
-| `clear_theme` | `string` | `success` | Theme for all-clear (`success`, `check`, `confetti`, …) |
-| `clear_display_mode` | `string` | `message` | All-clear widget: `message`, `clock`, `weather`, `weather_clock`, `forecast`, `weather_forecast` |
-| `clear_clock_style` | `string` | — | Clock style: `aurora`, `gold`, `matrix` |
-| `clear_weather_style` | `string` | — | Weather badge style: `stage`, `split`, `cinematic`, `wallpanel` |
-| `clear_clock_show_date` | `boolean` | `true` | Show or hide the date in clock / weather+clock mode |
-| `clear_clock_show_seconds` | `boolean` | `true` | **New in 1.3.9.9.6** — hide seconds from the clock display for a cleaner `15:58` look instead of `15:58:47` |
-| `clear_clock_date_position` | `string` | `below` | Date position relative to time: `above` or `below` |
-| `clear_weather_entity` | `string` | `null` | `weather.*` entity for weather/weather_clock modes |
-| `clear_badge_label` | `string` | `"Resolved"` | Badge text on the all-clear card |
-| `clear_tap_action` | `object` | — | Tap action for the all-clear card |
-| `clear_hold_action` | `object` | — | Hold action for the all-clear card |
-| `clear_double_tap_action` | `object` | — | Double-tap action for the all-clear card |
-| `show_widget_in_cycle` | `boolean` | `false` | Insert the clear widget as a slide in the alert cycle |
-| `snooze_default_duration` | `number` | *(menu)* | Fixed snooze duration in hours (`0.5`, `1`, `4`, `8`, `24`). Omit for menu. |
-| `show_snooze_bar` | `boolean` | `true` | Set `false` to hide the amber snooze reactivation bar and pill |
-| `large_buttons` | `boolean` | `false` | Always-visible pill-shaped 💤 and 📋 buttons |
-| `swipe_to_snooze` | `boolean` | `false` | Left-swipe gesture to snooze on touch devices |
-| `vertical` | `boolean` | `false` | Vertical layout — icon on top, message centered below |
-| `text_align` | `string` | `left` | `center` to center message text (useful in wide Panel layouts) |
-| `ha_theme` | `boolean` | `false` | Adapt card colors to the active HA global theme |
-| `history_keep_mode` / `history_keep` | `string` / `number` | `count` / `50` | What this browser stores: `count` = up to N alerts (max 5000), `days` = N days (max 5). Replaces `history_max_events` (still read) |
-| `custom_themes` | `object` | — | Your themes: `{ <id>: { base, name, …look } }`. Look keys: `icon`, `icon_color`, `icon_size`, `icon_image`, `use_ha_icon`, `use_entity_picture`, `message_size`, `message_color`, `entity_size`, `entity_color`, `show_badge`, `badge_label`, `pulse`, `flash_background`, `disable_animation`, `color` (accent), `card_background`, `card_height`, `font_scale`, `text_align`, `card_border`, `severity_border` |
-| `theme_associations` | `object` | — | Alert Preset associations per theme (built-in or custom): `{ <theme>: { items: ["domain:x", "class:y", "builtin:<preset>:<n>"], state } }` |
-| `history_show_mode` / `history_show` | `string` / `number` | all | What the card's 📋 panel lists: `count` = the latest N (max 500), `hours` = the last N hours (1–120); omit = everything stored |
-| `active_state_entity` | `string` | — | **Per-alert.** `input_boolean.*` entity to write `on`/`off` to when this specific alert becomes active or clears. Each alert can target a different boolean. Works only while the browser tab is open. |
-| `card_height` | `number` | *(auto)* | Fixed card height in px — prevents layout shifts when cycling |
-| `font_scale` | `number` | `1` | **New in 1.3.9.9.7** — proportional zoom for HD / 4K / wall-panel displays. `1` = normal, `1.5` = 50% larger, `2` = double. May require bumping `grid_options.rows`. |
-| `card_border` | `boolean` | `false` | Show the standard HA border around the card at all times |
-| `severity_border` | `boolean` | `true` | Show the 1px severity-colored border around each alert block. Set `false` to keep badge/icon color coding without the border. Width themeable via `--atc-severity-border-width`. |
-| `overlay_mode` | `boolean` | `false` | Show a floating banner when a new alert triggers — visible from any dashboard view |
-| `overlay_position` | `string` | `top` | Banner position: `top`, `center`, or `bottom` |
-| `overlay_duration` | `number` | `8` | Seconds before auto-dismiss (0 = manual close only) |
-| `overlay_scale` | `number` | `1` | Banner zoom factor: `1`, `1.5`, `2`, or `3` |
-| `tts_enabled` | `boolean` | `true` | Master toggle — set `false` to silence all TTS globally |
-| `tts_entity` | `string` | — | Default `media_player.*` speaker entity |
-| `tts_engine` | `string` | *(auto)* | TTS engine entity (auto-detected from first `tts.*` state if omitted) |
-| `tts_notify_service` | `string` | — | Default notify service for Alexa / push (e.g. `alexa_media_echo_dot`) |
-| `tts_language` | `string` | — | Language code passed to `tts.speak` (e.g. `it-IT`) |
-| `notify_push_enabled` | `boolean` | `true` | Master toggle — set `false` to disable all push notifications globally |
-| `clear_weather_temperature_entity` | `string` | — | Override weather temperature with a local sensor entity |
-| `clear_weather_humidity_entity` | `string` | — | Override weather humidity with a local sensor entity |
-| `clear_weather_temp_high_entity` | `string` | — | Override today's high temperature with a sensor |
-| `clear_weather_temp_low_entity` | `string` | — | Override today's low temperature with a sensor |
-| `clear_weather_aqi_entity` | `string` | — | Show air quality / PM2.5 from a sensor in the weather badge |
-| `show_history_button` | `boolean` | `true` | Set `false` to hide the 📋 history button completely |
-| `show_snooze_button` | `boolean` | `true` | Set `false` to hide the 💤 snooze button completely |
-| `test_mode` | `boolean` | `false` | Show all alerts as active (ignore conditions) — for editor preview only |
-| `alerts` | `list` | `[]` | List of alert objects |
-| `rule_sets` | `list` | — | Named [rule sets](#-rule-sets) used by alerts' `rule_set:` |
-| `notifications_retention` | `number` | `3600` | Seconds a sent (mobile / notify) notification stays an alert — see [Notification alerts](#-notification-alerts) |
-
-### Alert-level options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `name` | `string` | ❌ | Editor display label for this alert panel |
-| `entity` | `string` | ✅* | Entity ID |
-| `rule_set` | `string\|object` | ✅* | Id of a [rule set](#-rule-sets) (one alert per match), or inline rules — on a single-entity alert, its extra conditions |
-| `entity_filter` | `string` | ✅* | Text filter — supports `*` wildcard (replaces `entity`) |
-| `entity_filter_exclude` | `list` | ❌ | Entity IDs to exclude from `entity_filter` or `device_class` match |
-| `device_class` | `string` | ✅* | HA device class (e.g. `smoke`, `battery`, `motion`) — auto-discovers all matching entities |
-| `show_filter_name` | `boolean` | `true` | Set `false` to hide the entity friendly name below the message |
-| `attribute` | `string` | ❌ | Attribute to check instead of state — supports dot-notation (e.g. `activity.0.forecast`) |
-| `operator` | `string` | ❌ | `=` `!=` `>` `<` `>=` `<=` `contains` `not_contains` (default: `=`) |
-| `state` | `string` | ✅ | Trigger value — supports Jinja2 templates (e.g. `{{ states('input_number.threshold') }}`) |
-| `on_change` | `boolean` | `false` | Trigger on any state change — ignores `operator`/`state` |
-| `auto_dismiss_after` | `number` | ❌ | Auto-hide after N seconds. For `on_change`: starts on trigger. For condition alerts: starts when condition first becomes true. |
-| `time_range` | `object` | ❌ | `{from: "HH:MM", to: "HH:MM"}` — restrict to a time window (midnight crossing supported) |
-| `visible_to` | `string\|list` | ❌ | `admin`, `non_admin`, a display-name string, or a list of names |
-| `message` | `string` | ✅ | Text shown when active — supports `{name}`, `{entity}`, `{state}`, `{timer}`, `{device}` |
-| `secondary_text` | `string` | ❌ | Static second line below the message — supports `{state}`, `{name}`, `{entity}` |
-| `theme` | `string` | ❌ | Visual theme (default: `emergency`) |
-| `priority` | `number` | ❌ | *Legacy:* 1–4. Still sorts YAML that has it; the editor replaces it with the list order |
-| `enabled` | `boolean` | `true` | `false` switches the alert off — nothing on the card, in the overlay, TTS or push (test mode still previews it) |
-| `icon` | `string` | ❌ | Emoji or `mdi:` icon override |
-| `use_ha_icon` | `boolean` | ❌ | Use HA native icon (auto-read from entity, or pick via icon picker) |
-| `use_entity_picture` | `boolean` | ❌ | Use the entity's `entity_picture` attribute as the alert icon |
-| `icon_image` | `string` | ❌ | Static image path (`/local/…`) or full URL — takes priority over `use_entity_picture` |
-| `icon_size` | `string` | `2rem` | Size of the image icon — any CSS length (applies to `icon_image` and `use_entity_picture`) |
-| `icon_color` | `string` | ❌ | CSS color for the MDI icon (requires `use_ha_icon: true`) |
-| `show_badge` | `boolean` | `true` | Set `false` to hide the category badge |
-| `badge_label` | `string` | ❌ | Custom text for the category badge |
-| `message_size` / `message_color` | `number` / `string` | theme | Message text size (px, 10–40) and color (`var(--…)`, `#rrggbb` or any CSS color) |
-| `entity_size` / `entity_color` | `number` / `string` | theme | Same for the entity info line(s) under the message (entity name / state, secondary value) |
-| `pulse` | `boolean` | `false` | The whole card gently grows and glows in the theme (or accent) color |
-| `flash_background` | `boolean` | on for `alarm` / `intruder`, else off | Flash the card's background in the theme (or accent) color; `false` keeps alarm / intruder steady. Pulse and flash stop with `disable_animation` |
-| `secondary_entity` | `string` | ❌ | Entity whose live value appears below the message |
-| `secondary_attribute` | `string` | ❌ | Attribute of `secondary_entity` to show — supports dot-notation |
-| `show_secondary_name` | `boolean` | `false` | Show the entity friendly name next to the secondary value |
-| `show_filter_state` | `boolean` | `false` | Show translated entity state next to the entity name (`entity_filter` only) |
-| `snooze_duration` | `number\|null` | ❌ | Override global snooze: hours, `null` for menu, omit to use global |
-| `sound` | `boolean` | `false` | Play a sound when this alert becomes active |
-| `sound_url` | `string` | ❌ | Custom `.mp3`/`.wav` URL — omit for auto-generated tone |
-| `tts` | `boolean` | `false` | Read the alert aloud when it becomes active |
-| `tts_entity` | `string` | ❌ | Override the global `media_player.*` speaker for this alert |
-| `tts_engine` | `string` | ❌ | Override the global TTS engine entity |
-| `tts_notify_service` | `string` | ❌ | Override the global notify service (for Alexa / push) |
-| `tts_notify_type` | `string` | `tts` | Notify type sent to the service — use `announce` for Alexa speaker groups |
-| `tts_message` | `string` | ❌ | Custom spoken text — omit for auto-generated multilingual sentence |
-| `notify_push` | `boolean` | `false` | Send a push notification when this alert becomes active |
-| `notify_push_service` | `string` | ❌ | Target `notify.*` service (without prefix, e.g. `mobile_app_iphone`) |
-| `notify_push_title` | `string` | ❌ | Notification title — supports `{name}`, `{state}`, `{entity}`, `{device}`, Jinja2 |
-| `notify_push_message` | `string` | ❌ | Notification body — same placeholders; falls back to `message` if empty |
-| `show_player_controls` | `boolean` | ❌ | Enable graphical music player UI for `media_player.*` entities (requires `theme: music`) |
-| `music_player_color` | `string` | ❌ | Accent color for the music player UI — any CSS color (default `#e040fb`) |
-| `music_show_art` | `boolean` | `true` | Show album artwork in the music player (background blur + thumbnail) |
-| `music_show_title` | `boolean` | `true` | Show track title (with marquee for long titles) |
-| `music_show_artist` | `boolean` | `true` | Show artist name |
-| `music_show_controls` | `boolean` | `true` | Show previous / play-pause / next / mute buttons and volume slider |
-| `music_show_power` | `boolean` | `false` | Add a power icon in the bottom-right corner — calls `media_player.turn_off` |
-| `music_show_player_picker` | `boolean` | `false` | Add a cast icon in the bottom-right corner — dropdown to switch the active player for this session |
-| `music_compact_layout` | `boolean` | `false` | Compact layout: track title + artist move to the top-right column, controls stay left — ideal for small displays |
-| `battery_trim_name` | `boolean` | `false` | (`theme: battery` only) Strip the trailing word "Battery" from entity friendly names to shorten long labels |
-| `camera_entity` | `string` | ❌ | Camera entity for overlay banner and card background |
-| `camera_live` | `boolean` | `false` | Show a live HLS/WebRTC stream in the overlay banner instead of a static snapshot (requires `camera_entity`) |
-| `camera_in_card` | `boolean` | `false` | Show the camera image as a background layer behind the alert card slide (requires `camera_entity`) |
-| `history_message` | `string` | ❌ | Custom text recorded in the history log — overrides `message` for history entries; supports `{name}`, `{state}`, `{entity}` |
-| `secondary_value_align` | `string` | `below` | Position of the secondary value: `below` (default, shown under the message) or `right` (shown on the same row as the title) |
-| `conditions_logic` | `string` | ❌ | `and` or `or` for extra conditions |
-| `conditions` | `list` | ❌ | Extra entity conditions |
-| `tap_action` | `object` | ❌ | Action on tap |
-| `hold_action` | `object` | ❌ | Action on hold (500 ms) |
-| `double_tap_action` | `object` | ❌ | Action on double-tap (single tap waits 300 ms to distinguish) |
-| `snooze_action` | `object` | ❌ | Action executed when 💤 is tapped |
-
-*One of `entity`, `entity_filter`, or `device_class` is required.
-
-### Action object (`tap_action`, `hold_action`, `double_tap_action`, `snooze_action`, `clear_*_action`)
-
-| Field | Description |
-|-------|-------------|
-| `action` | `call-service` · `navigate` · `more-info` · `url` · `none` |
-| `service` | HA service in `domain.service` format |
-| `target` | `{entity_id: "..."}` |
-| `service_data` | Extra service parameters (object) |
-| `navigation_path` | Path for `navigate` action |
-| `url_path` | URL for `url` action |
-| `entity_id` | Entity for `more-info` action |
-
----
-
-## Examples
-
-### Battery monitor with entity filter
-
-```yaml
-type: custom:alert-ticker-card
-cycle_animation: slide
-alerts:
-  - entity_filter: "battery"
-    attribute: battery_level
-    operator: "<="
-    state: "20"
-    message: "Low battery: {name} ({state}%)"
-    theme: battery
-    priority: 2
-    entity_filter_exclude:
-      - sensor.battery_test_device
-```
-
-### Phone battery with charging status (`battery3d` theme)
-
-```yaml
-type: custom:alert-ticker-card
-show_when_clear: true
-alerts:
-  - entity: sensor.iphone_battery_level
-    operator: "<="
-    state: "100"                    # always active so the widget stays visible
-    message: "iPhone"
-    theme: battery3d
-    charging_entity: binary_sensor.iphone_is_charging   # optional — enables ⚡ lightning + cyan colour while charging
-```
-
-The `battery3d` theme colours the CSS battery icon **and** the horizontal progress bar dynamically:
-
-- **≤ 20%** red — low battery
-- **21–60%** orange — medium
-- **> 60%** green — healthy
-- **Charging** cyan with an animated ⚡ inside the icon (overrides the level colour)
-
-Works with any entity that reports a 0–100 numeric state (phones, tablets, laptops, robot vacuums, EVs, IoT sensors, HA Companion battery, etc.).
-
-### Smoke detector with TTS + camera snapshot
-
-```yaml
-type: custom:alert-ticker-card
-overlay_mode: true
-overlay_scale: 1.5
-tts_entity: media_player.living_room
-alerts:
-  - entity: binary_sensor.smoke_detector
-    state: "on"
-    message: "Smoke detected!"
-    theme: fire
-    priority: 1
-    tts: true
-    camera_entity: camera.kitchen
-```
-
-### Alexa TTS announcement on door open
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: binary_sensor.front_door
-    state: "on"
-    message: "Front door is open"
-    theme: door
-    tts: true
-    tts_notify_service: alexa_media_echo_dot_hallway
-    tts_message: "Attention — the front door has been opened"
-```
-
-### All smoke detectors via device_class
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - device_class: smoke
-    state: "on"
-    message: "Smoke detected: {name}"
-    theme: fire
-    priority: 1
-    tts: true
-    tts_entity: media_player.all_speakers
-```
-
-### Dynamic threshold from helper entity
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: sensor.outdoor_temperature
-    operator: ">"
-    state: "{{ states('input_number.temp_alert_threshold') }}"
-    message: "Temperature too high: {state}°"
-    theme: temperature
-```
-
-### Timer with countdown
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: timer.ad_blocker_paused
-    state: active
-    message: "Ad blocking disabled for {timer}"
-    theme: countdown
-    priority: 2
-```
-
-### Alarm with tap_action
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: alarm_control_panel.home
-    state: "triggered"
-    message: "ALARM TRIGGERED"
-    priority: 1
-    theme: emergency
-    tap_action:
-      action: call-service
-      service: alarm_control_panel.alarm_disarm
-      target:
-        entity_id: alarm_control_panel.home
-      service_data:
-        code: "1234"
-```
-
-### Smart snooze (resets the sensor)
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: binary_sensor.mailbox
-    state: "on"
-    message: "Mail arrived"
-    theme: notification
-    snooze_action:
-      action: call-service
-      service: input_boolean.turn_off
-      target:
-        entity_id: input_boolean.mailbox_flag
-```
-
-### Night-time door alert (AND condition + time_range)
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: binary_sensor.front_door
-    state: "on"
-    time_range:
-      from: "22:00"
-      to: "07:00"
-    message: "Front door open at night!"
-    priority: 1
-    theme: intruder
-    hold_action:
-      action: navigate
-      navigation_path: /lovelace/security
-```
-
-### Alert visible only to admins
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: sensor.server_load
-    operator: ">"
-    state: "90"
-    message: "Server CPU at {state}%"
-    visible_to: admin
-    theme: warning
-```
-
-### Push notification on door open
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: binary_sensor.front_door
-    state: "on"
-    message: "Front door open"
-    theme: door
-    notify_push: true
-    notify_push_service: mobile_app_iphone_di_mario
-    notify_push_title: "Door Alert"
-    notify_push_message: "{name} opened at {{ now().strftime('%H:%M') }}"
-```
-
-### Music player with custom accent color
-
-```yaml
-type: custom:alert-ticker-card
-alerts:
-  - entity: media_player.spotify_davide
-    theme: music
-    show_player_controls: true
-    music_player_color: "#00e5ff"
-    operator: "="
-    state: playing
-```
-
-### Weather + 7-day forecast alternating
-
-```yaml
-type: custom:alert-ticker-card
-show_when_clear: true
-clear_display_mode: weather_forecast
-clear_weather_entity: weather.home
-clear_weather_style: default
-show_widget_in_cycle: true
-alerts:
-  - entity: binary_sensor.smoke_detector
-    state: "on"
-    message: "Smoke detected!"
-    theme: fire
-```
-
-### All-clear with animated weather + widget in cycle
-
-```yaml
-type: custom:alert-ticker-card
-show_when_clear: true
-clear_display_mode: weather_clock
-clear_weather_entity: weather.home
-show_widget_in_cycle: true
-alerts:
-  - entity: binary_sensor.smoke_detector
-    state: "on"
-    message: "Smoke detected!"
-    theme: fire
-```
-
-### Multiple warnings cycling
-
-```yaml
-type: custom:alert-ticker-card
-cycle_interval: 8
-cycle_animation: slide
-show_when_clear: true
-clear_message: "All systems normal"
-clear_theme: success
-alerts:
-  - entity: binary_sensor.smoke_detector
-    state: "on"
-    message: "Smoke detected in kitchen!"
-    priority: 1
-    theme: fire
-  - entity: binary_sensor.water_leak
-    state: "on"
-    message: "Water leak under sink"
-    priority: 2
-    theme: flood
-  - entity: sensor.co2_ppm
-    operator: ">"
-    state: "1000"
-    message: "CO₂ level too high — {state} ppm"
-    priority: 2
-    theme: toxic
-  - entity: binary_sensor.window_contact
-    state: "on"
-    message: "Living room window open"
-    priority: 3
-    theme: window
-    secondary_entity: sensor.outdoor_temperature
-```
+Every YAML option — card-level, per alert, actions, custom themes, rule sets, notification rule sets, TTS / push / music options — with snippets and real-world examples is in **[YAML.md](YAML.md)**. You never need it: the visual editor writes all of it.
 
 ---
 
