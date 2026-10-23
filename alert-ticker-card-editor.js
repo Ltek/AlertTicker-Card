@@ -1668,6 +1668,8 @@ const ET = {
     notify_use: "Use",
     notify_destination: "Notification Destination",
     notify_destination_help: "Where the notification goes.",
+    notify_merge_duplicates: "One alert per notification (merge copies)",
+    notify_merge_duplicates_help: "The same notification sent to several phones or services — by one automation, a notify group, or separate automations within 10 seconds with the same title, message and tag — shows as one alert listing every destination. Untick to get one alert per copy.",
     notify_dest_all: "All destinations",
     notify_dest_all_mobile: "All mobile devices",
     notify_dest_pick_one: "Add at least one destination, or tick All destinations.",
@@ -10215,6 +10217,9 @@ class AlertTickerCardEditor extends LitElement {
       ${this._rsAddSelect(si, key, "notify_dest_services", d.services, all)}
       ${this._rsAddSelect(si, key, "notify_dest_entities", d.entities, all)}
       <div class="helper-text">${this._t("notify_dest_group_help")}</div>
+      ${box(this._t("notify_merge_duplicates"), rs.merge_duplicates !== false, false,
+        (on) => this._rsSave(si, { merge_duplicates: on ? undefined : false }))}
+      <div class="helper-text">${this._t("notify_merge_duplicates_help")}</div>
     `;
   }
 

@@ -307,6 +307,7 @@ alerts:
 
 - Conditions: `notification_text` (title or message), `notification_title`, `notification_message`, `notification_tag`, `notification_sent_to`.
 - Message placeholders: `{title}`, `{message}`, `{sent_by}`, `{sent_to}`.
+- `merge_duplicates` (default `true`): the same notification sent to several destinations — related contexts (a notify group and its members), or the same title + message + tag within 10 s — is one alert with every destination; `false` = one alert per copy.
 - Card option `notifications_retention` (seconds, default `3600`): how long a sent notification stays an alert.
 
 ## Feature options
