@@ -1,5 +1,5 @@
 /**
- * AlertTicker Card v1.3.17-rules.45
+ * AlertTicker Card v1.3.17-rules.46
  * A Home Assistant custom Lovelace card to display alerts based on entity states.
  * Supports 50 visual themes with per-alert theme assignment, priority ordering,
  * fold animation cycling, snooze, numeric conditions, attribute triggers,
@@ -41,7 +41,7 @@ const css = LitElement.prototype.css ?? ((strings, ...values) => {
 // ---------------------------------------------------------------------------
 // Card version — declared early so getConfigElement() can reference it
 // ---------------------------------------------------------------------------
-const CARD_VERSION = "1.3.17-rules.45";
+const CARD_VERSION = "1.3.17-rules.46";
 
 // ---------------------------------------------------------------------------
 // Google Cast compatibility (#171)
