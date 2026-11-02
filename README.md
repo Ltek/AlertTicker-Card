@@ -1,4 +1,10 @@
-﻿<h1 align="center">AlertTicker Card for Home Assistant</h1>
+> ## ⚠️ This fork has moved: **[Easy Alert Card (Ltek)](https://github.com/Ltek/easy-alert-card)**
+>
+> The rules engine, notification alerts, custom themes and the rest of the work in this fork now live in **Easy Alert Card** — a separate card (`type: custom:easy-alert-card`) that runs next to AlertTicker Card and reads all of its options. Install it from HACS with `https://github.com/Ltek/easy-alert-card`, then follow *Moving from AlertTicker Card* in its README.
+>
+> For the original card, use **[djdevil/AlertTicker-Card](https://github.com/djdevil/AlertTicker-Card)** (in the default HACS store). This repository is archived.
+
+<h1 align="center">AlertTicker Card for Home Assistant</h1>
 
 <p align="center">
   <img src="images/logoreadme-400.png" alt="AlertTicker Card logo for Home Assistant Lovelace" width="260">
